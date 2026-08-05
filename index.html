@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0a1a0d" />
+    <title>Jungle Climber</title>
+  </head>
+  <body>
+    <div id="app">
+      <!-- WebGL-Canvas wird hier hineingehängt -->
+      <div id="viewport"></div>
+
+      <!-- Alle Overlays liegen über dem Canvas -->
+      <div id="ui">
+        <!-- ------------------------------------------------ Ladebildschirm -->
+        <section id="screen-loading" class="screen screen--center is-visible">
+          <h1 class="logo">JUNGLE<span>CLIMBER</span></h1>
+          <div class="loader">
+            <div class="loader__bar"><i id="loading-fill"></i></div>
+            <p id="loading-label" class="loader__label">Wird geladen…</p>
+          </div>
+        </section>
+
+        <!-- --------------------------------------------------------- Menü -->
+        <section id="screen-menu" class="screen screen--center">
+          <h1 class="logo">JUNGLE<span>CLIMBER</span></h1>
+          <p class="tagline">Klettere so hoch du kannst. Weiche den Steinen aus.</p>
+
+          <button id="btn-start" class="btn btn--primary" type="button">
+            Spiel starten
+          </button>
+
+          <div class="panel">
+            <h2 class="panel__title">Bestenliste</h2>
+            <ol id="menu-highscores" class="highscores"></ol>
+          </div>
+
+          <div class="controls-hint">
+            <p><b>W A S D</b> oder <b>Pfeiltasten</b> — bewegen</p>
+            <p><b>Esc</b> / <b>P</b> — Pause &nbsp;·&nbsp; <b>F1</b> — Hitboxen</p>
+            <p class="controls-hint--touch">Joystick unten links — bewegen</p>
+          </div>
+        </section>
+
+        <!-- ---------------------------------------------------------- HUD -->
+        <section id="screen-hud" class="screen screen--hud">
+          <div class="hud__top">
+            <div class="hud__revive" id="hud-revive" aria-live="polite">
+              <span class="hud__revive-icon">🍌</span>
+              <span class="hud__revive-label">Wiederbelebung</span>
+            </div>
+            <div class="hud__score">
+              <span id="hud-score" class="hud__score-value">0</span>
+              <span class="hud__score-unit">m</span>
+            </div>
+          </div>
+          <div class="hud__toast" id="hud-toast"></div>
+          <div class="hud__stats" id="hud-stats"></div>
+        </section>
+
+        <!-- -------------------------------------------------------- Pause -->
+        <section id="screen-paused" class="screen screen--center screen--dim">
+          <h2 class="headline">Pause</h2>
+          <button id="btn-resume" class="btn btn--primary" type="button">
+            Weiterspielen
+          </button>
+          <button id="btn-pause-menu" class="btn" type="button">Zum Hauptmenü</button>
+        </section>
+
+        <!-- ---------------------------------------------------- Game Over -->
+        <section id="screen-gameover" class="screen screen--center screen--dim">
+          <h2 class="headline" id="gameover-headline">Game Over</h2>
+
+          <p class="result">
+            <span id="gameover-score">0</span><span class="result__unit">m</span>
+          </p>
+
+          <form id="name-form" class="name-form" autocomplete="off">
+            <label for="name-input" id="name-label">Neuer Highscore! Dein Name:</label>
+            <div class="name-form__row">
+              <input
+                id="name-input"
+                class="name-input"
+                type="text"
+                maxlength="12"
+                placeholder="AFFE"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button class="btn btn--primary" type="submit">Eintragen</button>
+            </div>
+          </form>
+
+          <div class="panel">
+            <h2 class="panel__title">Bestenliste</h2>
+            <ol id="gameover-highscores" class="highscores"></ol>
+          </div>
+
+          <div class="button-row">
+            <button id="btn-retry" class="btn btn--primary" type="button">
+              Nochmal
+            </button>
+            <button id="btn-gameover-menu" class="btn" type="button">Hauptmenü</button>
+          </div>
+        </section>
+
+        <!-- Virtueller Joystick wird hier eingehängt -->
+        <div id="touch-layer"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

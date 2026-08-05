@@ -1,0 +1,29 @@
+node_modules/
+dist/
+
+# Zwischenergebnis der FBX-Konvertierung (57 MB) — wird von
+# `npm run convert:model` neu erzeugt.
+assets-src/.cache/
+
+# Quell-FBX (94 MB) — als EINZIGES nicht versioniert.
+# GitHub warnt ab 50 MB und blockt ab 100 MB; die Datei würde jeden Klon
+# dauerhaft aufblähen. Sie wird auch nicht gebraucht: das daraus erzeugte
+# monkey.glb (1.5 MB) liegt im Repo. Nur wer die Konvertierung neu fahren
+# will, holt sich Monkey_B1.Fbx aus source.zip zurück (oder Git LFS).
+assets-src/FbxUnity/*.Fbx
+
+# FBX2glTF packt die eingebetteten Texturen beim Konvertieren hier aus.
+assets-src/FbxUnity/*.fbm/
+
+# public/models/monkey.glb und public/textures/*.webp sind BEWUSST versioniert:
+# ohne sie liefe das Spiel auf einem frischen Klon nicht, und ihre Quellen
+# (94-MB-FBX bzw. das Bewegungsvideo) sind schwerer als die Ergebnisse.
+# Reproduzierbar bleiben sie über `npm run convert:model` und `npm run prep:art`.
+
+.DS_Store
+*.log
+
+# Temporaere Analysedateien
+*_tmp.png
+*_tmp.mjs
+public/_tmp_*

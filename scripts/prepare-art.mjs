@@ -1,0 +1,315 @@
+/**
+ * Bereitet die gelieferten Bilder für das Spiel auf.
+ *
+ * Run mit:  npm run prep:art
+ *
+ * Quelle: assets-src/art/  (die Original-PNGs)
+ * Ziel:   public/textures/
+ *
+ *   stage1_green.png     Hintergrundstufe 1 — grün pur
+ *   stage2_flowers.png   Hintergrundstufe 2 — grün mit Blumen
+ *   stage3_branches.png  Hintergrundstufe 3 — Äste
+ *   move_00.webp …       Kletter-Frames aus dem Bewegungsvideo (mit Alphakanal)
+ *
+ * AFFEN-FREISTELLUNG
+ * Das Quellbild zeigt den Affen auf Dschungelhintergrund. Freigestellt wird
+ * lokal (keine externen Dienste) über den Farbton: das Fell ist braun/orange
+ * (R > G), das Blattwerk grün (G > R). Aus der Rohmaske wird die grösste
+ * zusammenhängende Fläche um die Bildmitte genommen, Löcher werden gefüllt
+ * und die Kante leicht weichgezeichnet.
+ */
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import sharp from 'sharp';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(__dirname, '..');
+const SRC = resolve(ROOT, 'assets-src/art');
+const OUT = resolve(ROOT, 'public/textures');
+
+// Ausgabe als WebP: die Vorlagen sind als PNG rund 2 MB pro Stück, als WebP
+// bleibt bei praktisch gleicher Qualität etwa ein Zehntel übrig. Bei drei
+// Stufen mal zwei Fassungen macht das den Unterschied zwischen einem
+// 9-MB- und einem 2-MB-Build.
+// Reihenfolge = Reihenfolge der Stufen im Spiel (siehe CONFIG.wall.stages).
+const BACKGROUNDS = [
+  'stage1_green',
+  'stage2_flowers',
+  'stage3_branches',
+  'stage4_poison',
+  'stage5_halloween',
+  'stage6_ice',
+  'stage7_clouds',
+  'stage8_lava',
+  'stage9_ash',
+].map((name) => ({ src: `${name}.png`, out: `${name}.webp` }));
+
+// Kletter-Frames: bereits freigestellte Einzelbilder aus dem Bewegungsvideo.
+// Siehe README, Abschnitt "Kletteranimation aus dem Video".
+const MOVE_DIR = 'movement';
+
+mkdirSync(OUT, { recursive: true });
+
+/* ============================================================ Hintergründe */
+
+/**
+ * Misst, wie gut eine Textur vertikal kachelt: mittlerer Farbabstand zwischen
+ * der obersten und der untersten Pixelzeile. 0 = perfekt nahtlos.
+ */
+async function seamError(file) {
+  const { data, info } = await sharp(file)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width, height, channels } = info;
+  const topRow = 0;
+  const bottomRow = height - 1;
+  let sum = 0;
+
+  for (let x = 0; x < width; x++) {
+    const a = (topRow * width + x) * channels;
+    const b = (bottomRow * width + x) * channels;
+    sum +=
+      Math.abs(data[a] - data[b]) +
+      Math.abs(data[a + 1] - data[b + 1]) +
+      Math.abs(data[a + 2] - data[b + 2]);
+  }
+  return sum / (width * 3);
+}
+
+/**
+ * Macht eine Textur in beiden Achsen kachelbar.
+ *
+ * Die gelieferten Bilder sind NICHT nahtlos (gemessen 21–45 von 255 Differenz
+ * zwischen oberster und unterster Zeile) — beim endlosen Hochscrollen liefe
+ * sonst eine sichtbare waagerechte Kante durchs Bild.
+ *
+ * Spiegeln (MirroredRepeatWrapping) scheidet aus: in gespiegelten Kacheln
+ * läuft der Inhalt bei wachsendem Offset rückwärts, die Wand würde also
+ * abwechselnd hoch und runter scrollen.
+ *
+ * Stattdessen der klassische Überblend-Beschnitt: das Bild wird um die
+ * Bandbreite B gekürzt, und die ersten B Zeilen werden mit den abgeschnittenen
+ * Zeilen vom Ende überblendet. Danach grenzen im Ergebnis zwei im Original
+ * BENACHBARTE Zeilen aneinander — die Kachelung ist exakt nahtlos.
+ */
+function makeSeamless(data, width, height, channels, bandX, bandY) {
+  // ---- vertikal ----
+  const outH = height - bandY;
+  const vert = Buffer.alloc(width * outH * channels);
+
+  for (let y = 0; y < outH; y++) {
+    const t = y < bandY ? y / bandY : 1;
+    for (let x = 0; x < width; x++) {
+      const dst = (y * width + x) * channels;
+      const a = (y * width + x) * channels;
+      const b = ((y + outH) * width + x) * channels;
+      for (let c = 0; c < channels; c++) {
+        vert[dst + c] = t >= 1 ? data[a + c] : Math.round(data[a + c] * t + data[b + c] * (1 - t));
+      }
+    }
+  }
+
+  // ---- horizontal ----
+  const outW = width - bandX;
+  const both = Buffer.alloc(outW * outH * channels);
+
+  for (let y = 0; y < outH; y++) {
+    for (let x = 0; x < outW; x++) {
+      const t = x < bandX ? x / bandX : 1;
+      const dst = (y * outW + x) * channels;
+      const a = (y * width + x) * channels;
+      const b = (y * width + (x + outW)) * channels;
+      for (let c = 0; c < channels; c++) {
+        both[dst + c] = t >= 1 ? vert[a + c] : Math.round(vert[a + c] * t + vert[b + c] * (1 - t));
+      }
+    }
+  }
+
+  return { data: both, width: outW, height: outH };
+}
+
+async function prepareBackgrounds() {
+  console.log('Hintergründe:');
+  for (const bg of BACKGROUNDS) {
+    const src = resolve(SRC, bg.src);
+    if (!existsSync(src)) {
+      console.warn(`  FEHLT: ${src}`);
+      continue;
+    }
+    const dst = resolve(OUT, bg.out);
+    const vorher = await seamError(src);
+
+    const { data, info } = await sharp(src)
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const bandY = Math.round(info.height * 0.12);
+    const bandX = Math.round(info.width * 0.09);
+    const s = makeSeamless(data, info.width, info.height, info.channels, bandX, bandY);
+
+    await sharp(s.data, { raw: { width: s.width, height: s.height, channels: info.channels } })
+      .webp({ quality: 88 })
+      .toFile(dst);
+
+    // Fernvariante für die hintere Parallax-Ebene: dieselbe Vorlage, nur
+    // unscharf, dunkler und entsättigt. Dadurch entsteht Tiefe, ohne
+    // stilfremde Grafik einzumischen.
+    const farOut = dst.replace(/\.webp$/, '_far.webp');
+    await sharp(s.data, { raw: { width: s.width, height: s.height, channels: info.channels } })
+      .resize(Math.round(s.width / 2), Math.round(s.height / 2))
+      .blur(6)
+      .modulate({ brightness: 0.62, saturation: 0.75 })
+      .webp({ quality: 82 })
+      .toFile(farOut);
+
+    const nachher = await seamError(dst);
+    console.log(
+      `  ${bg.out.padEnd(22)} ${info.width}x${info.height} -> ${s.width}x${s.height}  ` +
+        `Naht ${vorher.toFixed(1)} -> ${nachher.toFixed(1)} von 255 ` +
+        // Ein kleiner Rest bleibt durch die WebP-Kompression; alles unter
+        // etwa 10/255 (4 %) ist im Scroll nicht zu sehen.
+        `${nachher < 10 ? '(nahtlos)' : '(PRUEFEN!)'}`,
+    );
+  }
+}
+
+/* ============================================================ Kletter-Frames */
+
+/**
+ * Normalisiert die Kletter-Frames aus assets-src/art/movement/.
+ *
+ * HERKUNFT
+ * Die Frames stammen aus dem Bewegungsvideo (assets-src/art/monkey_movement.mp4)
+ * und sind bereits freigestellt — der Affe kletterte dort vor reinweissem
+ * Hintergrund, das Weiss wurde per Alpha-Keying entfernt. Wie man das Video
+ * zerlegt, steht im README unter "Kletteranimation aus dem Video"; das braucht
+ * einen Browser (oder ffmpeg) und ist ein einmaliger Schritt. Ab hier ist die
+ * Aufbereitung reproduzierbar.
+ *
+ * AUSRICHTUNG
+ * Die Silhouette wandert von Frame zu Frame (der Affe klettert ja). Jedes Bild
+ * wird deshalb auf seine Alpha-Bounding-Box beschnitten und mittig auf eine für
+ * ALLE Frames gemeinsame Leinwand gelegt. Ohne das würde die Figur beim
+ * Abspielen im Bild umherspringen.
+ */
+async function prepareMovementFrames() {
+  const dir = resolve(SRC, MOVE_DIR);
+  if (!existsSync(dir)) {
+    console.warn(`\nKletter-Frames fehlen: ${dir}`);
+    return;
+  }
+
+  const files = readdirSync(dir)
+    .filter((f) => /\.png$/i.test(f))
+    .sort();
+
+  if (files.length === 0) {
+    console.warn(`\nKeine PNGs in ${dir}`);
+    return;
+  }
+
+  // Erst alle Bounding-Boxen messen, dann die gemeinsame Leinwand bestimmen.
+  const boxes = [];
+  for (const f of files) {
+    const { data, info } = await sharp(resolve(dir, f))
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const { width, height, channels } = info;
+
+    let minX = width, maxX = -1, minY = height, maxY = -1;
+    for (let i = 0; i < width * height; i++) {
+      if (data[i * channels + 3] > 24) {
+        const x = i % width;
+        const y = (i / width) | 0;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+    boxes.push({ f, left: minX, top: minY, w: maxX - minX + 1, h: maxY - minY + 1 });
+  }
+
+  const pad = 6;
+  const canvasW = Math.max(...boxes.map((b) => b.w)) + pad * 2;
+  const canvasH = Math.max(...boxes.map((b) => b.h)) + pad * 2;
+
+  let total = 0;
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i];
+
+    /* --- Weiss-Saum entfernen ------------------------------------------
+     * Der Videohintergrund war reinweiss. Halbtransparente Randpixel tragen
+     * deshalb noch Weiss in der Farbe — vor dem grünen Dschungel ergibt das
+     * einen hellen Saum um die Silhouette.
+     *
+     * Da die Hintergrundfarbe bekannt ist, lässt sich der Vordergrund exakt
+     * zurückrechnen:  C_fg = (C_beobachtet - (1-a) * 255) / a
+     */
+    const { data: raw, info: ri } = await sharp(resolve(dir, b.f))
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    for (let p = 0; p < raw.length; p += 4) {
+      const a = raw[p + 3];
+      if (a === 0 || a === 255) continue;
+      const af = a / 255;
+      for (let ch = 0; ch < 3; ch++) {
+        const v = (raw[p + ch] - (1 - af) * 255) / af;
+        raw[p + ch] = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+      }
+    }
+
+    const cut = await sharp(raw, {
+      raw: { width: ri.width, height: ri.height, channels: 4 },
+    })
+      .extract({ left: b.left, top: b.top, width: b.w, height: b.h })
+      .png()
+      .toBuffer();
+
+    // composite und Kodierung getrennt halten: sharp wendet resize VOR
+    // composite an, kombiniert würde die Leinwand vorher schrumpfen.
+    const zentriert = await sharp({
+      create: {
+        width: canvasW,
+        height: canvasH,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([
+        {
+          input: cut,
+          left: Math.round((canvasW - b.w) / 2),
+          top: Math.round((canvasH - b.h) / 2),
+        },
+      ])
+      .png()
+      .toBuffer();
+
+    const name = `move_${String(i).padStart(2, '0')}.webp`;
+    const written = await sharp(zentriert)
+      .webp({ quality: 92, alphaQuality: 100 })
+      .toFile(resolve(OUT, name));
+    total += written.size;
+  }
+
+  console.log(
+    `\nKletter-Frames:\n  ${boxes.length} Stück, je ${canvasW}x${canvasH} ` +
+      `(gemeinsame Leinwand, mittig)  ${(total / 1024).toFixed(0)} KB gesamt`,
+  );
+  console.log(
+    `  move_00.webp … move_${String(boxes.length - 1).padStart(2, '0')}.webp` +
+      `  — Abspielreihenfolge steht in CONFIG.sprite.frames`,
+  );
+}
+
+await prepareBackgrounds();
+await prepareMovementFrames();

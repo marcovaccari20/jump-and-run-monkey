@@ -1,0 +1,27 @@
+{
+  "name": "jungle-climber",
+  "version": "1.0.0",
+  "description": "Vertical-Climber Jump-and-Run mit Three.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "convert:model": "node scripts/convert-model.mjs",
+    "verify:model": "node scripts/verify-model.mjs",
+    "prep:art": "node scripts/prepare-art.mjs"
+  },
+  "type": "module",
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2",
+    "@gltf-transform/functions": "^4.4.2",
+    "fbx2gltf": "^0.9.7-p1",
+    "meshoptimizer": "^1.2.0",
+    "sharp": "^0.35.3",
+    "vite": "^8.2.0"
+  },
+  "private": true
+}

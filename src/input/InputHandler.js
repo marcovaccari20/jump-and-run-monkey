@@ -1,0 +1,297 @@
+/**
+ * Eingabe: Tastatur (WASD + Pfeiltasten als Alias) und Touch (virtueller
+ * Joystick unten links).
+ *
+ * Nach aussen liefert der Handler nur einen normalisierten Richtungsvektor
+ * `axis` (x/y jeweils -1..1, Länge <= 1) plus Edge-Events für Pause/Confirm/
+ * Debug. Die Spiellogik weiss nicht, ob gerade Tastatur oder Touch benutzt wird.
+ */
+
+export class InputHandler {
+  /**
+   * @param {typeof import('../config.js').CONFIG.input} cfg
+   * @param {HTMLElement} touchHost Container für den virtuellen Joystick
+   */
+  constructor(cfg, touchHost) {
+    this.cfg = cfg;
+    this.axis = { x: 0, y: 0 };
+
+    /** @type {Set<string>} gedrückte Tastencodes */
+    this._down = new Set();
+    /** Edge-Flags, werden von consume*() zurückgesetzt */
+    this._pausePressed = false;
+    this._confirmPressed = false;
+    this._debugPressed = false;
+    this._anyPressed = false;
+
+    // Umgekehrte Zuordnung code -> aktion, damit keydown O(1) ist.
+    this._keyToAction = new Map();
+    for (const [action, codes] of Object.entries(cfg.keys)) {
+      for (const code of codes) this._keyToAction.set(code, action);
+    }
+
+    this._touch = {
+      id: null,
+      originX: 0,
+      originY: 0,
+      x: 0,
+      y: 0,
+      active: false,
+    };
+
+    // Der Joystick greift nur im laufenden Spiel. In Menüs würde er sonst
+    // Tipps auf Buttons abfangen bzw. das Scrollen der Bestenliste blockieren.
+    this._captureEnabled = false;
+
+    this._bindKeyboard();
+    if (cfg.touch.enabled) this._bindTouch(touchHost);
+  }
+
+  /* ------------------------------------------------------------- Tastatur */
+
+  _bindKeyboard() {
+    this._onKeyDown = (e) => {
+      const action = this._keyToAction.get(e.code);
+      if (!action) return;
+
+      const target = e.target instanceof Element ? e.target : null;
+
+      /* Textfelder haben absoluten Vorrang.
+       *
+       * Ohne diese Prüfung schluckt das preventDefault unten die Buchstaben
+       * W, A, S, D, P, das Leerzeichen, Enter und die Pfeiltasten — im
+       * Highscore-Namensfeld liess sich damit nicht einmal der vorgegebene
+       * Name "AFFE" tippen, und Enter löste kein Absenden aus. */
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+
+      /* Enter/Leertaste auf einem per Tab fokussierten Button gehören dem
+       * Button, nicht dem Spiel. Sonst cancelt preventDefault die native
+       * Aktivierung, und der Confirm-Flag löst im nächsten Frame die falsche
+       * Aktion aus (auf dem Game-Over-Screen startete "Hauptmenü" ein neues
+       * Spiel). Bewegungstasten bleiben absichtlich aktiv, damit sich das
+       * Spiel auch mit fokussiertem Button noch steuern lässt. */
+      if (action === 'confirm' && target?.closest('button, a[href]')) return;
+
+      // F1 (Debug) und Leertaste/Pfeile abfangen, damit der Browser nicht
+      // scrollt oder die Hilfe öffnet.
+      e.preventDefault();
+
+      if (e.repeat) return;
+      this._anyPressed = true;
+
+      if (action === 'pause') this._pausePressed = true;
+      else if (action === 'confirm') this._confirmPressed = true;
+      else if (action === 'debug') this._debugPressed = true;
+
+      this._down.add(action);
+    };
+
+    this._onKeyUp = (e) => {
+      const action = this._keyToAction.get(e.code);
+      if (action) this._down.delete(action);
+    };
+
+    // Fenster verlassen => alle Tasten loslassen, sonst "klebt" die Bewegung.
+    this._onBlur = () => this._down.clear();
+
+    window.addEventListener('keydown', this._onKeyDown, { passive: false });
+    window.addEventListener('keyup', this._onKeyUp);
+    window.addEventListener('blur', this._onBlur);
+  }
+
+  /* ---------------------------------------------------------------- Touch */
+
+  _bindTouch(host) {
+    const { radius, anchor } = this.cfg.touch;
+
+    const base = document.createElement('div');
+    base.className = 'joystick';
+    base.style.left = `${anchor.left}px`;
+    base.style.bottom = `${anchor.bottom}px`;
+    base.style.width = base.style.height = `${radius * 2}px`;
+
+    const knob = document.createElement('div');
+    knob.className = 'joystick__knob';
+    base.appendChild(knob);
+    host.appendChild(base);
+
+    this._joystickEl = base;
+    this._knobEl = knob;
+
+    // Der Joystick reagiert auf Berührungen im ganzen unteren linken Viertel,
+    // nicht nur exakt auf dem Kreis — das trifft sich blind deutlich besser.
+    const hit = (t) =>
+      t.clientX < window.innerWidth * 0.55 && t.clientY > window.innerHeight * 0.35;
+
+    // Bedienelemente haben Vorrang: eine Berührung auf einem Button ist ein
+    // Klick, kein Joystick-Griff.
+    const onControl = (t) =>
+      t.target instanceof Element &&
+      t.target.closest('button, input, a, select, textarea, label');
+
+    this._onTouchStart = (e) => {
+      if (!this._captureEnabled) return;
+      if (this._touch.id !== null) return;
+      for (const t of e.changedTouches) {
+        if (onControl(t)) continue;
+        if (!hit(t)) continue;
+
+        // Erst jetzt ist erwiesen, dass wirklich per Finger gespielt wird —
+        // Geräte melden Touch-Fähigkeit auch, wenn eine Maus benutzt wird.
+        document.body.classList.add('is-coarse');
+        this._touch.id = t.identifier;
+        this._touch.originX = t.clientX;
+        this._touch.originY = t.clientY;
+        this._touch.x = 0;
+        this._touch.y = 0;
+        this._touch.active = true;
+        this._anyPressed = true;
+        base.style.left = `${t.clientX - radius}px`;
+        base.style.bottom = `${window.innerHeight - t.clientY - radius}px`;
+        base.classList.add('joystick--active');
+        e.preventDefault();
+        break;
+      }
+    };
+
+    this._onTouchMove = (e) => {
+      if (this._touch.id === null) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this._touch.id) continue;
+        let dx = (t.clientX - this._touch.originX) / radius;
+        let dy = -(t.clientY - this._touch.originY) / radius; // Bildschirm-Y ist invertiert
+        const len = Math.hypot(dx, dy);
+        if (len > 1) {
+          dx /= len;
+          dy /= len;
+        }
+        this._touch.x = dx;
+        this._touch.y = dy;
+        knob.style.transform = `translate(${dx * radius * 0.62}px, ${-dy * radius * 0.62}px)`;
+        e.preventDefault();
+        break;
+      }
+    };
+
+    this._onTouchEnd = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this._touch.id) continue;
+        this._touch.id = null;
+        this._touch.active = false;
+        this._touch.x = 0;
+        this._touch.y = 0;
+        knob.style.transform = 'translate(0px, 0px)';
+        base.classList.remove('joystick--active');
+        base.style.left = `${anchor.left}px`;
+        base.style.bottom = `${anchor.bottom}px`;
+        break;
+      }
+    };
+
+    // WICHTIG: die Listener hängen am window, NICHT am Joystick-Container.
+    // Der Container liegt über dem gesamten Viewport; bekäme er
+    // pointer-events:auto, um Berührungen zu empfangen, würde er sämtliche
+    // Buttons blockieren (auf Geräten mit Touchscreen auch bei Mausbedienung).
+    window.addEventListener('touchstart', this._onTouchStart, { passive: false });
+    window.addEventListener('touchmove', this._onTouchMove, { passive: false });
+    window.addEventListener('touchend', this._onTouchEnd);
+    window.addEventListener('touchcancel', this._onTouchEnd);
+  }
+
+  /** Joystick-Eingabe an/aus (nur im Zustand PLAYING aktiv). */
+  setTouchCapture(enabled) {
+    this._captureEnabled = enabled;
+    if (!enabled) this._releaseTouch();
+  }
+
+  _releaseTouch() {
+    this._touch.id = null;
+    this._touch.active = false;
+    this._touch.x = 0;
+    this._touch.y = 0;
+    if (this._knobEl) this._knobEl.style.transform = 'translate(0px, 0px)';
+    if (this._joystickEl) {
+      this._joystickEl.classList.remove('joystick--active');
+      // Auch an den Anker zurücksetzen: _onTouchEnd tut das zwar ebenfalls,
+      // greift hier aber nicht mehr (die Touch-ID ist bereits null). Ohne das
+      // bliebe der Ring nach dem Tod mitten auf dem Game-Over-Screen kleben.
+      const { anchor } = this.cfg.touch;
+      this._joystickEl.style.left = `${anchor.left}px`;
+      this._joystickEl.style.bottom = `${anchor.bottom}px`;
+    }
+  }
+
+  /* ------------------------------------------------------------- Abfrage */
+
+  /** Muss einmal pro Frame VOR der Spiellogik laufen. */
+  update() {
+    let x = 0;
+    let y = 0;
+
+    if (this._down.has('left')) x -= 1;
+    if (this._down.has('right')) x += 1;
+    if (this._down.has('down')) y -= 1;
+    if (this._down.has('up')) y += 1;
+
+    // Diagonalen nicht schneller machen als gerade Richtungen.
+    if (x !== 0 && y !== 0) {
+      const inv = Math.SQRT1_2;
+      x *= inv;
+      y *= inv;
+    }
+
+    // Touch überschreibt die Tastatur, sobald der Stick ausgelenkt ist.
+    if (this._touch.active) {
+      const len = Math.hypot(this._touch.x, this._touch.y);
+      if (len > this.cfg.touch.deadZone) {
+        // Totbereich herausrechnen, damit kleine Auslenkungen sauber bei 0 starten.
+        const scaled = (len - this.cfg.touch.deadZone) / (1 - this.cfg.touch.deadZone);
+        x = (this._touch.x / len) * scaled;
+        y = (this._touch.y / len) * scaled;
+      } else {
+        x = 0;
+        y = 0;
+      }
+    }
+
+    this.axis.x = x;
+    this.axis.y = y;
+  }
+
+  /** true genau einmal pro Tastendruck. */
+  consumePause() {
+    const v = this._pausePressed;
+    this._pausePressed = false;
+    return v;
+  }
+
+  consumeConfirm() {
+    const v = this._confirmPressed;
+    this._confirmPressed = false;
+    return v;
+  }
+
+  consumeDebug() {
+    const v = this._debugPressed;
+    this._debugPressed = false;
+    return v;
+  }
+
+  consumeAny() {
+    const v = this._anyPressed;
+    this._anyPressed = false;
+    return v;
+  }
+
+  dispose() {
+    window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('blur', this._onBlur);
+    if (this._onTouchStart) {
+      window.removeEventListener('touchstart', this._onTouchStart);
+      window.removeEventListener('touchmove', this._onTouchMove);
+      window.removeEventListener('touchend', this._onTouchEnd);
+      window.removeEventListener('touchcancel', this._onTouchEnd);
+    }
+  }
+}

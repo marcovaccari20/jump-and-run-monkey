@@ -1,0 +1,11 @@
+# Zeilenenden normalisieren, damit der Wechsel zwischen PCs keine
+# Scheinaenderungen erzeugt.
+* text=auto eol=lf
+
+# Binaerdateien nie anfassen.
+*.webp binary
+*.png  binary
+*.jpg  binary
+*.glb  binary
+*.mp4  binary
+*.Fbx  binary

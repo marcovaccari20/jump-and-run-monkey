@@ -1,0 +1,618 @@
+/* ==========================================================================
+   Jungle Climber — UI
+   Alle Overlays liegen über dem WebGL-Canvas. Das Spiel selbst zeichnet nichts
+   in DOM; umgekehrt fängt das UI nur dort Zeiger-Events ab, wo es Buttons gibt
+   (pointer-events: none auf den Screens, auto auf den Bedienelementen).
+   ========================================================================== */
+
+:root {
+  --green-deep: #0a1a0d;
+  --green-dark: #123018;
+  --green-mid: #2f6b34;
+  --leaf: #8fce5c;
+  --leaf-bright: #c6f08a;
+  --banana: #ffd23f;
+  --sun: #fff3c4;
+  --danger: #ff6b57;
+  --text: #eef7e6;
+  --text-dim: #a9c2a0;
+
+  --font: 'Trebuchet MS', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --radius: 14px;
+  --shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--green-deep);
+  color: var(--text);
+  font-family: var(--font);
+  /* Kein Doppeltipp-Zoom / Textauswahl beim Spielen auf Mobile */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+#viewport,
+#viewport canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ------------------------------------------------------------------ Screens */
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: none;
+  padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+}
+
+.screen.is-visible {
+  display: flex;
+}
+
+/* Overlay-Screens (Laden, Menü, Pause, Game Over).
+ *
+ * pointer-events: auto ist hier PFLICHT und nicht bloss Kosmetik:
+ * #ui setzt pointer-events:none, und ein Element mit pointer-events:none ist
+ * NIE Ziel der Trefferprüfung — ein overflow-y:auto-Container darin lässt sich
+ * dann weder mit dem Mausrad noch mit dem Finger noch am Scrollbalken fassen.
+ * Auf niedrigen Fenstern (Handy quer) lagen "Nochmal"/"Hauptmenü" dadurch
+ * unerreichbar unter der Bildkante.
+ *
+ * Das ist unkritisch, weil diese Screens modal sind und der Canvas darunter
+ * ohnehin keine Zeigereignisse auswertet. Das HUD (.screen--hud) bleibt
+ * bewusst durchlässig — es liegt über dem laufenden Spiel.
+ */
+.screen--center {
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  overflow-y: auto;
+  pointer-events: auto;
+  /* body hat touch-action:none (verhindert Wisch-Gesten im Spiel) — für die
+     Overlays muss vertikales Ziehen wieder erlaubt sein. */
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Zentriert, ABER: bei Überlauf ragt zentrierter Inhalt an BEIDEN Enden heraus,
+   und der Überhang oben liegt bei negativem Offset — per Scrollen prinzipiell
+   unerreichbar. `safe` schaltet in diesem Fall auf flex-start um.
+   Die erste Deklaration bleibt als Rückfall für alte Engines stehen. */
+.screen--center {
+  justify-content: center;
+  justify-content: safe center;
+}
+
+.screen--dim {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(6, 18, 9, 0.82) 0%,
+    rgba(4, 12, 6, 0.94) 100%
+  );
+  backdrop-filter: blur(3px);
+}
+
+/* Das HUD liegt über dem laufenden Spiel und darf nichts abfangen. */
+.screen--hud {
+  flex-direction: column;
+  justify-content: flex-start;
+  pointer-events: none;
+}
+
+/* -------------------------------------------------------------------- Logo */
+
+.logo {
+  margin: 0;
+  font-size: clamp(2.1rem, 8vw, 4.2rem);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 0.94;
+  color: var(--leaf-bright);
+  text-shadow:
+    0 3px 0 var(--green-dark),
+    0 0 34px rgba(143, 206, 92, 0.45);
+}
+
+.logo span {
+  display: block;
+  color: var(--banana);
+  font-size: 0.62em;
+  letter-spacing: 0.26em;
+}
+
+.tagline {
+  margin: 0;
+  max-width: 30ch;
+  color: var(--text-dim);
+  font-size: 0.98rem;
+  line-height: 1.5;
+}
+
+.headline {
+  margin: 0;
+  font-size: clamp(1.8rem, 6vw, 3rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: var(--leaf-bright);
+  text-shadow: 0 3px 0 var(--green-dark);
+}
+
+.headline--best {
+  color: var(--banana);
+}
+
+/* ----------------------------------------------------------------- Buttons */
+
+.btn {
+  pointer-events: auto;
+  appearance: none;
+  border: 2px solid rgba(198, 240, 138, 0.35);
+  background: rgba(18, 48, 24, 0.9);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 13px 30px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.btn:hover,
+.btn:focus-visible {
+  background: rgba(47, 107, 52, 0.95);
+  border-color: var(--leaf);
+  outline: none;
+  transform: translateY(-2px);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn--primary {
+  background: linear-gradient(180deg, var(--leaf) 0%, var(--green-mid) 100%);
+  border-color: var(--leaf-bright);
+  color: #08210c;
+  font-size: 1.1rem;
+  padding: 15px 40px;
+}
+
+.btn--primary:hover,
+.btn--primary:focus-visible {
+  background: linear-gradient(180deg, var(--leaf-bright) 0%, var(--leaf) 100%);
+}
+
+.button-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------------ Panels */
+
+.panel {
+  width: min(420px, 100%);
+  background: rgba(8, 24, 12, 0.72);
+  border: 1px solid rgba(143, 206, 92, 0.22);
+  border-radius: var(--radius);
+  padding: 14px 18px 16px;
+  box-shadow: var(--shadow);
+}
+
+.panel__title {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.highscores {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.highscores li {
+  display: grid;
+  grid-template-columns: 1.9rem 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 0.96rem;
+}
+
+.highscores li:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.highscores li.is-new {
+  background: rgba(255, 210, 63, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.45);
+}
+
+.highscores .rank {
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.highscores .name {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.highscores .score {
+  font-weight: 800;
+  color: var(--leaf-bright);
+}
+
+.highscores .empty {
+  display: block;
+  padding: 10px 4px;
+  color: var(--text-dim);
+  font-style: italic;
+  text-align: left;
+}
+
+/* ------------------------------------------------------------------- Hints */
+
+.controls-hint {
+  color: var(--text-dim);
+  font-size: 0.86rem;
+  line-height: 1.7;
+}
+
+.controls-hint p {
+  margin: 0;
+}
+
+.controls-hint b {
+  color: var(--leaf);
+}
+
+.controls-hint--touch {
+  display: none;
+}
+
+/* Touch-Hinweis zeigen, sobald das Gerät Touch kann … */
+body.is-touch .controls-hint--touch {
+  display: block;
+}
+
+/* … aber die Tastaturhinweise nur dann verstecken, wenn Touch auch das
+   PRIMÄRE Eingabegerät ist. Ein Touch-Notebook mit Maus braucht beides. */
+body.is-coarse .controls-hint p:not(.controls-hint--touch) {
+  display: none;
+}
+
+/* --------------------------------------------------------------------- HUD */
+
+.hud__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.hud__score {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  background: rgba(8, 24, 12, 0.6);
+  border: 1px solid rgba(143, 206, 92, 0.2);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__score-value {
+  font-size: clamp(1.6rem, 5vw, 2.4rem);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--leaf-bright);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.hud__score-unit {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.hud__revive {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: rgba(8, 24, 12, 0.6);
+  border: 1px solid rgba(255, 210, 63, 0.4);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--banana);
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+
+.hud__revive.is-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hud__revive-icon {
+  font-size: 1.15rem;
+}
+
+.hud__toast {
+  align-self: center;
+  margin-top: 14vh;
+  padding: 10px 22px;
+  border-radius: var(--radius);
+  background: rgba(8, 24, 12, 0.78);
+  border: 1px solid rgba(143, 206, 92, 0.3);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.96);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.hud__toast.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.hud__toast--banana {
+  color: var(--banana);
+  border-color: rgba(255, 210, 63, 0.55);
+}
+
+.hud__toast--revive {
+  color: var(--sun);
+  border-color: rgba(255, 243, 196, 0.55);
+}
+
+.hud__stats {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  white-space: pre;
+  display: none;
+}
+
+.hud__stats.is-visible {
+  display: block;
+}
+
+/* --------------------------------------------------------------- Game Over */
+
+.result {
+  margin: 0;
+  font-size: clamp(2.6rem, 11vw, 4.6rem);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--leaf-bright);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 3px 0 var(--green-dark);
+}
+
+.result__unit {
+  font-size: 0.4em;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.name-form {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.name-form.is-visible {
+  display: flex;
+}
+
+.name-form label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--banana);
+  letter-spacing: 0.04em;
+}
+
+.name-form__row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.name-input {
+  pointer-events: auto;
+  width: 180px;
+  padding: 13px 16px;
+  border-radius: var(--radius);
+  border: 2px solid rgba(143, 206, 92, 0.4);
+  background: rgba(8, 24, 12, 0.9);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.name-input:focus {
+  outline: none;
+  border-color: var(--banana);
+}
+
+/* ------------------------------------------------------------------ Loader */
+
+.loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(320px, 76vw);
+}
+
+.loader__bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.loader__bar i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--green-mid), var(--leaf-bright));
+  transition: width 0.2s ease;
+}
+
+.loader__label {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-dim);
+}
+
+.loader__label--error {
+  color: var(--danger);
+  max-width: 40ch;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------- Joystick */
+
+/* Der Touch-Layer ist NUR ein Container für die Joystick-Grafik und darf
+   NIEMALS Zeigereignisse abfangen. Er liegt über dem gesamten Viewport —
+   mit pointer-events:auto würde er sämtliche Buttons blockieren.
+   Die Touch-Eingabe hängt deshalb am window, nicht an diesem Element
+   (siehe InputHandler._bindTouch). */
+#touch-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.joystick {
+  position: absolute;
+  display: none;
+  border-radius: 50%;
+  border: 2px solid rgba(198, 240, 138, 0.32);
+  background: rgba(8, 24, 12, 0.34);
+  transition: opacity 0.18s ease;
+  opacity: 0.5;
+  pointer-events: none; /* rein visuell */
+}
+
+/* Joystick erst zeigen, wenn wirklich per Finger bedient wird — nicht schon,
+   weil das Gerät einen Touchscreen HAT (Windows-Laptops melden bis zu 10
+   Touchpoints, obwohl mit Maus gearbeitet wird). */
+body.is-coarse .joystick {
+  display: block;
+}
+
+.joystick--active {
+  opacity: 0.92;
+}
+
+.joystick__knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46%;
+  height: 46%;
+  margin-left: -23%;
+  margin-top: -23%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--leaf-bright), var(--green-mid));
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
+}
+
+/* -------------------------------------------------------------- Responsive */
+
+@media (max-height: 620px) {
+  .screen--center {
+    gap: 10px;
+    justify-content: flex-start;
+    padding-top: 12px;
+  }
+
+  .panel {
+    padding: 10px 14px 12px;
+  }
+
+  .highscores li {
+    padding: 3px 8px;
+    font-size: 0.88rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
