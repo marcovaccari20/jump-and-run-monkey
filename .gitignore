@@ -27,3 +27,9 @@ assets-src/FbxUnity/*.fbm/
 *_tmp.png
 *_tmp.mjs
 public/_tmp_*
+
+# Kontrollbilder der Freistellung (Silhouette auf Magenta) und rohe
+# Stichproben aus der Videozerlegung — reine Sichtpruefung, werden von
+# `npm run prep:chars` bzw. `npm run video:frames -- probe` neu erzeugt.
+assets-src/art/_debug/
+assets-src/art/_probe/

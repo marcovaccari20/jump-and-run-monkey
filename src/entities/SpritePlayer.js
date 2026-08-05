@@ -110,6 +110,8 @@ export class SpritePlayer {
     this._phase = 0;
     this._blinkPhase = 0;
     this._dieTimer = 0;
+    // true, solange der Zyklus im Menü läuft (siehe updateAmbient)
+    this._ambient = false;
 
     this.root.position.set(this.x, this.y, 0);
 
@@ -144,6 +146,14 @@ export class SpritePlayer {
 
   get hitRadius() {
     return this.cfg.hitRadius;
+  }
+
+  /**
+   * Steine bis zu diesem Radius prallen an diesem Affen ab (oranger Affe).
+   * 0 = keiner. Ausgewertet wird das im CollisionSystem, nicht hier.
+   */
+  get ignoreRockRadius() {
+    return this.cfg.ignoreRockRadius ?? 0;
   }
 
   get isInvulnerable() {
@@ -236,6 +246,26 @@ export class SpritePlayer {
     this._updateInvulnerability(dt);
   }
 
+  /**
+   * Kletterzyklus in MENÜ, CHARAKTERAUSWAHL und GAME OVER weiterlaufen lassen.
+   *
+   * Dort ruft Game bewusst NICHT update() auf — es gibt keine Eingabe, keine
+   * Physik und keine Kollision. Die Bildfolge steckte aber genau dort drin,
+   * der Affe stand hinter den Menüs deshalb reglos im Bild, während die Wand
+   * hinter ihm weiterscrollte.
+   *
+   * Hier läuft ausschliesslich die Animation: keine Bewegung, keine
+   * Positionsänderung, keine Grenzen. Ist der Affe tot (Game-Over-Bildschirm),
+   * hält _animate von selbst die Sturzpose — er fängt nicht wieder an zu
+   * klettern.
+   */
+  updateAmbient(dt) {
+    this._ambient = true;
+    this._animate(dt);
+    this._ambient = false;
+    this._updateInvulnerability(dt);
+  }
+
   /* ========================================================== Animation */
 
   /**
@@ -258,11 +288,18 @@ export class SpritePlayer {
     }
 
     /* --- Kletterzyklus ------------------------------------------------- */
-    const speedRatio = Math.min(1, this.animSpeed / this.cfg.moveSpeed);
-    const moving = speedRatio > 0.08;
+    // Im Menü gibt es weder Eingabe noch Geschwindigkeit; dort gibt
+    // ambientCycleRatio den Takt vor (siehe updateAmbient).
+    const speedRatio = this._ambient
+      ? this.sc.ambientCycleRatio
+      : Math.min(1, this.animSpeed / this.cfg.moveSpeed);
+    const moving = this._ambient || speedRatio > 0.08;
 
     // Abwärts läuft der Zyklus rückwärts — dieselben Frames, andere Richtung.
-    const downward = this._inputY < -0.2 || (Math.abs(this._inputY) < 0.2 && this.vy < -0.5);
+    // Im Menü klettert er immer aufwärts.
+    const downward =
+      !this._ambient &&
+      (this._inputY < -0.2 || (Math.abs(this._inputY) < 0.2 && this.vy < -0.5));
     const dir = downward ? -1 : 1;
 
     const rate = moving ? sc.cycleSpeed * (0.35 + 0.65 * speedRatio) : sc.idleCycleSpeed;
@@ -310,6 +347,11 @@ export class SpritePlayer {
   /* ============================================================ Aktionen */
 
   collectBanana() {
+    // Zweiter Riegel neben maxStored: 0 und dem abgeschalteten Spawn. Bei
+    // etwas so Sichtbarem wie "der weisse Affe bekommt keine zweite Chance"
+    // soll keine einzelne übersehene Stelle genügen, um es doch zu erlauben.
+    if (this.cfg.bananas === false) return false;
+
     const before = this.revives;
     this.revives = Math.min(this.reviveCfg.maxStored, this.revives + 1);
     this._playEvent('eat');

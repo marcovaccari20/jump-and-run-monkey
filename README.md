@@ -419,13 +419,133 @@ die früheren Skalierungs-Impulse am Sprite sind weg.
 > Affe klettert ja durchs Bild). Einfach ausgeschnitten würde er beim
 > Abspielen umherspringen. `prepare-art.mjs` beschneidet deshalb jedes Frame
 > auf seine Alpha-Bounding-Box und legt es mittig auf eine für alle Frames
-> gemeinsame Leinwand (407 × 725).
+> gemeinsame Leinwand. Sie wird **je Satz** neu berechnet — braun 407 × 725,
+> weiss 455 × 865, orange 538 × 889. Ihr Seitenverhältnis bestimmt im Spiel
+> die Sprite-Breite (`w = spriteHeight × aspect`), jeder Affe bekommt also
+> seine eigenen Proportionen.
+
+### Charaktere
+
+Es gibt drei Affen zur Auswahl. Alle Werte stehen in `CONFIG.characters.list`;
+**braun** wiederholt dort die Werte aus `CONFIG.player` wörtlich und ist die
+1.0-Referenz.
+
+| | braun | weiss | orange |
+|---|---|---|---|
+| `spriteHeight` | 2.5 | 1.25 (×0.5) | 2.5 |
+| `moveSpeed` | 6.4 | 8.3 (×1.30) | 5.1 (×0.80) |
+| `climbAssist` | 1.9 | 2.5 (×1.32) | 1.5 (×0.79) |
+| `hitRadius` | 0.42 | 0.21 (×0.5) | 0.42 |
+| `cycleSpeed` | 1.4 | 1.9 | 1.1 |
+| Kletterbilder | 12 | **10** | 12 |
+| Bananen / Wiederbelebung | ja | **nein** | ja |
+| prallt ab an Steinen bis | — | — | Radius **0.38** |
+
+Drei Dinge, die beim Nachbauen leicht danebengehen:
+
+- **`moveSpeed` gilt für BEIDE Achsen**, ein getrenntes X/Y gibt es nicht.
+  Das vertikale Tempo hängt zusätzlich an `climbAssist`, und das wird in
+  `Game._updatePlaying()` an der Spielfigur vorbei gelesen. Wer nur
+  `moveSpeed` ändert, bekommt einen Affen, der seitlich langsamer ist, aber
+  unverändert schnell klettert.
+- **`cycleSpeed` muss je Charakter gesetzt werden.** Die Bildrate wird auf
+  `moveSpeed` normiert (`speedRatio = animSpeed / cfg.moveSpeed`), ist bei
+  vollem Input also für jeden Affen gleich 1. Ein höheres `moveSpeed` allein
+  macht die Animation nicht schneller.
+- **Die Kleinstein-Immunität gehört in die Kollisionsschleife**, nicht in den
+  Treffer-Handler. Die Schleife bricht beim ersten Überlappen mit `return`
+  ab — ein erst später aussortierter Kleinstein hätte den einen
+  Kollisionstest des Frames verbraucht und einen gleichzeitig überlappenden
+  grossen Stein unsichtbar abgeschirmt.
+- **Jeder Affe hat seine eigene Bildzahl** (`frames` je Charakter). Die
+  Videos enthalten unterschiedlich viele wirklich verschiedene Posen pro
+  Zyklus; beim weissen sind es 10, nicht 12.
+
+`_pickCharacter()` ist **asynchron** (beim ersten Wählen werden die Frames
+nachgeladen), wird aber aus einem Klick-Callback ohne `await` gerufen. Ohne
+Absicherung riss ein noch laufender Wechsel hinterher das Hauptmenü über ein
+inzwischen gestartetes Spiel — der Zustand blieb `PLAYING`, `showScreen`
+feuerte nie wieder, und "Spiel starten" war danach tot. Zwei Riegel dagegen:
+eine laufende Nummer (`_wechselNummer`), die überholte Wechsel verwirft, und
+ein gesperrter Zurück-Knopf während des Ladens.
+
+### Der Affe klettert auch im Menü
+
+In Menü, Charakterauswahl und Game Over läuft der Kletterzyklus weiter
+(`CONFIG.sprite.ambientCycleRatio`, `SpritePlayer.updateAmbient()`). Das ist
+nötig, weil `Game` dort bewusst **nicht** `player.update()` ruft — es gibt
+keine Eingabe und keine Physik — die Bildfolge aber genau dort steckte. Die
+Wand scrollt in diesen Bildschirmen weiter, ein starrer Affe davor sah aus,
+als hinge das Spiel.
+
+Die Pause bleibt bewusst ein **Standbild**. Und wer tot ist, klettert nicht
+wieder los: `_animate()` hält von selbst die Sturzpose.
+
+Die Auswahl merkt sich `CharacterStore` unter
+`jungle-climber.character.v1` (nur die ID, nie das ganze Objekt — sonst wären
+Balancing-Änderungen bei jedem Spieler eingefroren). Beim Start wird nur der
+gewählte Frame-Satz geladen; die anderen kommen beim ersten Auswählen dazu.
+
+Die Menü-Bilder entstehen mit `npm run prep:chars` aus
+`assets-src/art/characters/*.png` und landen in `public/characters/`. Das
+Skript stellt den Affen vor dem Blattwerk frei und beschneidet den Ast an
+ihm. Den Affen findet es über die **Spaltenhöhe**: der Ast ist ein flaches
+Band über die ganze Breite, der Affe ragt mit Kopf und Schwanz weit darüber
+hinaus. Zwei naheliegendere Wege scheitern an den Lianen — die sind ebenfalls
+braun und laufen quer durchs Bild, und beim weissen Affen ist die Liane sogar
+*dicker* als er selbst.
 
 ### Kletteranimation aus dem Video
 
-Das Zerlegen des Videos ist ein **einmaliger** Schritt und steckt nicht in
+Das Zerlegen der Videos ist ein **einmaliger** Schritt und steckt nicht in
 `prep:art` — es gibt kein ffmpeg auf dem System, dekodiert wird im Browser.
-Ab den fertigen PNGs in `assets-src/art/movement/` ist alles reproduzierbar.
+Ab den fertigen PNGs in `assets-src/art/movement*/` ist alles reproduzierbar.
+
+Inzwischen erledigt das `scripts/video-to-frames.mjs`:
+
+```
+npm run video:frames -- probe   assets-src/video/monkey_movement_white.mp4 24
+npm run video:frames -- extract assets-src/video/monkey_movement_white.mp4 movement_white 12
+```
+
+Das Skript startet einen kleinen lokalen Server und öffnet eine Seite, die das
+Video zerlegt und die fertigen PNGs zurückschickt. **Die Seite muss in einem
+sichtbaren Fenster im Vordergrund laufen** — ein gedrosselter Hintergrundtab
+präsentiert keine Videobilder, das Springen liefert dann immer dasselbe Bild.
+Eine Selbstkontrolle am Anfang bricht genau dafür mit einer Meldung ab.
+
+Weitere Fallen, die alle einmal zugeschlagen haben:
+
+- Das `<video>`-Element **muss im Dokument hängen**. Ein loses Element liefert
+  beim Springen weiter das zuerst dekodierte Bild — alle zwölf Frames kamen
+  byte-identisch heraus.
+- Der Server **muss Bereichsanfragen beantworten** (HTTP 206). Ohne
+  `Accept-Ranges` kann der Browser im Video nicht springen.
+- Die Loop-Suche darf die Bilder **nicht** auf ihre Silhouette normieren. Der
+  Affe klettert auf der Stelle, die Bewegung steckt genau in der
+  Verschiebung — normiert man sie weg, ist der Abstand für alle Stichproben 0.
+- Der Server muss `Cache-Control: no-store` senden. Sonst liefert der Browser
+  eine zwischengespeicherte Fassung der Seite aus, und Änderungen am Skript
+  wirken schlicht nicht.
+- **Nicht stur gleichmässig abtasten.** Die Videos haben eine niedrigere
+  Bildrate als die gewünschte Bildzahl, man trifft also mehrfach dasselbe
+  Quellbild. Gemessen an den Nachbarabständen der fertigen Frames: der
+  bewährte braune Satz liegt nie unter 33, der erste weisse Versuch hatte
+  drei Paare bei 0.6–1.0 — die Animation hakte dreimal pro Zyklus. Das Skript
+  tastet deshalb vierfach dicht ab und behält nur, was sich vom zuletzt
+  behaltenen Bild sichtbar unterscheidet. Es meldet am Ende, wie viele Bilder
+  wirklich herauskamen — diese Zahl gehört in `frames` des Charakters.
+
+Das erste Video (brauner Affe) lief vor **reinweissem** Hintergrund, die
+beiden neuen vor einer **grauen Wand** mit Schlagschatten. Ein blosser
+Farbabstand zur Wandfarbe trennt den Schatten nicht mehr — beim orangen Video
+liegt er weiter von der Wand entfernt als manche Stelle des Affen. Gemessen
+wird deshalb `max(Buntheit, Aufhellung)`: Wand und Schatten sind neutrales
+Grau, der Affe ist bunt oder heller, und ein Schatten ist nie bunter als die
+Wand.
+
+<details>
+<summary>So wurde der braune Satz ursprünglich von Hand zerlegt</summary>
 
 So wurde es gemacht (bei laufendem Dev-Server, in der Browser-Konsole):
 
@@ -447,6 +567,13 @@ im Schnitt zwischen Nachbarn — der Loop schliesst also sauber.
 > `prepare-art.mjs` rechnet ihn heraus — die Hintergrundfarbe ist bekannt,
 > also lässt sich der Vordergrund exakt zurückgewinnen:
 > `C_fg = (C_beobachtet − (1−a)·255) / a`.
+>
+> Das gilt **nur für den braunen Satz** (`weissSaum: true` in `MOVE_SETS`).
+> Die beiden neuen Sätze sind bereits in `video-to-frames.mjs` gegen die
+> gemessene Wandfarbe entsäumt; ein zweiter Durchgang gegen Weiss würde ihre
+> Kante fälschlich aufhellen.
+
+</details>
 
 Hinter dem Sprite liegt ein weicher dunkler Umriss (`CONFIG.sprite.outline`).
 Der ist **nicht** nur Kosmetik: der Affe ist braun, und auf der Lava-Stufe ist

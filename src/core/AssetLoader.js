@@ -14,7 +14,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
  * auf. Nötig, weil vite.config.js `base: './'` benutzt — der Build läuft
  * dadurch auch in einem Unterordner.
  */
-function assetUrl(path) {
+export function assetUrl(path) {
   const base = import.meta.env?.BASE_URL || '/';
   return new URL(path.replace(/^\//, ''), new URL(base, window.location.href)).href;
 }

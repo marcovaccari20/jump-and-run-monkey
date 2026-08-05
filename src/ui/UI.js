@@ -5,12 +5,15 @@
  * bekommt Werte über Setter. Das Spiel ruft niemals direkt in den DOM.
  */
 
+import { assetUrl } from '../core/AssetLoader.js';
+
 const $ = (id) => document.getElementById(id);
 
 /** Welche Screens bei welchem Zustand sichtbar sind (HUD bleibt unterlegt). */
 const SCREEN_SETS = {
   loading: ['screen-loading'],
   menu: ['screen-menu'],
+  characters: ['screen-characters'],
   playing: ['screen-hud'],
   paused: ['screen-hud', 'screen-paused'],
   gameover: ['screen-hud', 'screen-gameover'],
@@ -29,6 +32,11 @@ export class UI {
 
       menuHighscores: $('menu-highscores'),
       btnStart: $('btn-start'),
+      btnCharacters: $('btn-characters'),
+
+      characterList: $('character-list'),
+      characterError: $('character-error'),
+      btnCharactersBack: $('btn-characters-back'),
 
       hudScore: $('hud-score'),
       hudRevive: $('hud-revive'),
@@ -52,13 +60,15 @@ export class UI {
     this.el.nameInput.maxLength = cfg.score.maxNameLength;
     this.el.nameInput.placeholder = cfg.score.defaultName;
 
-    /** @type {{onStart:Function, onResume:Function, onRetry:Function, onMenu:Function, onSubmitName:Function}} */
     this.callbacks = {
       onStart: () => {},
       onResume: () => {},
       onRetry: () => {},
       onMenu: () => {},
       onSubmitName: () => {},
+      onCharacters: () => {},
+      onCharactersBack: () => {},
+      onPickCharacter: () => {},
     };
 
     this._toastTimer = 0;
@@ -75,6 +85,18 @@ export class UI {
     this.el.btnPauseMenu.addEventListener('click', () => this.callbacks.onMenu());
     this.el.btnRetry.addEventListener('click', () => this.callbacks.onRetry());
     this.el.btnGameoverMenu.addEventListener('click', () => this.callbacks.onMenu());
+
+    this.el.btnCharacters.addEventListener('click', () => this.callbacks.onCharacters());
+    this.el.btnCharactersBack.addEventListener('click', () => this.callbacks.onCharactersBack());
+
+    // EIN Listener auf dem Container statt einer pro Kachel: die Kacheln
+    // werden bei jedem Öffnen neu gezeichnet, einzeln gebundene Listener
+    // müssten dabei jedes Mal wieder abgeräumt werden.
+    this.el.characterList.addEventListener('click', (e) => {
+      const kachel = e.target.closest('[data-character]');
+      if (!kachel || kachel.disabled) return;
+      this.callbacks.onPickCharacter(kachel.dataset.character);
+    });
 
     this.el.nameForm.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -190,6 +212,80 @@ export class UI {
     this.showScreen('menu');
   }
 
+  /* ------------------------------------------------------------ Charaktere */
+
+  /**
+   * Zeichnet die Auswahl und zeigt sie an.
+   *
+   * @param {Array<{id:string,label:string,blurb:string,preview:string}>} liste
+   * @param {string} aktiv ID des gewählten Affen
+   */
+  showCharacters(liste, aktiv) {
+    const host = this.el.characterList;
+    host.textContent = '';
+
+    for (const c of liste) {
+      const kachel = document.createElement('button');
+      kachel.type = 'button';
+      kachel.className = 'char';
+      kachel.dataset.character = c.id;
+      kachel.classList.toggle('is-active', c.id === aktiv);
+      kachel.setAttribute('aria-pressed', String(c.id === aktiv));
+
+      const bild = document.createElement('img');
+      bild.className = 'char__img';
+      // Über assetUrl, NICHT roh: vite.config.js benutzt base: './', damit der
+      // Build auch in einem Unterordner läuft. Ein absoluter Pfad wie
+      // '/characters/brown.webp' zeigt dort ins Leere.
+      bild.src = assetUrl(c.preview);
+      bild.alt = '';
+      // Die Bilder liegen lokal und sind klein — aber ein fehlendes Bild darf
+      // die Kachel nicht auf null Höhe zusammenfallen lassen.
+      bild.width = 160;
+      bild.height = 160;
+      bild.loading = 'lazy';
+
+      const name = document.createElement('span');
+      name.className = 'char__name';
+      name.textContent = c.label;
+
+      const text = document.createElement('span');
+      text.className = 'char__blurb';
+      text.textContent = c.blurb;
+
+      kachel.append(bild, name, text);
+      host.appendChild(kachel);
+    }
+
+    this.showScreen('characters');
+  }
+
+  /**
+   * Kacheln sperren, solange die Frames eines Affen nachgeladen werden.
+   *
+   * Auch der Zurück-Knopf wird gesperrt: sonst kann man die Auswahl mitten im
+   * Nachladen verlassen, und der Wechsel schlägt hinterher ins bereits
+   * laufende Spiel durch.
+   */
+  setCharactersBusy(busy) {
+    for (const k of this.el.characterList.querySelectorAll('[data-character]')) {
+      k.disabled = busy;
+    }
+    this.el.btnCharactersBack.disabled = busy;
+    this.el.characterList.classList.toggle('is-busy', busy);
+    if (busy) this.el.characterError.textContent = '';
+  }
+
+  /** Sichtbare Rückmeldung, wenn ein Affe sich nicht laden liess. */
+  showCharacterError(text) {
+    this.el.characterError.textContent = text;
+  }
+
+  /** Welcher Screen ist gerade oben? (Game sperrt darüber die Enter-Taste.) */
+  get currentScreen() {
+    return this._current;
+  }
+
   /* -------------------------------------------------------------------- HUD */
 
   updateScore(meters) {
@@ -200,6 +296,18 @@ export class UI {
 
   setRevive(hasRevive) {
     this.el.hudRevive.classList.toggle('is-active', hasRevive);
+  }
+
+  /**
+   * Bananen-Anzeige ganz aus- oder einblenden.
+   *
+   * Für den weissen Affen genügt es NICHT, `is-active` einfach nie zu setzen:
+   * .hud__revive arbeitet mit opacity, das Element belegt also weiter seinen
+   * Platz und schiebt die Punktzahl zur Seite. Deshalb display:none per
+   * eigener Klasse.
+   */
+  setReviveVisible(sichtbar) {
+    this.el.hudRevive.classList.toggle('is-hidden', !sichtbar);
   }
 
   setStats(text) {

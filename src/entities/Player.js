@@ -159,6 +159,11 @@ export class Player {
     return this.cfg.hitRadius;
   }
 
+  /** Gegenstück zu SpritePlayer — der Modell-Modus kennt keine Charaktere. */
+  get ignoreRockRadius() {
+    return this.cfg.ignoreRockRadius ?? 0;
+  }
+
   get isInvulnerable() {
     return this.invulnerableTimer > 0;
   }

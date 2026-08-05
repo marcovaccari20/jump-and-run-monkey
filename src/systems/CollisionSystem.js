@@ -61,10 +61,22 @@ export class CollisionSystem {
     // Steine ignorieren.
     if (player.isInvulnerable || !player.alive) return;
 
+    /* Kleine Steine, an denen dieser Affe abprallt (oranger Affe).
+     *
+     * Die Prüfung gehört HIERHER und nicht in den Treffer-Handler. Die
+     * Schleife bricht beim ersten Überlappen mit `return` ab — würde ein
+     * ignorierter Kleinstein erst im Handler aussortiert, hätte er den einen
+     * Kollisionstest dieses Frames schon verbraucht und einen gleichzeitig
+     * überlappenden GROSSEN Stein unsichtbar abgeschirmt. Der Affe wäre
+     * praktisch unbesiegbar, ohne dass man im Spiel etwas sähe.
+     */
+    const ignoreR = player.ignoreRockRadius ?? 0;
+
     const rocks = spawner.rocks.active;
     for (let i = rocks.length - 1; i >= 0; i--) {
       const rock = rocks[i];
       if (!rock.active) continue;
+      if (rock.radius <= ignoreR) continue;
       if (circleOverlap(px, py, pr, rock.x, rock.y, rock.hitRadius)) {
         handlers.onRock(rock);
         return; // ein Treffer pro Frame genügt

@@ -8,7 +8,9 @@
     "preview": "vite preview",
     "convert:model": "node scripts/convert-model.mjs",
     "verify:model": "node scripts/verify-model.mjs",
-    "prep:art": "node scripts/prepare-art.mjs"
+    "prep:art": "node scripts/prepare-art.mjs",
+    "prep:chars": "node scripts/prepare-characters.mjs",
+    "video:frames": "node scripts/video-to-frames.mjs"
   },
   "type": "module",
   "dependencies": {

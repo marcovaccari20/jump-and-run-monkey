@@ -30,9 +30,12 @@
           <h1 class="logo">JUNGLE<span>CLIMBER</span></h1>
           <p class="tagline">Klettere so hoch du kannst. Weiche den Steinen aus.</p>
 
-          <button id="btn-start" class="btn btn--primary" type="button">
-            Spiel starten
-          </button>
+          <div class="button-row">
+            <button id="btn-start" class="btn btn--primary" type="button">
+              Spiel starten
+            </button>
+            <button id="btn-characters" class="btn" type="button">Charaktere</button>
+          </div>
 
           <div class="panel">
             <h2 class="panel__title">Bestenliste</h2>
@@ -44,6 +47,22 @@
             <p><b>Esc</b> / <b>P</b> — Pause &nbsp;·&nbsp; <b>F1</b> — Hitboxen</p>
             <p class="controls-hint--touch">Joystick unten links — bewegen</p>
           </div>
+        </section>
+
+        <!-- -------------------------------------------------- Charaktere -->
+        <!-- screen--center ist PFLICHT, nicht Geschmack: #ui setzt
+             pointer-events:none, erst .screen--center holt es zurück.
+             Ohne die Klasse wären die Kacheln nicht anklickbar. -->
+        <section id="screen-characters" class="screen screen--center screen--dim">
+          <h2 class="headline">Charaktere</h2>
+          <p class="tagline">Wähle deinen Affen — die Wahl wird gemerkt.</p>
+
+          <!-- Die Kacheln erzeugt UI.showCharacters() aus CONFIG.characters. -->
+          <div id="character-list" class="chars"></div>
+
+          <p id="character-error" class="char-error" role="status" aria-live="polite"></p>
+
+          <button id="btn-characters-back" class="btn" type="button">Zurück</button>
         </section>
 
         <!-- ---------------------------------------------------------- HUD -->

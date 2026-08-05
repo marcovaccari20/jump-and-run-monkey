@@ -116,6 +116,118 @@ export const CONFIG = {
   },
 
   /* ================================================================== *
+   *  CHARAKTERE
+   *
+   *  Drei Affen zur Auswahl. BRAUN ist die Referenz und wiederholt die
+   *  Werte aus CONFIG.player oben WÖRTLICH — wer dort etwas ändert, muss
+   *  es hier mitziehen. Bewusst absolute Zahlen statt Faktoren: so steht
+   *  in einer Zeile, was der Affe wirklich kann, und das Zusammenführen
+   *  ist ein simpler Spread. Der Faktor gegenüber Braun steht daneben.
+   *
+   *  Zusammengeführt wird zur Laufzeit in Game._buildPlayer():
+   *    player : { ...CONFIG.player, ...c.player }
+   *    revive : { ...CONFIG.revive, maxStored: c.maxStored }
+   *    sprite : { ...CONFIG.sprite, framePath, cycleSpeed, outline }
+   *
+   *  WICHTIG: niemals CONFIG.player selbst überschreiben. Game reicht die
+   *  Objekte als Referenz an die Spielfigur weiter (SpritePlayer hält sie
+   *  fest) — eine Mutation würde die braunen Referenzwerte dauerhaft
+   *  zerstören, auch nach dem Zurückwechseln.
+   * ================================================================== */
+  characters: {
+    storageKey: 'jungle-climber.character.v1',
+    default: 'braun',
+
+    list: {
+      braun: {
+        id: 'braun',
+        label: 'Brauner Affe',
+        blurb: 'Der Klassiker. Ausgewogen in allem.',
+        preview: '/characters/brown.webp',
+        framePath: '/textures/move_{n}.webp',
+        // Je Affe eigene Bildzahl: die Videos enthalten unterschiedlich viele
+        // WIRKLICH verschiedene Bilder pro Kletterzyklus. Wer stur zwölf
+        // abtastet, bekommt Wiederholungen, und die Animation hakt sichtbar.
+        // Die Zahl meldet `npm run video:frames -- extract …` am Ende.
+        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        cycleSpeed: 1.4, // = CONFIG.sprite.cycleSpeed
+        artScale: 1.0, // skaliert den Versatz des Umrisses mit
+        bananas: true,
+        maxStored: 1, // -> CONFIG.revive.maxStored
+        ignoreRockRadius: 0, // 0 = kein Stein wird ignoriert
+        player: {
+          spriteHeight: 2.5, // 1.00
+          modelHeight: 1.5, // 1.00
+          moveSpeed: 6.4, // 1.00
+          acceleration: 16.0, // 1.00
+          damping: 12.0, // 1.00
+          climbAssist: 1.9, // 1.00
+          minScrollFactor: 0.35,
+          hitRadius: 0.42, // 1.00
+          hitOffsetY: 0.0,
+        },
+      },
+
+      weiss: {
+        id: 'weiss',
+        label: 'Weisser Affe',
+        blurb: 'Halb so gross und flinker. Keine Bananen, keine zweite Chance.',
+        preview: '/characters/white.webp',
+        framePath: '/textures/weiss/move_{n}.webp',
+        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], // 10 verschiedene Bilder im Zyklus
+        // Muss gesetzt werden: die Bildrate wird auf moveSpeed NORMIERT
+        // (SpritePlayer: speedRatio = animSpeed / cfg.moveSpeed), ein
+        // höheres moveSpeed allein macht den Zyklus also NICHT schneller.
+        cycleSpeed: 1.9, // x1.36
+        artScale: 0.5,
+        bananas: false,
+        maxStored: 0, // zweiter Riegel gegen die Wiederbelebung
+        ignoreRockRadius: 0,
+        player: {
+          spriteHeight: 1.25, // x0.50  halb so gross
+          modelHeight: 0.75, // x0.50
+          moveSpeed: 8.3, // x1.30  flinker
+          acceleration: 20.0, // x1.25  spitzeres Anfahren
+          damping: 15.0, // x1.25
+          climbAssist: 2.5, // x1.32  steigt auch wirklich schneller
+          minScrollFactor: 0.35,
+          hitRadius: 0.21, // x0.50  halbe Hitbox
+          hitOffsetY: 0.0,
+        },
+      },
+
+      orange: {
+        id: 'orange',
+        label: 'Oranger Affe',
+        blurb: 'Dick und langsam — die kleinsten Steine prallen an ihm ab.',
+        preview: '/characters/orange.webp',
+        framePath: '/textures/orange/move_{n}.webp',
+        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        cycleSpeed: 1.1, // x0.79  schwerfälliger Zyklus
+        artScale: 1.0,
+        bananas: true,
+        maxStored: 1,
+        // Steine sind stufenlos 0.30–0.62 gross (CONFIG.rock.radius).
+        // 0.38 ist das untere Viertel: (0.38-0.30)/(0.62-0.30) = 25 %.
+        // Beim Median 0.46 wäre er gegen die HÄLFTE aller Steine immun —
+        // das wäre kein Vorteil mehr, sondern ein anderes Spiel.
+        ignoreRockRadius: 0.38,
+        player: {
+          spriteHeight: 2.5, // 1.00  (Breite folgt dem Seitenverhältnis)
+          modelHeight: 1.5,
+          moveSpeed: 5.1, // x0.80  langsamer in x UND y
+          acceleration: 12.0, // x0.75  träge
+          damping: 9.0, // x0.75  rollt länger aus
+          climbAssist: 1.5, // x0.79  steigt auch wirklich langsamer
+          minScrollFactor: 0.35,
+          hitRadius: 0.42, // 1.00  bewusst NICHT grösser
+          hitOffsetY: 0.0,
+        },
+      },
+    },
+  },
+
+  /* ================================================================== *
    *  DIFFICULTY-KURVEN
    *  Alle drei Kurven laufen über die Spielzeit t (Sekunden) und sind
    *  gedeckelt, damit das Spiel schwer, aber nie unspielbar wird.
@@ -251,6 +363,19 @@ export const CONFIG = {
     cycleSpeed: 1.4,
     // Grundtakt im Stillstand, damit der Zyklus beim Anfahren nicht springt.
     idleCycleSpeed: 0.4,
+
+    // Tempo des Kletterzyklus in MENÜ, CHARAKTERAUSWAHL und GAME OVER,
+    // als Anteil der vollen Bewegung.
+    //
+    // Ohne diesen Wert stand der Affe hinter den Menüs reglos im Bild: die
+    // Animation läuft normalerweise in SpritePlayer.update(), und die ruft
+    // Game nur im laufenden Spiel. Die Wand scrollt dort aber weiter
+    // (flow.ambientScrollSpeed) — ein starrer Affe vor bewegtem Hintergrund
+    // sieht aus, als hinge das Bild.
+    //
+    // 0.55 ergibt mit cycleSpeed 1.4 rund einen Kletterzyklus pro Sekunde:
+    // ruhig genug fürs Menü, deutlich genug, dass er sichtbar arbeitet.
+    ambientCycleRatio: 0.55,
 
     /* KEINE prozedurale Zusatzbewegung.
      *

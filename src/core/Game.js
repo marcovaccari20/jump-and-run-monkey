@@ -26,6 +26,7 @@ import { DifficultyCurve } from '../systems/DifficultyCurve.js';
 import { Spawner } from '../systems/Spawner.js';
 import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { ScoreManager } from '../systems/ScoreManager.js';
+import { CharacterStore } from '../systems/CharacterStore.js';
 import { InputHandler } from '../input/InputHandler.js';
 import { DebugOverlay } from '../ui/DebugOverlay.js';
 import { UI } from '../ui/UI.js';
@@ -42,8 +43,19 @@ export class Game {
     this.ui = new UI(CONFIG);
     this.input = new InputHandler(CONFIG.input, this.ui.touchHost);
     this.score = new ScoreManager(CONFIG.score);
+    this.characters = new CharacterStore(CONFIG.characters);
     this.difficulty = new DifficultyCurve(CONFIG.difficulty);
     this.states = new StateMachine(GameState.MENU);
+
+    // Geladene Kletter-Frames je Charakter. Beim Start wird nur der gewählte
+    // Satz geladen; die anderen kommen beim ersten Auswählen dazu. Drei Sätze
+    // vorzuladen würde die Ladeschritte von 30 auf 54 erhöhen — der
+    // AssetLoader arbeitet die Liste streng nacheinander ab.
+    this._frameCache = new Map();
+    this._loader = null;
+    this.character = null;
+    // Laufende Nummer gegen verschränkte Charakterwechsel (siehe _pickCharacter).
+    this._wechselNummer = 0;
 
     // Wirksame Spielfeldmasse. Start = Config, die seitlichen Grenzen werden
     // aber bei jedem Resize an das tatsächlich Sichtbare angepasst (siehe
@@ -124,8 +136,13 @@ export class Game {
   async load() {
     const loader = new AssetLoader();
     loader.onProgress = (fraction, label) => this.ui.setProgress(fraction, label);
+    this._loader = loader; // bleibt für das Nachladen weiterer Affen erhalten
 
     const spriteMode = this.cfg.player.mode === 'sprite';
+
+    // Der Modell-Modus kennt keine Charaktere — es gibt nur ein GLB. Er läuft
+    // deshalb unverändert mit den Werten aus CONFIG.player.
+    const char = spriteMode ? this.characters.load() : null;
 
     // Alle Stufentexturen vorladen: der Wechsel soll später ruckelfrei
     // überblenden, nicht erst nachladen.
@@ -134,7 +151,9 @@ export class Game {
 
     // Nur die Frames laden, die der Zyklus wirklich benutzt — im Ordner
     // liegen alle 20 aus dem Spritesheet.
-    const frameUrls = spriteMode ? this.cfg.sprite.frames.map(frameUrl) : [];
+    const frameUrls = spriteMode
+      ? charFrames(char).map((n) => frameUrl(n, char.framePath))
+      : [];
     textureUrls.push(...frameUrls);
 
     const { gltf, textures } = await loader.loadAll({
@@ -165,21 +184,21 @@ export class Game {
 
     /* --- Affe ---------------------------------------------------------- */
     if (spriteMode) {
-      this.player = new SpritePlayer(
-        frameUrls.map((u) => textures.get(u)),
-        this.cfg.player,
-        this.cfg.revive,
-        this.cfg.sprite,
-      );
-      this.anim = this.player.animator;
+      this._frameCache.set(char.id, frameUrls.map((u) => textures.get(u)));
+      this._buildPlayer(char);
     } else {
       this.anim = new AnimationController(gltf.scene, gltf.animations, this.cfg.animation);
       this.player = new Player(gltf.scene, this.anim, this.cfg.player, this.cfg.revive);
+      this.scene.add(this.player.object3D);
     }
-    this.scene.add(this.player.object3D);
 
     /* --- Spawner + Debug ----------------------------------------------- */
     this.spawner = new Spawner(this.scene, this.cfg, this.difficulty, this.worldView);
+    // Der Spawner entsteht NACH der Spielfigur — _buildPlayer konnte sein
+    // Bananen-Flag oben also noch nicht setzen. Hier nachholen, sonst fielen
+    // für den weissen Affen beim ersten Laden doch Bananen (nur nach einem
+    // Wechsel wäre es richtig gewesen).
+    if (this.character) this.spawner.bananasEnabled = this.character.bananas;
     this.debug = new DebugOverlay(
       this.scene,
       this.cfg.debug,
@@ -209,12 +228,162 @@ export class Game {
     };
   }
 
+  /* ========================================================== Charaktere */
+
+  /**
+   * Baut die Spielfigur für einen Charakter — beim Start und bei jedem
+   * Wechsel.
+   *
+   * NEU BAUEN, nicht umkonfigurieren: die Sprite-Masse stecken nach dem
+   * Konstruktor in der PlaneGeometry (SpritePlayer erzeugt sie aus
+   * spriteHeight mal Seitenverhältnis der Textur) und ändern sich danach
+   * nie wieder. Ein blosser Austausch des cfg-Objekts ergäbe einen Affen mit
+   * neuen Zahlen, aber alter Grösse.
+   *
+   * Die drei Config-Objekte werden KOPIERT. Game reicht sie als Referenz an
+   * die Spielfigur weiter und SpritePlayer hält sie fest — würde man
+   * CONFIG.player direkt verändern, wären die braunen Referenzwerte
+   * dauerhaft weg, auch nach dem Zurückwechseln.
+   */
+  _buildPlayer(char) {
+    const alt = this.player;
+    if (alt) {
+      this.scene.remove(alt.object3D);
+      alt.dispose?.();
+    }
+
+    const playerCfg = {
+      ...this.cfg.player,
+      ...char.player,
+      // Charakterregeln, die die Spielfigur selbst auswerten muss.
+      bananas: char.bananas,
+      ignoreRockRadius: char.ignoreRockRadius,
+    };
+    const reviveCfg = { ...this.cfg.revive, maxStored: char.maxStored };
+
+    const ol = this.cfg.sprite.outline;
+    const spriteCfg = {
+      ...this.cfg.sprite,
+      framePath: char.framePath,
+      cycleSpeed: char.cycleSpeed,
+      outline: {
+        ...ol,
+        // Der Versatz ist ein ABSOLUTES Weltmass. Beim halb so grossen Affen
+        // bliebe der Schatten sonst gleich gross und wirkte doppelt so schwer.
+        offset: [ol.offset[0] * char.artScale, ol.offset[1] * char.artScale],
+      },
+    };
+
+    this.player = new SpritePlayer(
+      this._frameCache.get(char.id),
+      playerCfg,
+      reviveCfg,
+      spriteCfg,
+    );
+    this.anim = this.player.animator;
+    this.scene.add(this.player.object3D);
+    this.character = char;
+
+    // Die seitlichen Grenzen hängen am Trefferradius — nach einem Wechsel neu
+    // rechnen, sonst gälte bis zum nächsten Resize das alte Band.
+    this._updateWorldBounds();
+
+    // Der weisse Affe bekommt gar keine Bananen: weder Spawn noch Anzeige.
+    if (this.spawner) this.spawner.bananasEnabled = char.bananas;
+    this.ui.setReviveVisible(char.bananas && char.maxStored > 0);
+  }
+
+  /** Kletter-Frames eines Charakters holen — beim ersten Mal nachladen. */
+  async _ensureFrames(char) {
+    if (this._frameCache.has(char.id)) return;
+    const urls = charFrames(char).map((n) => frameUrl(n, char.framePath));
+    const { textures } = await this._loader.loadAll({ textureUrls: urls });
+    this._frameCache.set(char.id, urls.map((u) => textures.get(u)));
+  }
+
+  /**
+   * Charakter wählen.
+   *
+   * VERSCHRÄNKUNG: Diese Methode ist async (die Frames werden beim ersten Mal
+   * nachgeladen), wird aber aus einem Klick-Callback ohne await gerufen.
+   * Zwischen Klick und Fertigstellung kann der Spieler weiterklicken —
+   * "Zurück" drücken, ein Spiel starten, die Auswahl erneut öffnen und einen
+   * anderen Affen nehmen. Ohne Absicherung passierte dann Folgendes:
+   *
+   *   - Der fertig geladene Wechsel riss hinterher das Hauptmenü über das
+   *     bereits laufende Spiel; der Zustand blieb PLAYING, "Spiel starten"
+   *     reagierte nicht mehr.
+   *   - Bei zwei Wechseln gewann der zuletzt FERTIGE, nicht der zuletzt
+   *     GEKLICKTE — und wurde dauerhaft gespeichert.
+   *
+   * Deshalb eine laufende Nummer: Beim Eintritt wird sie erhöht und gemerkt.
+   * Nach dem await zählt der Wechsel nur noch, wenn er immer noch der
+   * aktuellste ist UND die Auswahl überhaupt noch offen steht.
+   */
+  async _pickCharacter(id) {
+    const char = this.cfg.characters.list[id];
+    if (!char) return;
+    if (char.id === this.character?.id) {
+      this._closeCharacters();
+      return;
+    }
+
+    const meineNummer = ++this._wechselNummer;
+    this.ui.setCharactersBusy(true);
+
+    try {
+      await this._ensureFrames(char);
+    } catch (err) {
+      console.warn('[Game] Charakter liess sich nicht laden:', err);
+      if (meineNummer === this._wechselNummer) {
+        this.ui.setCharactersBusy(false);
+        this.ui.showCharacterError(`${char.label} liess sich nicht laden.`);
+      }
+      return;
+    }
+
+    // Überholt worden oder die Auswahl ist gar nicht mehr offen? Dann still
+    // aussteigen — die Frames liegen jetzt im Cache, mehr sollte nicht
+    // passieren.
+    if (meineNummer !== this._wechselNummer) return;
+    if (this.ui.currentScreen !== 'characters') {
+      this.ui.setCharactersBusy(false);
+      return;
+    }
+
+    this.characters.save(id);
+    this._buildPlayer(char);
+    this.anim.setMode('menu');
+    this.anim.reset();
+
+    this.ui.setCharactersBusy(false);
+    this._closeCharacters();
+  }
+
+  _openCharacters() {
+    // KEIN Zustandswechsel: der Automat erlaubt aus MENU nur PLAYING und
+    // wirft bei allem anderen. Die Auswahl ist reine Oberfläche.
+    this.ui.showCharacters(this.characters.all, this.characters.loadId());
+  }
+
+  _closeCharacters() {
+    // Einen noch laufenden Wechsel für ungültig erklären: wer die Auswahl
+    // verlässt, will keinen Affen mehr getauscht bekommen.
+    this._wechselNummer++;
+    this.ui.showMenu(this.score.loadHighscores());
+  }
+
+  /* =============================================================== Verdrahtung */
+
   _wireUI() {
     this.ui.callbacks.onStart = () => this._startRun();
     this.ui.callbacks.onRetry = () => this._startRun();
     this.ui.callbacks.onResume = () => this._resume();
     this.ui.callbacks.onMenu = () => this._toMenu();
     this.ui.callbacks.onSubmitName = (name) => this._submitName(name);
+    this.ui.callbacks.onCharacters = () => this._openCharacters();
+    this.ui.callbacks.onCharactersBack = () => this._closeCharacters();
+    this.ui.callbacks.onPickCharacter = (id) => this._pickCharacter(id);
   }
 
   _wireStates() {
@@ -358,6 +527,15 @@ export class Game {
       else if (this.states.is(GameState.PAUSED)) this._resume();
     }
 
+    // Die Charakterauswahl liegt ÜBER dem Menü, ohne den Automaten zu
+    // wechseln (aus MENU führt nur PLAYING heraus). Ohne diese Sperre würde
+    // Enter den Lauf mit dem alten Affen starten, während die Auswahl noch
+    // offen ist.
+    if (this.ui.currentScreen === 'characters') {
+      this.input.consumeConfirm();
+      return;
+    }
+
     if (this.input.consumeConfirm()) {
       if (this.states.is(GameState.MENU)) this._startRun();
       else if (this.states.is(GameState.GAME_OVER)) this._startRun();
@@ -366,7 +544,10 @@ export class Game {
   }
 
   _updatePlaying(dt) {
-    const pCfg = this.cfg.player;
+    // Vom SPIELER, nicht aus CONFIG: climbAssist und minScrollFactor werden
+    // hier an der Spielfigur vorbei gelesen. Mit this.cfg.player wäre der
+    // orange Affe seitlich langsamer, würde aber unverändert schnell steigen.
+    const pCfg = this.player.cfg;
     const world = this.worldView; // seitengrössenabhängig, siehe _onResize
     this.difficulty.update(dt);
 
@@ -411,7 +592,7 @@ export class Game {
     }
   }
 
-  /** Menü und Game-Over: Wand scrollt langsam weiter, Affe animiert. */
+  /** Menü und Game-Over: Wand scrollt langsam weiter, Affe klettert weiter. */
   _updateIdleScene(dt) {
     // elapsed = null: im Menü und nach dem Tod bleibt die Stufe stehen.
     this.wall.update(dt, this.cfg.flow.ambientScrollSpeed * dt, null);
@@ -419,6 +600,11 @@ export class Game {
     this._animCtx.vx = 0;
     this._animCtx.vy = 0;
     this.anim.update(dt, this._animCtx);
+
+    // Der Sprite animiert sich sonst nur in update(), und das ruft Game hier
+    // bewusst nicht. Ohne diese Zeile stünde der Affe reglos vor der
+    // weiterscrollenden Wand. (Der Modell-Modus läuft schon über anim.update.)
+    this.player.updateAmbient?.(dt);
   }
 
   _onRockHit(_rock) {
@@ -500,7 +686,10 @@ export class Game {
     if (!Number.isFinite(half)) return;
 
     // Etwas Rand lassen, damit der Affe nicht halb im Bildrand klebt.
-    const limit = Math.max(0.9, half - this.cfg.player.hitRadius * 1.6);
+    // Radius vom Spieler, nicht aus CONFIG: der weisse Affe hat die halbe
+    // Hitbox und bekommt dadurch ein etwas breiteres Band.
+    const hitRadius = this.player?.hitRadius ?? this.cfg.player.hitRadius;
+    const limit = Math.max(0.9, half - hitRadius * 1.6);
 
     view.bounds.minX = Math.max(base.bounds.minX, -limit);
     view.bounds.maxX = Math.min(base.bounds.maxX, limit);
@@ -517,9 +706,21 @@ export class Game {
 const ZERO_AXIS = Object.freeze({ x: 0, y: 0 });
 
 /**
- * Pfad eines Kletter-Frames aus der Spritesheet-Zerlegung.
- * @param {number} n Frame-Nummer aus CONFIG.sprite.frames
+ * Abspielreihenfolge eines Charakters.
+ *
+ * Jeder Affe kann eine eigene Bildzahl haben — die Videos enthalten
+ * unterschiedlich viele wirklich verschiedene Bilder pro Kletterzyklus.
+ * Ohne eigene Liste fällt er auf die gemeinsame aus CONFIG.sprite zurück.
  */
-function frameUrl(n) {
-  return CONFIG.sprite.framePath.replace('{n}', String(n).padStart(2, '0'));
+function charFrames(char) {
+  return char?.frames ?? CONFIG.sprite.frames;
+}
+
+/**
+ * Pfad eines Kletter-Frames.
+ * @param {number} n Frame-Nummer aus der Liste des Charakters
+ * @param {string} framePath Muster des Charakters, z. B. '/textures/weiss/move_{n}.webp'
+ */
+function frameUrl(n, framePath) {
+  return framePath.replace('{n}', String(n).padStart(2, '0'));
 }

@@ -46,9 +46,24 @@ const BACKGROUNDS = [
   'stage9_ash',
 ].map((name) => ({ src: `${name}.png`, out: `${name}.webp` }));
 
-// Kletter-Frames: bereits freigestellte Einzelbilder aus dem Bewegungsvideo.
-// Siehe README, Abschnitt "Kletteranimation aus dem Video".
-const MOVE_DIR = 'movement';
+/* Kletter-Frames: bereits freigestellte Einzelbilder aus den Bewegungsvideos.
+ * Siehe README, Abschnitt "Kletteranimation aus dem Video".
+ *
+ * Ein Satz je Charakter. Die Zielpfade müssen zu CONFIG.characters.list[*]
+ * .framePath passen.
+ *
+ * weissSaum: Nur der BRAUNE Satz stammt aus einem Video vor reinweissem
+ * Hintergrund; dort tragen halbtransparente Randpixel noch Weiss, das hier
+ * herausgerechnet wird. Die beiden neuen Sätze wurden vor einer grauen Wand
+ * gedreht und sind bereits in video-to-frames.mjs gegen die gemessene
+ * Wandfarbe entsäumt — ein zweiter Durchgang gegen Weiss würde ihre Kante
+ * fälschlich aufhellen.
+ */
+const MOVE_SETS = [
+  { quelle: 'movement', ziel: '', weissSaum: true },
+  { quelle: 'movement_white', ziel: 'weiss', weissSaum: false },
+  { quelle: 'movement_orange', ziel: 'orange', weissSaum: false },
+];
 
 mkdirSync(OUT, { recursive: true });
 
@@ -197,12 +212,14 @@ async function prepareBackgrounds() {
  * ALLE Frames gemeinsame Leinwand gelegt. Ohne das würde die Figur beim
  * Abspielen im Bild umherspringen.
  */
-async function prepareMovementFrames() {
-  const dir = resolve(SRC, MOVE_DIR);
+async function prepareMovementFrames({ quelle, ziel, weissSaum }) {
+  const dir = resolve(SRC, quelle);
+  const outDir = ziel ? resolve(OUT, ziel) : OUT;
   if (!existsSync(dir)) {
     console.warn(`\nKletter-Frames fehlen: ${dir}`);
     return;
   }
+  mkdirSync(outDir, { recursive: true });
 
   const files = readdirSync(dir)
     .filter((f) => /\.png$/i.test(f))
@@ -257,13 +274,15 @@ async function prepareMovementFrames() {
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    for (let p = 0; p < raw.length; p += 4) {
-      const a = raw[p + 3];
-      if (a === 0 || a === 255) continue;
-      const af = a / 255;
-      for (let ch = 0; ch < 3; ch++) {
-        const v = (raw[p + ch] - (1 - af) * 255) / af;
-        raw[p + ch] = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+    if (weissSaum) {
+      for (let p = 0; p < raw.length; p += 4) {
+        const a = raw[p + 3];
+        if (a === 0 || a === 255) continue;
+        const af = a / 255;
+        for (let ch = 0; ch < 3; ch++) {
+          const v = (raw[p + ch] - (1 - af) * 255) / af;
+          raw[p + ch] = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+        }
       }
     }
 
@@ -297,19 +316,21 @@ async function prepareMovementFrames() {
     const name = `move_${String(i).padStart(2, '0')}.webp`;
     const written = await sharp(zentriert)
       .webp({ quality: 92, alphaQuality: 100 })
-      .toFile(resolve(OUT, name));
+      .toFile(resolve(outDir, name));
     total += written.size;
   }
 
+  // Das Seitenverhältnis der gemeinsamen Leinwand bestimmt im Spiel die
+  // Sprite-BREITE (SpritePlayer: w = spriteHeight * aspect). Es wird je Satz
+  // neu berechnet, jeder Affe bekommt also seine eigenen Proportionen.
   console.log(
-    `\nKletter-Frames:\n  ${boxes.length} Stück, je ${canvasW}x${canvasH} ` +
-      `(gemeinsame Leinwand, mittig)  ${(total / 1024).toFixed(0)} KB gesamt`,
-  );
-  console.log(
-    `  move_00.webp … move_${String(boxes.length - 1).padStart(2, '0')}.webp` +
-      `  — Abspielreihenfolge steht in CONFIG.sprite.frames`,
+    `  ${(ziel || 'braun').padEnd(8)} ${boxes.length} Bilder, je ${canvasW}x${canvasH} ` +
+      `(Seitenverhältnis ${(canvasW / canvasH).toFixed(3)})  ` +
+      `${(total / 1024).toFixed(0)} KB  ->  public/textures/${ziel ? ziel + '/' : ''}move_NN.webp`,
   );
 }
 
 await prepareBackgrounds();
-await prepareMovementFrames();
+
+console.log('\nKletter-Frames:');
+for (const satz of MOVE_SETS) await prepareMovementFrames(satz);

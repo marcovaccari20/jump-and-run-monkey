@@ -31,6 +31,17 @@ export class Spawner {
 
     this.timer = 0;
     this._poolExhaustedWarned = false;
+
+    /* Bananen für diesen Affen überhaupt zulassen (der weisse bekommt keine).
+     *
+     * Bewusst ein EIGENES Feld und nicht der Umweg über playerHasRevive:
+     * dieser Parameter wirkt nur zusammen mit banana.suppressWhenStocked.
+     * Stünde der Schalter irgendwann auf false, spawnten für den weissen
+     * Affen wieder Bananen — ein Fehler, den niemand mit der Charakterwahl
+     * in Verbindung bringen würde. CONFIG.banana.spawnChance anzufassen
+     * scheidet ebenfalls aus: das ist ein geteiltes Objekt.
+     */
+    this.bananasEnabled = true;
   }
 
   reset() {
@@ -63,6 +74,7 @@ export class Spawner {
 
       const count = this.difficulty.burstCount;
       const bananaAllowed =
+        this.bananasEnabled &&
         !(bananaCfg.suppressWhenStocked && playerHasRevive) &&
         Math.random() < bananaCfg.spawnChance;
 
