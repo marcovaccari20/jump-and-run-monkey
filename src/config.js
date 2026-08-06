@@ -1156,6 +1156,21 @@ export const CONFIG = {
     // Fortschritt (Münzen, Affen, Fellfarben) auf dem Server.
     standLadenFn: 'stand_laden',
     standSichernFn: 'stand_sichern',
+
+    /* Übertragung auf ein anderes Gerät per VIERSTELLIGEM CODE.
+     *
+     * Die Kennung bleibt intern der Schlüssel; der Code ist nur ein Zeiger
+     * darauf. Vier Ziffern sind bewusst gewählt, obwohl es davon nur
+     * zehntausend gibt — die Abwägung samt Folgen steht ausführlich in
+     * scripts/bestenliste.sql, Abschnitt ÜBERTRAGUNGSCODE.
+     *
+     * Diese drei Funktionen müssen in der Datenbank angelegt sein. Solange
+     * sie fehlen, antwortet der Server mit 404, und das Spiel sagt genau das
+     * — statt den Fehler zu verschlucken. */
+    codeBelegenFn: 'code_belegen',
+    codeAufloesenFn: 'code_aufloesen',
+    codeVorschlagFn: 'code_vorschlag',
+
     // Nach dieser Zeit wird abgebrochen. Eine hängende Bestenliste darf den
     // Game-Over-Screen nicht blockieren.
     timeout: 6000,

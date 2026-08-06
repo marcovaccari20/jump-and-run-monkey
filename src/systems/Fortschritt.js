@@ -98,6 +98,53 @@ export class LokalerSpeicher {
  * Auf CrazyGames braucht es das alles nicht: dort hängt der Speicher am
  * Konto des Spielers (siehe Portal.datenSpeicher).
  */
+/**
+ * Ruft eine Datenbankfunktion auf.
+ *
+ * DIE SERVERMELDUNG MUSS DURCHKOMMEN. Die erste Fassung warf nur
+ * `HTTP ${status}` — für das Laden und Sichern reichte das, weil dort jeder
+ * Fehler gleich behandelt wird ("dann gilt eben der lokale Stand"). Beim
+ * Übertragungscode ist es umgekehrt: "Dieser Code ist schon vergeben" und
+ * "Zu viele Fehlversuche" sind genau das, was der Spieler lesen muss.
+ * PostgREST liefert die Meldung aus `raise exception` im Feld `message`.
+ *
+ * @throws {Error} mit der Servermeldung, dazu `.status`
+ */
+async function rpc(cfg, fn, koerper) {
+  const abbruch = new AbortController();
+  const uhr = setTimeout(() => abbruch.abort(), cfg.timeout);
+  try {
+    const antwort = await fetch(`${cfg.url}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: {
+        apikey: cfg.schluessel,
+        Authorization: `Bearer ${cfg.schluessel}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(koerper),
+      signal: abbruch.signal,
+    });
+    const text = await antwort.text();
+
+    if (!antwort.ok) {
+      let meldung = `HTTP ${antwort.status}`;
+      try {
+        const d = JSON.parse(text);
+        if (d?.message) meldung = d.message;
+      } catch {
+        /* keine JSON-Antwort — dann bleibt der Statuscode */
+      }
+      const fehler = new Error(meldung);
+      fehler.status = antwort.status;
+      throw fehler;
+    }
+
+    return text ? JSON.parse(text) : null;
+  } finally {
+    clearTimeout(uhr);
+  }
+}
+
 export class SupabaseSpeicher {
   /**
    * @param {typeof import('../config.js').CONFIG.bestenliste} cfg Adresse+Schlüssel
@@ -108,30 +155,8 @@ export class SupabaseSpeicher {
     this.spielerId = spielerId;
   }
 
-  get _kopf() {
-    return {
-      apikey: this.cfg.schluessel,
-      Authorization: `Bearer ${this.cfg.schluessel}`,
-      'Content-Type': 'application/json',
-    };
-  }
-
   async _ruf(fn, koerper) {
-    const abbruch = new AbortController();
-    const uhr = setTimeout(() => abbruch.abort(), this.cfg.timeout);
-    try {
-      const antwort = await fetch(`${this.cfg.url}/rest/v1/rpc/${fn}`, {
-        method: 'POST',
-        headers: this._kopf,
-        body: JSON.stringify(koerper),
-        signal: abbruch.signal,
-      });
-      const text = await antwort.text();
-      if (!antwort.ok) throw new Error(`HTTP ${antwort.status}`);
-      return text ? JSON.parse(text) : null;
-    } finally {
-      clearTimeout(uhr);
-    }
+    return rpc(this.cfg, fn, koerper);
   }
 
   async laden() {
@@ -366,6 +391,114 @@ function _uuidNotnagel() {
  * Übernimmt einen eingegebenen Wiederherstellungscode.
  * @returns {boolean} false, wenn er kein gültiger Code ist
  */
+/* ==========================================================================
+ *  ÜBERTRAGUNGSCODE — vier Ziffern
+ *
+ *  Die Kennung oben bleibt intern der Schlüssel. Sie ist aber 36 Zeichen
+ *  lang, und niemand tippt das auf einem Handy ab. Deshalb sucht sich der
+ *  Spieler VIER ZIFFERN aus, die noch frei sind; der Server merkt sich, zu
+ *  welcher Kennung sie gehören.
+ *
+ *  Das ist eine bewusste Abwägung, keine Nachlässigkeit: vier Ziffern sind
+ *  zehntausend Möglichkeiten, der Code ist also kein Geheimnis. Was das
+ *  bedeutet und warum es hier vertretbar ist, steht ausführlich in
+ *  scripts/bestenliste.sql im Abschnitt ÜBERTRAGUNGSCODE.
+ * ======================================================================== */
+
+/** Genau vier Ziffern. Führende Null erlaubt — '0042' ist ein gültiger Code. */
+export const CODE_FORM = /^[0-9]{4}$/;
+
+/** Vereinheitlicht Servermeldungen zu etwas, das im Spiel lesbar ist. */
+function codeFehler(err) {
+  // 404: die Funktionen sind noch nicht in der Datenbank. Das ist KEIN
+  // Spielerfehler, und ohne diesen Hinweis sucht man den Fehler im Spiel.
+  if (err?.status === 404) {
+    return 'Der Server kennt die Übertragung noch nicht (SQL noch nicht eingespielt).';
+  }
+  if (err?.name === 'AbortError') return 'Der Server antwortet nicht.';
+  return err?.message || 'Das hat nicht geklappt.';
+}
+
+/**
+ * Belegt einen selbst gewählten Code für diese Kennung.
+ * @returns {Promise<{ok: true, code: string} | {ok: false, meldung: string}>}
+ */
+export async function codeBelegen(cfg, spielerId, code) {
+  const sauber = String(code ?? '').trim();
+  if (!CODE_FORM.test(sauber)) {
+    return { ok: false, meldung: 'Bitte genau vier Ziffern eingeben.' };
+  }
+  try {
+    const zurueck = await rpc(cfg, cfg.codeBelegenFn, {
+      p_spieler: spielerId,
+      p_code: sauber,
+    });
+    return { ok: true, code: String(zurueck ?? sauber) };
+  } catch (err) {
+    return { ok: false, meldung: codeFehler(err) };
+  }
+}
+
+/**
+ * Holt einen freien Code und belegt ihn sofort.
+ *
+ * Bewusst in einem Schritt: ein blosser Vorschlag wäre nicht verbindlich,
+ * zwischen Vorschlag und Bestätigung könnte ihn jemand anders nehmen. Wer
+ * schon einen Code hat, bekommt denselben zurück.
+ *
+ * @returns {Promise<{ok: true, code: string} | {ok: false, meldung: string}>}
+ */
+export async function codeVorschlag(cfg, spielerId) {
+  try {
+    const zurueck = await rpc(cfg, cfg.codeVorschlagFn, { p_spieler: spielerId });
+    const code = String(zurueck ?? '');
+    if (!CODE_FORM.test(code)) {
+      return { ok: false, meldung: 'Der Server hat keinen Code herausgegeben.' };
+    }
+    return { ok: true, code };
+  } catch (err) {
+    return { ok: false, meldung: codeFehler(err) };
+  }
+}
+
+/**
+ * Löst einen Code in die dahinterliegende Kennung auf.
+ * @returns {Promise<{ok: true, kennung: string} | {ok: false, meldung: string}>}
+ */
+/**
+ * Löst einen Code in die dahinterliegende Kennung auf.
+ *
+ * Der Server meldet den erwarteten Fehlschlag über den RÜCKGABEWERT, nicht
+ * über eine Ausnahme — sonst würde sein eigener Fehlversuchszähler mit
+ * zurückgedreht und die Bremse wäre wirkungslos. Deshalb kommt hier ein
+ * Objekt an und keine nackte Kennung. Ausführlich steht das in
+ * scripts/bestenliste.sql bei code_aufloesen.
+ *
+ * @returns {Promise<{ok: true, kennung: string} | {ok: false, meldung: string}>}
+ */
+export async function codeAufloesen(cfg, code) {
+  const sauber = String(code ?? '').trim();
+  if (!CODE_FORM.test(sauber)) {
+    return { ok: false, meldung: 'Bitte genau vier Ziffern eingeben.' };
+  }
+  try {
+    const d = await rpc(cfg, cfg.codeAufloesenFn, { p_code: sauber });
+
+    if (d?.ok === true && typeof d.kennung === 'string' && UUID_FORM.test(d.kennung)) {
+      return { ok: true, kennung: d.kennung };
+    }
+
+    const meldungen = {
+      form: 'Bitte genau vier Ziffern eingeben.',
+      gebremst: 'Zu viele Fehlversuche. Bitte eine Minute warten.',
+      unbekannt: 'Zu diesem Code ist nichts gespeichert.',
+    };
+    return { ok: false, meldung: meldungen[d?.grund] ?? 'Zu diesem Code ist nichts gespeichert.' };
+  } catch (err) {
+    return { ok: false, meldung: codeFehler(err) };
+  }
+}
+
 export function kennungSetzen(schluessel, code) {
   const sauber = String(code ?? '').trim().toLowerCase();
   /* Gegen die UUID-Form prüfen, nicht nur gegen die Länge.

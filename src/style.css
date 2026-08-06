@@ -152,23 +152,39 @@ body {
   line-height: 1.45;
 }
 
+/* Vier Ziffern statt einer UUID: der Code darf jetzt gross und stolz
+   dastehen, statt sich über drei Zeilen zu brechen. */
 .uebertrag__code {
-  display: block;
-  /* Umbruch erzwingen: eine UUID ist länger als das Feld auf dem Handy. */
-  word-break: break-all;
-  padding: 8px 10px;
-  margin-bottom: 6px;
+  display: inline-block;
+  padding: 4px 12px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.35);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  /* Sperrsatz schiebt auch hinter das letzte Zeichen — sonst sitzt die Zahl
+     sichtbar links im Kästchen. */
+  text-indent: 0.28em;
+  color: var(--banana);
   user-select: all; /* ein Klick markiert alles */
+}
+
+.uebertrag__hinweis--code {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.uebertrag__hinweis--code[hidden] {
+  display: none;
 }
 
 .uebertrag__form {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .uebertrag__eingabe {
@@ -183,10 +199,27 @@ body {
   font-size: 12px;
 }
 
+/* Das Codefeld ist bewusst schmal und gross: vier Ziffern, gut lesbar, und
+   es lädt nicht dazu ein, etwas anderes hineinzuschreiben. */
+.uebertrag__eingabe--code {
+  flex: 0 0 6.5em;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+}
+
 .btn--klein {
   padding: 7px 12px;
   font-size: 12px;
   flex: 0 0 auto;
+}
+
+.btn--klein:disabled,
+.uebertrag__eingabe:disabled {
+  opacity: 0.5;
+  cursor: progress;
 }
 
 .uebertrag__status {

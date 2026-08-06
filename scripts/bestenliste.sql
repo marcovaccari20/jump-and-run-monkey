@@ -624,6 +624,293 @@ grant execute on function public.stand_sichern(uuid, int, text[]) to anon;
 
 
 -- ============================================================================
+--  ÜBERTRAGUNGSCODE: vier Ziffern statt der 36-stelligen Kennung
+--
+--  Die Kennung selbst als Wiederherstellungscode zu nehmen war sicher, aber
+--  unbenutzbar: niemand tippt 36 Zeichen auf einem Handy ab. Deshalb kann
+--  sich der Spieler VIER ZIFFERN aussuchen, die noch frei sind. Die Kennung
+--  bleibt intern der Schlüssel; der Code ist nur ein Zeiger darauf. An
+--  stand_laden/stand_sichern ändert sich nichts.
+--
+--  WAS DAS KOSTET — offen benannt, weil es eine bewusste Entscheidung war
+--
+--  Vier Ziffern sind ZEHNTAUSEND Möglichkeiten. Daraus folgen zwei Dinge,
+--  die keine noch so gute Implementierung wegzaubert:
+--
+--    1. Es kann nie mehr als 10 000 vergebene Codes gleichzeitig geben.
+--       Abgefedert dadurch, dass ein Code ERST BEIM ÜBERTRAGEN vergeben
+--       wird — wer nie das Gerät wechselt, verbraucht keinen.
+--    2. Der Code ist kein Geheimnis. Wer durchprobiert, landet in fremden
+--       Ständen. Die Bremse unten macht das langsam und auffällig, nicht
+--       unmöglich.
+--
+--  Der Schaden bleibt begrenzt: Münzen kaufen ausschliesslich Aussehen,
+--  Höhe kauft man damit nie, und die Bestenliste kennt keine Münzen. Wer
+--  einen Code errät, bekommt fremde Fellfarben — keinen Ranglistenplatz.
+-- ============================================================================
+
+create table if not exists public.uebertrag_code (
+  -- Genau vier Ziffern, führende Null erlaubt ('0042'). Deshalb text mit
+  -- Prüfung und nicht int — 42 und 0042 wären sonst derselbe Code.
+  code     text primary key check (code ~ '^[0-9]{4}$'),
+  -- Ein Spieler hat höchstens einen Code. Wer einen neuen wählt, gibt den
+  -- alten frei (siehe code_belegen).
+  spieler  uuid not null unique,
+  angelegt timestamptz not null default now(),
+  benutzt  timestamptz
+);
+
+alter table public.uebertrag_code enable row level security;
+-- Keine Policy: `anon` kommt ausschliesslich über die Funktionen unten heran.
+-- Mit einer Lesepolicy wäre die ganze Übung sinnlos — dann liesse sich die
+-- vollständige Codeliste in einer einzigen Anfrage abholen.
+
+create index if not exists uebertrag_code_spieler_idx
+  on public.uebertrag_code (spieler);
+
+/* Der Index MUSS auf `angelegt` liegen, nicht auf irgendeiner Spalte.
+ *
+ * Die Rationierung in code_belegen zählt über `angelegt`. Bei public.spieler
+ * ist genau das schiefgegangen: dort zählt die Bremse über `angelegt`,
+ * indiziert ist aber `aktualisiert` — jeder Aufruf mit neuer Kennung liest
+ * seitdem die ganze Tabelle. Hier nicht wiederholen. */
+create index if not exists uebertrag_code_angelegt_idx
+  on public.uebertrag_code (angelegt desc);
+
+
+/* ---------------------------------------------------------------------------
+ *  DIE BREMSE — und warum sie auf FEHLVERSUCHE zählt
+ *
+ *  Wer Codes durchprobiert, erzeugt fast nur Fehlschläge: von 10 000
+ *  Versuchen treffen so viele, wie es vergebene Codes gibt. Ein ehrlicher
+ *  Spieler dagegen tippt seinen eigenen Code und trifft beim ersten Mal.
+ *
+ *  Deshalb wird nicht die Zahl der Anfragen begrenzt, sondern die Zahl der
+ *  ERFOLGLOSEN. Der ehrliche Fall läuft dadurch praktisch nie in die Bremse,
+ *  während das Durchprobieren sofort ausgebremst wird.
+ *
+ *  Eine Begrenzung je Aufrufer wäre schöner, ist hier aber nicht zu haben:
+ *  hinter PostgREST sieht die Datenbank den Verbindungspool, nicht den
+ *  Spieler. Die Bremse gilt deshalb GLOBAL. Bei 10 Fehlversuchen je Minute
+ *  dauert das Durchprobieren aller 10 000 Codes über sechzehn Stunden und
+ *  hinterlässt eine Spur, die man sieht.
+ * ------------------------------------------------------------------------- */
+
+create table if not exists public.code_versuch (
+  id        bigserial primary key,
+  zeitpunkt timestamptz not null default now(),
+  treffer   boolean not null
+);
+
+alter table public.code_versuch enable row level security;
+
+-- Passgenau zur Abfrage der Bremse (`treffer = false and zeitpunkt > …`):
+-- ein Teilindex nur über die Fehlversuche. Er bleibt winzig, weil erfolgreiche
+-- Aufrufe gar nicht erst hineingehören.
+create index if not exists code_versuch_fehler_idx
+  on public.code_versuch (zeitpunkt desc) where treffer = false;
+
+-- Für das Aufräumen alter Zeilen (über alle Versuche).
+create index if not exists code_versuch_zeit_idx
+  on public.code_versuch (zeitpunkt desc);
+
+
+-- ----------------------------------------------------------------- belegen --
+-- Vergibt einen selbst gewählten Code. Fehler sind hier ABSICHTLICH
+-- unterscheidbar ("schon vergeben"), denn der Spieler muss ja erfahren, dass
+-- er sich einen anderen aussuchen soll. Beim AUFLÖSEN ist das anders (unten).
+create or replace function public.code_belegen(p_spieler uuid, p_code text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  -- Grenze als benannte Konstante, wie bei lauf_start und stand_sichern.
+  max_pro_minute constant int := 20;
+  sauber text := btrim(coalesce(p_code, ''));
+  inhaber uuid;
+begin
+  if sauber !~ '^[0-9]{4}$' then
+    raise exception 'Der Code muss aus genau vier Ziffern bestehen.';
+  end if;
+
+  -- Rationierung wie bei lauf_start: verhindert, dass jemand in einem Rutsch
+  -- alle freien Codes belegt und damit neuen Spielern die Tür zumauert.
+  if (
+    select count(*) from public.uebertrag_code
+    where angelegt > now() - interval '1 minute'
+  ) >= max_pro_minute then
+    raise exception 'gerade zu viel Betrieb, bitte kurz warten';
+  end if;
+
+  -- Verwaiste Codes freigeben: gehört der Code zu einem Stand, der seit über
+  -- einem Jahr nicht angefasst wurde, ist er wieder zu haben. Ohne das wäre
+  -- der Vorrat von 10 000 endgültig, sobald er einmal voll ist.
+  delete from public.uebertrag_code u
+  using public.spieler s
+  where u.spieler = s.id
+    and s.aktualisiert < now() - interval '1 year';
+
+  select spieler into inhaber from public.uebertrag_code where code = sauber;
+
+  if inhaber is not null and inhaber <> p_spieler then
+    raise exception 'Dieser Code ist schon vergeben.';
+  end if;
+
+  -- Der Spieler hatte vielleicht schon einen anderen Code — der wird frei.
+  delete from public.uebertrag_code where spieler = p_spieler and code <> sauber;
+
+  insert into public.uebertrag_code (code, spieler)
+  values (sauber, p_spieler)
+  on conflict (code) do nothing;
+
+  /* NACHSEHEN, WEM DER CODE JETZT WIRKLICH GEHÖRT.
+   *
+   * Zwischen der Prüfung oben und diesem Einfügen können Millisekunden
+   * liegen, und in denen kann sich jemand anders denselben Code holen. Das
+   * `on conflict do nothing` schluckt den Zusammenstoss stillschweigend —
+   * ohne diese zweite Abfrage bekämen BEIDE Spieler "hat geklappt" zu
+   * hören, und einer von beiden liefe mit einem Code herum, der ihm nicht
+   * gehört. Bei zehntausend Plätzen ist das kein Randfall. */
+  select spieler into inhaber from public.uebertrag_code where code = sauber;
+  if inhaber is distinct from p_spieler then
+    raise exception 'Dieser Code ist schon vergeben.';
+  end if;
+
+  return sauber;
+end;
+$$;
+
+revoke all on function public.code_belegen(uuid, text) from public;
+grant execute on function public.code_belegen(uuid, text) to anon;
+
+
+-- ---------------------------------------------------------------- vorschlag --
+/* Holt einen freien Code UND belegt ihn sofort.
+ *
+ * VORSCHLAGEN ALLEIN REICHT NICHT. Die erste Fassung suchte nur einen freien
+ * Code und gab ihn zurück; belegt wurde er erst, wenn der Spieler danach auf
+ * "Merken" tippte. Dazwischen liegen Sekunden, in denen ihn jemand anders
+ * nehmen kann — der Spieler bekäme unmittelbar nach "ist frei" ein "schon
+ * vergeben" zu lesen und würde zu Recht denken, der Knopf sei kaputt. Bei
+ * zehntausend Plätzen ist das kein theoretischer Randfall.
+ *
+ * Deshalb passiert beides in einem Zug. Das Einfügen selbst entscheidet, ob
+ * der Code frei war: der Primärschlüssel lässt keinen zweiten zu. Die
+ * Ausnahmebehandlung sitzt in einem eigenen Block, damit ein Zusammenstoss
+ * nur diesen einen Versuch verwirft und nicht die ganze Transaktion.
+ */
+drop function if exists public.code_vorschlag();
+
+create or replace function public.code_vorschlag(p_spieler uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  max_versuche constant int := 40;
+  kandidat text;
+  vorhanden text;
+  i int;
+begin
+  -- Wer schon einen hat, bekommt denselben zurück. Ein zweiter Code wäre
+  -- nicht nur unnötig, er ist wegen `spieler unique` gar nicht möglich.
+  select code into vorhanden from public.uebertrag_code where spieler = p_spieler;
+  if found then
+    return vorhanden;
+  end if;
+
+  for i in 1..max_versuche loop
+    kandidat := lpad((floor(random() * 10000))::int::text, 4, '0');
+    begin
+      insert into public.uebertrag_code (code, spieler) values (kandidat, p_spieler);
+      return kandidat;
+    exception when unique_violation then
+      -- Schon weg. Nur dieser Versuch ist verloren, der nächste läuft weiter.
+    end;
+  end loop;
+
+  -- 40 Fehlgriffe hintereinander heissen: der Vorrat ist so gut wie voll.
+  raise exception 'Es sind fast alle Codes vergeben.';
+end;
+$$;
+
+revoke all on function public.code_vorschlag(uuid) from public;
+grant execute on function public.code_vorschlag(uuid) to anon;
+
+
+-- ---------------------------------------------------------------- auflösen --
+/* Gibt die Kennung zu einem Code zurück. Das ist die Tür, an der gerüttelt
+ * wird — hier sitzt die Bremse.
+ *
+ * DIESE FUNKTION WIRFT NICHT, UND DAS IST DER GANZE PUNKT.
+ *
+ * Die erste Fassung zählte den Fehlversuch und warf danach
+ * `raise exception 'Zu diesem Code ist nichts gespeichert'`. Ein raise dreht
+ * aber die GANZE Transaktion zurück — mitsamt der Zeile, die gerade in
+ * code_versuch geschrieben wurde. Der Zähler wäre für immer auf null
+ * geblieben, die Bremse hätte nie gegriffen, und sie ist bei vier Ziffern
+ * die einzige Verteidigung, die es überhaupt gibt. Der Fehler wäre im
+ * Betrieb nicht aufgefallen: von aussen sieht eine wirkungslose Bremse
+ * genauso aus wie eine wirksame, solange niemand angreift.
+ *
+ * Deshalb meldet der erwartete Fehlschlag über den RÜCKGABEWERT statt über
+ * eine Ausnahme. Dieselbe Überlegung steht bei `eintragen` weiter oben — dort
+ * ist das Zurückdrehen erwünscht (die Marke soll Fehlversuche überleben),
+ * hier ist es genau verkehrt herum.
+ */
+drop function if exists public.code_aufloesen(text);
+
+create or replace function public.code_aufloesen(p_code text)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  -- Grenze als benannte Konstante, wie bei den übrigen Bremsen der Datei.
+  max_fehlversuche constant int := 10;
+  sauber text := btrim(coalesce(p_code, ''));
+  gefunden uuid;
+begin
+  if sauber !~ '^[0-9]{4}$' then
+    return json_build_object('ok', false, 'grund', 'form');
+  end if;
+
+  -- Alte Versuche wegräumen, damit die Tabelle nicht wächst.
+  delete from public.code_versuch where zeitpunkt < now() - interval '1 day';
+
+  if (
+    select count(*) from public.code_versuch
+    where treffer = false and zeitpunkt > now() - interval '1 minute'
+  ) >= max_fehlversuche then
+    -- Hier BEWUSST nichts mitzählen: sonst hielte die Bremse sich selbst am
+    -- Leben, und ein einziger Ausrutscher sperrte dauerhaft.
+    return json_build_object('ok', false, 'grund', 'gebremst');
+  end if;
+
+  select spieler into gefunden from public.uebertrag_code where code = sauber;
+
+  insert into public.code_versuch (treffer) values (gefunden is not null);
+
+  if gefunden is null then
+    -- Ohne Hinweis darauf, ob es den Code gibt. Alles andere wäre eine
+    -- Auskunftsstelle darüber, welche Codes vergeben sind.
+    return json_build_object('ok', false, 'grund', 'unbekannt');
+  end if;
+
+  update public.uebertrag_code set benutzt = now() where code = sauber;
+  return json_build_object('ok', true, 'kennung', gefunden);
+end;
+$$;
+
+revoke all on function public.code_aufloesen(text) from public;
+grant execute on function public.code_aufloesen(text) to anon;
+
+
+-- ============================================================================
 --  Aufräumen (optional)
 --
 --  Mit "ein Eintrag je Name" wächst die Tabelle deutlich langsamer als

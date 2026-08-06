@@ -80,8 +80,12 @@ export class UI {
 
       uebertrag: $('uebertrag'),
       uebertragCode: $('uebertrag-code'),
+      uebertragCodeZeile: $('uebertrag-code-zeile'),
       uebertragForm: $('uebertrag-form'),
       uebertragEingabe: $('uebertrag-eingabe'),
+      uebertragBelegenForm: $('uebertrag-belegen-form'),
+      uebertragBelegen: $('uebertrag-belegen'),
+      btnCodeVorschlag: $('btn-code-vorschlag'),
       uebertragStatus: $('uebertrag-status'),
       btnCodeKopieren: $('btn-code-kopieren'),
 
@@ -109,6 +113,10 @@ export class UI {
       onTonUmschalten: () => {},
       /** (code: string) => void — Fortschritt von einem anderen Gerät holen */
       onCodeLaden: () => {},
+      /** (code: string) => void — vier Ziffern für dieses Gerät belegen */
+      onCodeBelegen: () => {},
+      /** () => void — freien Code vom Server vorschlagen lassen */
+      onCodeVorschlag: () => {},
       // Wird beim ERSTEN echten Klick gerufen. Browser erlauben Ton nur aus
       // einer Nutzereingabe heraus — deshalb hier und nicht beim Laden.
       onErsteEingabe: () => {},
@@ -200,11 +208,34 @@ export class UI {
       this.callbacks.onPickCharacter(kachel.dataset.character);
     });
 
+    /* Nur Ziffern durchlassen, und zwar WÄHREND des Tippens.
+     *
+     * `inputmode="numeric"` bittet das Handy nur um die Zifferntastatur — auf
+     * dem Rechner tippt man trotzdem Buchstaben, und `pattern` meldet sich
+     * erst beim Absenden. Hier fällt alles andere sofort weg, dann steht im
+     * Feld immer genau das, was der Server auch annimmt. */
+    for (const feld of [this.el.uebertragEingabe, this.el.uebertragBelegen]) {
+      feld.addEventListener('input', () => {
+        const nur = feld.value.replace(/\D/g, '').slice(0, 4);
+        if (feld.value !== nur) feld.value = nur;
+      });
+    }
+
     this.el.uebertragForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const code = this.el.uebertragEingabe.value;
       if (code.trim()) this.callbacks.onCodeLaden(code);
     });
+
+    this.el.uebertragBelegenForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const code = this.el.uebertragBelegen.value;
+      if (code.trim()) this.callbacks.onCodeBelegen(code);
+    });
+
+    this.el.btnCodeVorschlag.addEventListener('click', () =>
+      this.callbacks.onCodeVorschlag(),
+    );
 
     this.el.btnCodeKopieren.addEventListener('click', async () => {
       const code = this.el.uebertragCode.textContent;
@@ -686,11 +717,42 @@ export class UI {
    */
   setUebertragCode(code) {
     if (!code) {
-      this.el.uebertrag.hidden = true;
+      this.el.uebertragCodeZeile.hidden = true;
       return;
     }
     this.el.uebertrag.hidden = false;
+    this.el.uebertragCodeZeile.hidden = false;
     this.el.uebertragCode.textContent = code;
+    // Im Eingabefeld stehen lassen: so sieht man beim nächsten Öffnen sofort,
+    // welche vier Ziffern die eigenen sind.
+    this.el.uebertragBelegen.value = code;
+  }
+
+  /**
+   * Blendet den ganzen Abschnitt ein oder aus.
+   *
+   * Getrennt von setUebertragCode(), weil beides verschiedene Fragen sind:
+   * OB es etwas zu übertragen gibt (Server vorhanden) und OB schon ein Code
+   * vergeben wurde. Vorher hing beides an derselben Methode — der Abschnitt
+   * verschwand dadurch, sobald kein Code gesetzt war, und man kam gar nicht
+   * erst an das Feld, um sich einen auszusuchen.
+   */
+  setUebertragVerfuegbar(ja) {
+    this.el.uebertrag.hidden = !ja;
+  }
+
+  /** Sperrt die Eingaben, solange der Server antwortet. */
+  setUebertragBesetzt(besetzt) {
+    for (const el of [
+      this.el.uebertragEingabe,
+      this.el.uebertragBelegen,
+      this.el.btnCodeVorschlag,
+    ]) {
+      el.disabled = besetzt;
+    }
+    for (const form of [this.el.uebertragForm, this.el.uebertragBelegenForm]) {
+      for (const knopf of form.querySelectorAll('button')) knopf.disabled = besetzt;
+    }
   }
 
   setUebertragStatus(text) {

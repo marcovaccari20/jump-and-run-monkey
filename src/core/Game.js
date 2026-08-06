@@ -35,6 +35,9 @@ import {
   SupabaseSpeicher,
   spielerKennung,
   kennungSetzen,
+  codeBelegen,
+  codeAufloesen,
+  codeVorschlag,
 } from '../systems/Fortschritt.js';
 import { Klang } from '../systems/Klang.js';
 import { erzeugeBestenliste } from '../systems/Bestenliste.js';
@@ -241,31 +244,124 @@ export class Game {
       this.ui.setUebertragStatus('Ohne Server gibt es nichts zu übertragen.');
       return;
     }
-    if (!kennungSetzen(this.cfg.fortschritt.spielerKey, code)) {
-      this.ui.setUebertragStatus('Das sieht nicht nach einem Code aus.');
+
+    this.ui.setUebertragBesetzt(true);
+    this.ui.setUebertragStatus('wird geladen…');
+
+    /* ERST AUFLÖSEN, DANN DIE EIGENE KENNUNG ÜBERSCHREIBEN.
+     *
+     * Die vorige Fassung rief `kennungSetzen(code)` als ERSTES und lud
+     * danach. Wer einen gültig geformten, aber unbekannten Code eintippte,
+     * hatte damit schon seine eigene Kennung überschrieben — die Meldung
+     * "Zu diesem Code ist nichts gespeichert" kam zu spät, der Zugang zum
+     * eigenen Serverstand war weg. Jetzt wird nichts angefasst, bevor der
+     * Server die Kennung wirklich herausgegeben hat. */
+    const auf = await codeAufloesen(b, code);
+    if (!auf.ok) {
+      this.ui.setUebertragBesetzt(false);
+      this.ui.setUebertragStatus(auf.meldung);
       return;
     }
 
-    this.ui.setUebertragStatus('wird geladen…');
-    const neueId = spielerKennung(this.cfg.fortschritt.spielerKey);
-    const speicher = new SupabaseSpeicher(b, neueId);
+    const speicher = new SupabaseSpeicher(b, auf.kennung);
     const stand = await speicher.laden();
-
     if (!stand) {
+      this.ui.setUebertragBesetzt(false);
       this.ui.setUebertragStatus('Zu diesem Code ist nichts gespeichert.');
       return;
     }
 
-    this.spielerId = neueId;
+    // Jetzt erst umschalten — ab hier ist der Wechsel vollzogen.
+    kennungSetzen(this.cfg.fortschritt.spielerKey, auf.kennung);
+    this.spielerId = auf.kennung;
     this.fortschritt.fern = speicher;
     this.fortschritt.muenzen = stand.muenzen;
     this.fortschritt.frei = new Set([...stand.frei, ...this.cfg.fortschritt.immerFrei]);
     this.fortschritt._sichern();
 
-    this.ui.setUebertragCode(neueId);
+    this.ui.setUebertragBesetzt(false);
+    this.ui.setUebertragCode(String(code).trim());
     this.ui.setUebertragStatus(`Übernommen: ${stand.muenzen} Münzen.`);
     // Die Kacheln zeigen sonst weiter die alten Schlösser.
     this._openCharacters();
+  }
+
+  /**
+   * Vier Ziffern für dieses Gerät belegen.
+   *
+   * Ein Code wird ERST HIER vergeben, nicht schon beim ersten Spielstart.
+   * Es gibt nur zehntausend davon; wer nie das Gerät wechselt, soll keinen
+   * verbrauchen.
+   */
+  async _codeBelegen(code) {
+    const b = this.cfg.bestenliste;
+    if (!b?.url || !b?.schluessel) {
+      this.ui.setUebertragStatus('Ohne Server gibt es nichts zu übertragen.');
+      return;
+    }
+    if (!this.spielerId) {
+      this.ui.setUebertragStatus('Noch keine Kennung — bitte einmal spielen.');
+      return;
+    }
+
+    this.ui.setUebertragBesetzt(true);
+    this.ui.setUebertragStatus('wird eingetragen…');
+
+    const erg = await codeBelegen(b, this.spielerId, code);
+    this.ui.setUebertragBesetzt(false);
+
+    if (!erg.ok) {
+      this.ui.setUebertragStatus(erg.meldung);
+      return;
+    }
+
+    /* Gleich einmal sichern, damit hinter dem Code auch etwas steht.
+     *
+     * Der Serverstand entsteht sonst erst beim ersten Münzgewinn. Wer sich
+     * einen Code aussucht, bevor er je eine Münze eingesammelt hat, und ihn
+     * sofort auf dem zweiten Gerät eingibt, bekäme "Zu diesem Code ist
+     * nichts gespeichert" — und würde völlig zu Recht denken, das Belegen
+     * habe nicht funktioniert. */
+    this.fortschritt._sichern();
+
+    this.ui.setUebertragCode(erg.code);
+    this.ui.setUebertragStatus(`Code ${erg.code} gehört jetzt dir.`);
+  }
+
+  /**
+   * Einen freien Code holen — und zwar verbindlich.
+   *
+   * Der Server sucht und belegt in einem Zug. Ein blosser Vorschlag hätte
+   * dem Spieler "ist frei" gesagt und beim anschliessenden Bestätigen
+   * "schon vergeben" — bei zehntausend Plätzen kein Randfall.
+   */
+  async _codeVorschlag() {
+    const b = this.cfg.bestenliste;
+    if (!b?.url || !b?.schluessel) {
+      this.ui.setUebertragStatus('Ohne Server gibt es nichts zu übertragen.');
+      return;
+    }
+    if (!this.spielerId) {
+      this.ui.setUebertragStatus('Noch keine Kennung — bitte einmal spielen.');
+      return;
+    }
+
+    this.ui.setUebertragBesetzt(true);
+    this.ui.setUebertragStatus('wird geholt…');
+    const erg = await codeVorschlag(b, this.spielerId);
+    this.ui.setUebertragBesetzt(false);
+
+    if (!erg.ok) {
+      this.ui.setUebertragStatus(erg.meldung);
+      return;
+    }
+
+    // Gleich sichern, damit hinter dem Code auch etwas steht — sonst meldet
+    // das zweite Gerät "nichts gespeichert" (siehe _codeBelegen).
+    this.fortschritt._sichern();
+
+    this.ui.setUebertragCode(erg.code);
+    this.ui.setUebertragStatus(`Code ${erg.code} gehört jetzt dir.`);
   }
 
   /* ================================================================== Laden */
@@ -665,8 +761,16 @@ export class Game {
     this.ui.callbacks.onErsteEingabe = () => this.klang.aufwecken();
     this.ui.callbacks.onTonUmschalten = () => this._tonUmschalten();
     this.ui.callbacks.onCodeLaden = (code) => this._codeLaden(code);
-    // Der Code steht nur, wenn es auch etwas zu übertragen gibt.
-    this.ui.setUebertragCode(this.spielerId ?? null);
+    this.ui.callbacks.onCodeBelegen = (code) => this._codeBelegen(code);
+    this.ui.callbacks.onCodeVorschlag = () => this._codeVorschlag();
+
+    /* Der Bereich ist nur sinnvoll, wenn es einen Server gibt. Angezeigt wird
+     * ANFANGS KEIN CODE: einen zu vergeben kostet einen von zehntausend
+     * Plätzen, und das soll nur passieren, wenn jemand wirklich übertragen
+     * will. Wer schon einen hat, holt ihn sich über "Code merken" zurück —
+     * dieselbe Kennung bekommt denselben Code wieder. */
+    const hatServer = Boolean(this.cfg.bestenliste?.url && this.cfg.bestenliste?.schluessel);
+    this.ui.setUebertragVerfuegbar(hatServer && Boolean(this.spielerId));
     // Der Schalter muss zeigen, was gespeichert ist — sonst steht dort nach
     // einem Neuladen "Ton an", obwohl er ausgeschaltet bleibt.
     this.ui.setTon(this.klang.stumm);
