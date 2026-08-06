@@ -22,6 +22,7 @@ export class InputHandler {
     this._pausePressed = false;
     this._confirmPressed = false;
     this._debugPressed = false;
+    this._mutePressed = false;
     this._anyPressed = false;
 
     // Umgekehrte Zuordnung code -> aktion, damit keydown O(1) ist.
@@ -82,6 +83,7 @@ export class InputHandler {
       if (action === 'pause') this._pausePressed = true;
       else if (action === 'confirm') this._confirmPressed = true;
       else if (action === 'debug') this._debugPressed = true;
+      else if (action === 'mute') this._mutePressed = true;
 
       this._down.add(action);
     };
@@ -233,12 +235,20 @@ export class InputHandler {
     if (this._down.has('down')) y -= 1;
     if (this._down.has('up')) y += 1;
 
-    // Diagonalen nicht schneller machen als gerade Richtungen.
-    if (x !== 0 && y !== 0) {
-      const inv = Math.SQRT1_2;
-      x *= inv;
-      y *= inv;
-    }
+    /* Diagonalen dämpfen — aber NUR SENKRECHT.
+     *
+     * Vorher wurden beide Achsen mit 1/√2 gestreckt, damit man schräg nicht
+     * schneller läuft als gerade. Sauber gedacht, im Ergebnis aber eine
+     * versteckte Bestrafung: `W` zahlt über climbAssist direkt auf den
+     * Punktestand ein (an der ersten Wand +52 %), also hält es praktisch
+     * jeder Spieler dauerhaft. Wer das tut, wich seitwärts nur noch mit 5.94
+     * statt 8.4 Einheiten/s aus — ohne dass irgendwo stünde, warum.
+     *
+     * Die x-Achse ist die einzige, an der man stirbt. Sie darf nicht davon
+     * abhängen, ob gleichzeitig geklettert wird. Gedämpft wird deshalb nur y:
+     * schräg klettert man langsamer, ausweichen kann man immer voll.
+     */
+    if (x !== 0 && y !== 0) y *= Math.SQRT1_2;
 
     // Touch überschreibt die Tastatur, sobald der Stick ausgelenkt ist.
     if (this._touch.active) {
@@ -246,7 +256,9 @@ export class InputHandler {
       if (len > this.cfg.touch.deadZone) {
         // Totbereich herausrechnen, damit kleine Auslenkungen sauber bei 0 starten.
         const scaled = (len - this.cfg.touch.deadZone) / (1 - this.cfg.touch.deadZone);
-        x = (this._touch.x / len) * scaled;
+        // Gleiche Regel wie oben: seitwärts voll, senkrecht anteilig. Sonst
+        // wäre Ausweichen am Joystick schwächer als auf der Tastatur.
+        x = Math.max(-1, Math.min(1, (this._touch.x / len) * scaled * Math.SQRT2));
         y = (this._touch.y / len) * scaled;
       } else {
         x = 0;
@@ -274,6 +286,12 @@ export class InputHandler {
   consumeDebug() {
     const v = this._debugPressed;
     this._debugPressed = false;
+    return v;
+  }
+
+  consumeMute() {
+    const v = this._mutePressed;
+    this._mutePressed = false;
     return v;
   }
 

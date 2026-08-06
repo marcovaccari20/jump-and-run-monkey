@@ -65,4 +65,40 @@ export class AssetLoader {
 
     return { gltf, textures };
   }
+
+  /**
+   * Lädt viele kleine Texturen GLEICHZEITIG.
+   *
+   * loadAll() arbeitet die Liste bewusst nacheinander ab — bei den grossen
+   * Wandtexturen ist das richtig, sonst kämpfen alle um dieselbe Leitung und
+   * der Fortschrittsbalken springt. Die Objektbilder sind aber knapp 30 Stück
+   * à rund 10 KB: nacheinander zahlt man dreissigmal die Latenz und lädt
+   * dabei so viel wie bei einem einzigen Hintergrund.
+   *
+   * @param {string[]} urls
+   * @param {string} label
+   * @returns {Promise<Map<string, import('three').Texture>>} nach ORIGINALPFAD
+   */
+  async loadTexturesParallel(urls, label = 'Objekte werden geladen…') {
+    const unique = [...new Set(urls)];
+    const textures = new Map();
+    if (unique.length === 0) return textures;
+
+    let done = 0;
+    this._report(0, unique.length, label);
+
+    await Promise.all(
+      unique.map(async (path) => {
+        const tex = await this.textureLoader.loadAsync(assetUrl(path));
+        tex.colorSpace = SRGBColorSpace;
+        tex.wrapS = ClampToEdgeWrapping;
+        tex.wrapT = ClampToEdgeWrapping;
+        tex.anisotropy = 4;
+        textures.set(path, tex);
+        this._report(++done, unique.length, label);
+      }),
+    );
+
+    return textures;
+  }
 }

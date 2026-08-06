@@ -9,8 +9,12 @@
     "convert:model": "node scripts/convert-model.mjs",
     "verify:model": "node scripts/verify-model.mjs",
     "prep:art": "node scripts/prepare-art.mjs",
+    "prep:hazards": "node scripts/prepare-hazards.mjs",
     "prep:chars": "node scripts/prepare-characters.mjs",
-    "video:frames": "node scripts/video-to-frames.mjs"
+    "video:frames": "node scripts/video-to-frames.mjs",
+    "test:fair": "node scripts/fairness.mjs",
+    "balance": "node scripts/balance.mjs",
+    "paket": "node scripts/package-portal.mjs"
   },
   "type": "module",
   "dependencies": {

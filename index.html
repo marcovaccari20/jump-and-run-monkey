@@ -16,6 +16,30 @@
 
       <!-- Alle Overlays liegen über dem Canvas -->
       <div id="ui">
+        <!-- Ton an/aus. Liegt bewusst AUSSERHALB der Screens: er muss im
+             Menü, im Spiel, in der Pause und beim Game Over erreichbar sein.
+             Auf dem Handy ist er der einzige Weg — die Taste M gibt es dort
+             nicht, und die Portale laufen überwiegend mobil. -->
+        <!-- `hidden`, bis das Spiel geladen ist: der Knopf ist bis dahin
+             wirkungslos (sein Rückruf wird erst am Ende des Ladens
+             eingehängt), und ein Knopf, der auf nichts reagiert, ist
+             schlimmer als keiner. UI.setTon() blendet ihn ein.
+
+             KEIN aria-pressed: die Beschriftung sagt schon, was passiert
+             ("Ton einschalten"). Beides zusammen liest die Vorlesehilfe als
+             "Ton einschalten, gedrückt" — ein Widerspruch. Der Zustand steht
+             im data-Attribut, das nur die Darstellung braucht. -->
+        <button
+          id="btn-ton"
+          class="ton-schalter"
+          type="button"
+          data-stumm="nein"
+          aria-label="Ton ausschalten"
+          hidden
+        >
+          <span id="ton-symbol" aria-hidden="true">🔊</span>
+        </button>
+
         <!-- ------------------------------------------------ Ladebildschirm -->
         <section id="screen-loading" class="screen screen--center is-visible">
           <h1 class="logo">JUNGLE<span>CLIMBER</span></h1>
@@ -54,15 +78,63 @@
              pointer-events:none, erst .screen--center holt es zurück.
              Ohne die Klasse wären die Kacheln nicht anklickbar. -->
         <section id="screen-characters" class="screen screen--center screen--dim">
-          <h2 class="headline">Charaktere</h2>
-          <p class="tagline">Wähle deinen Affen — die Wahl wird gemerkt.</p>
+          <h2 class="headline">Dschungel-Camp</h2>
+          <p class="tagline">Affe wählen, Fell wählen, los.</p>
+
+          <!-- Gesamtbestand. Steht bewusst hier oben: hier wird ausgegeben. -->
+          <p class="besitz">
+            <span class="besitz__icon"></span>
+            <span id="besitz-wert">0</span>
+            <span class="besitz__label">Münzen</span>
+          </p>
 
           <!-- Die Kacheln erzeugt UI.showCharacters() aus CONFIG.characters. -->
           <div id="character-list" class="chars"></div>
 
+          <!-- Fellfarben. Erzeugt UI.showSkins() aus CONFIG.skins. Die
+               Vorschau ist dasselbe Bild wie oben, nur mit demselben
+               CSS-Filter — man sieht also exakt, was man bekommt. -->
+          <h3 class="panel__title panel__title--spaced">Fellfarbe</h3>
+          <div id="skin-list" class="skins"></div>
+
           <p id="character-error" class="char-error" role="status" aria-live="polite"></p>
 
-          <button id="btn-characters-back" class="btn" type="button">Zurück</button>
+          <div class="button-row">
+            <button id="btn-characters-go" class="btn btn--primary" type="button">Los!</button>
+            <button id="btn-characters-back" class="btn" type="button">Zurück</button>
+          </div>
+
+          <!-- Fortschritt mitnehmen.
+               Ohne das brächte der Serverspeicher nichts: die Kennung liegt im
+               Browser, also verliert man mit gelöschten Browserdaten trotzdem
+               alles. Erst der ablesbare Code macht ihn zu echtem Gewinn.
+               Bleibt versteckt, solange kein Server konfiguriert ist, und auf
+               CrazyGames auch — dort hängt der Stand am Konto. -->
+          <details id="uebertrag" class="uebertrag" hidden>
+            <summary>Fortschritt auf ein anderes Gerät mitnehmen</summary>
+            <p class="uebertrag__hinweis">
+              Dein Code. Notiere ihn — er ist der einzige Weg zurück zu deinen
+              Münzen, wenn du Browserdaten löschst oder das Gerät wechselst.
+            </p>
+            <code id="uebertrag-code" class="uebertrag__code">—</code>
+            <button id="btn-code-kopieren" class="btn btn--klein" type="button">Kopieren</button>
+
+            <p class="uebertrag__hinweis">Code von einem anderen Gerät eingeben:</p>
+            <form id="uebertrag-form" class="uebertrag__form">
+              <input
+                id="uebertrag-eingabe"
+                class="uebertrag__eingabe"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Code einfügen"
+                aria-label="Wiederherstellungscode"
+              />
+              <button class="btn btn--klein" type="submit">Laden</button>
+            </form>
+            <p id="uebertrag-status" class="uebertrag__status" role="status" aria-live="polite"></p>
+          </details>
         </section>
 
         <!-- ---------------------------------------------------------- HUD -->
@@ -75,7 +147,20 @@
             <div class="hud__score">
               <span id="hud-score" class="hud__score-value">0</span>
               <span class="hud__score-unit">m</span>
+              <!-- Münzen DIESES Laufs. Der Gesamtbestand steht im Menü —
+                   hier oben zählt nur, was der Versuch gerade einbringt. -->
+              <span class="hud__coins" id="hud-coins">
+                <span class="hud__coin-icon"></span><span id="hud-coin-value">0</span>
+              </span>
             </div>
+          </div>
+
+          <!-- Was als Nächstes kommt und wie weit es noch ist. Ohne das ist
+               der Wandwechsel eine Überraschung; mit ihm ein Ziel. -->
+          <div class="naechstes" id="naechstes" aria-live="polite">
+            <div class="naechstes__bild" id="naechstes-bild"></div>
+            <div class="naechstes__pfeil">▲</div>
+            <div class="naechstes__meter" id="naechstes-meter">—</div>
           </div>
           <div class="hud__toast" id="hud-toast"></div>
           <div class="hud__stats" id="hud-stats"></div>
@@ -88,6 +173,44 @@
             Weiterspielen
           </button>
           <button id="btn-pause-menu" class="btn" type="button">Zum Hauptmenü</button>
+        </section>
+
+        <!-- ------------------------------------------- Weiterspielen? -----
+             Kommt VOR dem Game-Over-Screen und nur, solange ein zweites Leben
+             übrig ist. Grund für die Zweiteilung: auf dem Game-Over-Screen
+             trägt man sich in die Bestenliste ein. Stünde das Angebot dort
+             daneben, könnte man erst eintragen und dann weiterklettern — und
+             stünde am Ende zweimal in der Liste. -->
+        <section id="screen-continue" class="screen screen--center screen--dim">
+          <h2 class="headline">Weiterklettern?</h2>
+
+          <p class="result">
+            <span id="continue-score">0</span><span class="result__unit">m</span>
+          </p>
+
+          <p class="hint">
+            Ein Spot, und es geht an derselben Stelle weiter —
+            mit ein paar Sekunden Schonzeit.
+          </p>
+
+          <div class="button-row">
+            <button id="btn-watch-ad" class="btn btn--primary" type="button">
+              Werbung ansehen
+            </button>
+            <button id="btn-decline-ad" class="btn" type="button">Nein danke</button>
+          </div>
+        </section>
+
+        <!-- ---------------------------------------------------- Werbespot -->
+        <section id="screen-ad" class="screen screen--center screen--dim">
+          <p class="ad-badge">Werbung</p>
+          <div class="ad-box">
+            <p class="ad-box__count" id="ad-countdown">5</p>
+            <p class="ad-box__note">Platzhalter — hier läuft später der Spot.</p>
+          </div>
+          <div class="button-row">
+            <button id="btn-cancel-ad" class="btn" type="button">Abbrechen</button>
+          </div>
         </section>
 
         <!-- ---------------------------------------------------- Game Over -->
@@ -117,6 +240,15 @@
           <div class="panel">
             <h2 class="panel__title">Bestenliste</h2>
             <ol id="gameover-highscores" class="highscores"></ol>
+          </div>
+
+          <!-- Weltweit. Bleibt verborgen, solange keine Zugangsdaten in
+               CONFIG.bestenliste stehen — dann gibt es schlicht nichts
+               Weltweites zu zeigen. -->
+          <div class="panel panel--welt" id="welt-panel">
+            <h2 class="panel__title">Weltweit</h2>
+            <ol id="welt-liste" class="highscores"></ol>
+            <p class="welt__status" id="welt-status"></p>
           </div>
 
           <div class="button-row">

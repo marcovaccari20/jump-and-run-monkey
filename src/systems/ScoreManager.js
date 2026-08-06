@@ -51,6 +51,8 @@ export class ScoreManager {
               name: String(e.name).slice(0, this.cfg.maxNameLength),
               score: Math.max(0, Math.floor(e.score)),
               date: typeof e.date === 'string' ? e.date : '',
+              // Ältere Einträge kennen das Feld nicht — dann eben false.
+              ad: e.ad === true,
             }));
         }
       }
@@ -79,9 +81,15 @@ export class ScoreManager {
 
   /**
    * Trägt einen Score ein und schreibt die Liste zurück.
+   *
+   * @param {string} name
+   * @param {number} score
+   * @param {boolean} [mitWerbung] Lauf wurde per Werbung fortgesetzt. Der
+   *   Punktestand IST die Höhe — ohne diese Kennzeichnung stünde ein Lauf
+   *   mit zweitem Leben ununterscheidbar neben einem ohne.
    * @returns {number} 0-basierter Rang, oder -1 wenn nicht qualifiziert
    */
-  submit(name, score) {
+  submit(name, score, mitWerbung = false) {
     if (!this.qualifies(score)) return -1;
 
     const clean =
@@ -89,7 +97,12 @@ export class ScoreManager {
       this.cfg.defaultName;
 
     const list = this.loadHighscores().slice();
-    const entry = { name: clean, score, date: new Date().toISOString().slice(0, 10) };
+    const entry = {
+      name: clean,
+      score,
+      date: new Date().toISOString().slice(0, 10),
+      ad: mitWerbung === true,
+    };
     list.push(entry);
     list.sort((a, b) => b.score - a.score);
 

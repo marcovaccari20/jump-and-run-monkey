@@ -21,12 +21,26 @@ import { AssetLoader } from './AssetLoader.js';
 import { AnimationController } from '../animation/AnimationController.js';
 import { Player } from '../entities/Player.js';
 import { SpritePlayer } from '../entities/SpritePlayer.js';
+import { hazardSpriteUrls } from '../entities/Rock.js';
 import { PlantWall } from '../world/PlantWall.js';
 import { DifficultyCurve } from '../systems/DifficultyCurve.js';
 import { Spawner } from '../systems/Spawner.js';
 import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { ScoreManager } from '../systems/ScoreManager.js';
 import { CharacterStore } from '../systems/CharacterStore.js';
+import { SkinStore } from '../systems/SkinStore.js';
+import {
+  Fortschritt,
+  LokalerSpeicher,
+  SupabaseSpeicher,
+  spielerKennung,
+  kennungSetzen,
+} from '../systems/Fortschritt.js';
+import { Klang } from '../systems/Klang.js';
+import { erzeugeBestenliste } from '../systems/Bestenliste.js';
+import { createAdService } from '../systems/AdService.js';
+import { erzeugePortal } from '../systems/Portal.js';
+import { recolorFrames } from './recolor.js';
 import { InputHandler } from '../input/InputHandler.js';
 import { DebugOverlay } from '../ui/DebugOverlay.js';
 import { UI } from '../ui/UI.js';
@@ -44,7 +58,44 @@ export class Game {
     this.input = new InputHandler(CONFIG.input, this.ui.touchHost);
     this.score = new ScoreManager(CONFIG.score);
     this.characters = new CharacterStore(CONFIG.characters);
+    this.skins = new SkinStore(CONFIG.skins);
+    // Münzen und Freigeschaltetes. Liegt hinter einer Schnittstelle, damit
+    // ein Serverkonto später kein Umbau wird (siehe Fortschritt.js).
+    /* Ton. Der AudioContext entsteht ERST beim ersten Klick — Browser
+     * verbieten Ton ohne Nutzereingabe, und ein zu früh gebauter Kontext
+     * bleibt dauerhaft stumm, ohne einen Fehler zu melden. */
+    /* Weltweite Bestenliste. Ohne Zugangsdaten in CONFIG.bestenliste ist es
+     * die lokale Liste — dieselbe Schnittstelle, nur ein anderer Ort. */
+    this.bestenliste = erzeugeBestenliste(CONFIG.bestenliste);
+    // Zählt jede Weltlisten-Anfrage mit. Eine Antwort, die nach dem nächsten
+    // Lauf eintrudelt, darf den neuen Bildschirm nicht mehr beschriften.
+    this._eintragNummer = 0;
+    // Dasselbe für die Lauf-Marke der Weltliste.
+    this._laufNummer = 0;
+    this._weltLauf = null;
+    /** Zuletzt eingetragener Name + Platz, damit die Liste ihn hervorhebt. */
+    this._eigenerEintrag = null;
+
+    this.klang = new Klang(CONFIG.klang);
+    this._tupferTimer = 0;
+
+    this.fortschritt = new Fortschritt(CONFIG.fortschritt);
+    /* MUSS vor dem ersten loadId() stehen: die Stores merken sich ihr
+     * Ergebnis, ein zu spät gesetzter Prüfer käme nie zum Zug. */
+    this.characters.istFrei = (id) => this.fortschritt.istFrei(id);
+    this.skins.istFrei = (id) => this.fortschritt.istFrei(id);
+    this.fortschritt.onAendern = (m) => this.ui.setMuenzenGesamt(m);
+    // Im laufenden Lauf gesammelt — getrennt vom Gesamtbestand, damit man
+    // sieht, was DIESER Versuch gebracht hat.
+    this._muenzenImLauf = 0;
+    // Umgefärbte Texturen gehören der Spielfigur und müssen beim nächsten
+    // Wechsel wieder freigegeben werden — die Originale dagegen NICHT, die
+    // liegen im Frame-Cache und werden weiterbenutzt.
+    this._eigeneTexturen = [];
     this.difficulty = new DifficultyCurve(CONFIG.difficulty);
+    // Die Steinmischung folgt derselben Zeitachse wie die Difficulty-Kurven,
+    // steht aber bei den Steinen — deshalb hier zusammengeführt.
+    this.difficulty.setRockMix(CONFIG.rock.mix);
     this.states = new StateMachine(GameState.MENU);
 
     // Geladene Kletter-Frames je Charakter. Beim Start wird nur der gewählte
@@ -76,7 +127,17 @@ export class Game {
     this._collisionHandlers = {
       onRock: (rock) => this._onRockHit(rock),
       onBanana: (banana) => this._onBananaHit(banana),
+      onCoin: (coin) => this._onCoinHit(coin),
     };
+
+    // Zweites Leben per Werbung. `ads` ist austauschbar (siehe AdService.js);
+    // das Spiel kennt davon nur show() und isReady().
+    // Portal (CrazyGames / GameMonetize). Wird in load() initialisiert;
+    // bis dahin steht der Platzhalter, damit nichts auf ein fremdes SDK wartet.
+    this.portal = erzeugePortal(CONFIG.ad);
+    this.ads = createAdService(CONFIG.ad);
+    this._adsUsed = 0;
+    this._adRunning = false;
 
     this._deathTimer = 0;
     this._lastTime = 0;
@@ -131,9 +192,93 @@ export class Game {
     this.scene.add(fill);
   }
 
+  /**
+   * Wählt den zweiten Speicher für Münzen und Freigeschaltetes.
+   *
+   * Erst NACH `portal.init()` möglich: vorher steht nicht fest, wo gespielt
+   * wird. Die Reihenfolge ist eine Rangfolge, keine Geschmacksfrage:
+   *
+   *  1. CrazyGames — hängt am Konto des Spielers. Wer sich dort anmeldet,
+   *     findet seine Münzen auf jedem Gerät wieder, ganz ohne Code.
+   *  2. Supabase — für die eigene Website. Gebunden an eine selbstvergebene
+   *     Kennung, die zugleich der Wiederherstellungscode ist.
+   *  3. Nichts weiter — dann bleibt es beim Browserspeicher, und das Spiel
+   *     funktioniert vollständig, nur eben auf diesem Gerät.
+   */
+  _fortschrittSpeicherWaehlen() {
+    const portalSpeicher = this.portal.datenSpeicher?.();
+    if (portalSpeicher) {
+      this.fortschritt.fernSetzen(
+        new LokalerSpeicher(this.cfg.fortschritt.storageKey, portalSpeicher),
+      );
+      console.info('[Fortschritt] Portalspeicher aktiv — hängt am Spielerkonto.');
+      return;
+    }
+
+    const b = this.cfg.bestenliste;
+    if (b?.url && b?.schluessel) {
+      this.spielerId = spielerKennung(this.cfg.fortschritt.spielerKey);
+      this.fortschritt.fernSetzen(new SupabaseSpeicher(b, this.spielerId));
+      console.info('[Fortschritt] Supabase aktiv.');
+      return;
+    }
+
+    console.info('[Fortschritt] Nur Browserspeicher — kein Portal, keine Datenbank.');
+  }
+
+  /**
+   * Fortschritt von einem anderen Gerät holen.
+   *
+   * BEWUSST OHNE ZUSAMMENFÜHREN: hier wird der Stand des eingegebenen Codes
+   * geladen und der bisherige ersetzt. Würde ich wie beim normalen Start
+   * zusammenführen ("mehr Münzen gewinnt"), bekäme man beim Übertragen die
+   * Summe aus zwei Ständen — und das ist ein Weg, sich Münzen zu verdoppeln,
+   * ohne zu spielen.
+   */
+  async _codeLaden(code) {
+    const b = this.cfg.bestenliste;
+    if (!b?.url || !b?.schluessel) {
+      this.ui.setUebertragStatus('Ohne Server gibt es nichts zu übertragen.');
+      return;
+    }
+    if (!kennungSetzen(this.cfg.fortschritt.spielerKey, code)) {
+      this.ui.setUebertragStatus('Das sieht nicht nach einem Code aus.');
+      return;
+    }
+
+    this.ui.setUebertragStatus('wird geladen…');
+    const neueId = spielerKennung(this.cfg.fortschritt.spielerKey);
+    const speicher = new SupabaseSpeicher(b, neueId);
+    const stand = await speicher.laden();
+
+    if (!stand) {
+      this.ui.setUebertragStatus('Zu diesem Code ist nichts gespeichert.');
+      return;
+    }
+
+    this.spielerId = neueId;
+    this.fortschritt.fern = speicher;
+    this.fortschritt.muenzen = stand.muenzen;
+    this.fortschritt.frei = new Set([...stand.frei, ...this.cfg.fortschritt.immerFrei]);
+    this.fortschritt._sichern();
+
+    this.ui.setUebertragCode(neueId);
+    this.ui.setUebertragStatus(`Übernommen: ${stand.muenzen} Münzen.`);
+    // Die Kacheln zeigen sonst weiter die alten Schlösser.
+    this._openCharacters();
+  }
+
   /* ================================================================== Laden */
 
   async load() {
+    /* Portal ZUERST: es will wissen, dass geladen wird, und der Spot-Anbieter
+     * muss stehen, bevor der erste Game-Over-Screen kommen kann. Schlägt es
+     * fehl, läuft alles Weitere unverändert weiter — siehe Portal.js. */
+    await this.portal.init();
+    this.portal.ladenStart();
+    this.ads = createAdService(this.cfg.ad, this.portal);
+    this._fortschrittSpeicherWaehlen();
+
     const loader = new AssetLoader();
     loader.onProgress = (fraction, label) => this.ui.setProgress(fraction, label);
     this._loader = loader; // bleibt für das Nachladen weiterer Affen erhalten
@@ -192,13 +337,29 @@ export class Game {
       this.scene.add(this.player.object3D);
     }
 
+    /* --- Fallende Objekte ---------------------------------------------- *
+     * Erst NACH den grossen Texturen und parallel: knapp 30 kleine Bilder,
+     * die nacheinander nur Latenz kosten würden. */
+    const hazardTexturen = await loader.loadTexturesParallel([
+      ...hazardSpriteUrls(this.cfg.rock),
+      this.cfg.coin.bild,
+    ]);
+
     /* --- Spawner + Debug ----------------------------------------------- */
-    this.spawner = new Spawner(this.scene, this.cfg, this.difficulty, this.worldView);
+    this.spawner = new Spawner(
+      this.scene,
+      this.cfg,
+      this.difficulty,
+      this.worldView,
+      hazardTexturen,
+      hazardTexturen.get(this.cfg.coin.bild) ?? null,
+    );
     // Der Spawner entsteht NACH der Spielfigur — _buildPlayer konnte sein
     // Bananen-Flag oben also noch nicht setzen. Hier nachholen, sonst fielen
     // für den weissen Affen beim ersten Laden doch Bananen (nur nach einem
     // Wechsel wäre es richtig gewesen).
     if (this.character) this.spawner.bananasEnabled = this.character.bananas;
+    this.portal.ladenFertig();
     this.debug = new DebugOverlay(
       this.scene,
       this.cfg.debug,
@@ -210,14 +371,32 @@ export class Game {
 
     window.addEventListener('resize', this._onResize);
     document.addEventListener('visibilitychange', () => {
-      // Im Hintergrund automatisch pausieren — sonst läuft man beim
-      // Zurückkommen in einen riesigen dt und stirbt sofort.
-      if (document.hidden && this.states.is(GameState.PLAYING)) this._pause();
+      if (document.hidden) {
+        // Im Hintergrund automatisch pausieren — sonst läuft man beim
+        // Zurückkommen in einen riesigen dt und stirbt sofort.
+        if (this.states.is(GameState.PLAYING)) this._pause();
+        /* Ton IMMER stilllegen, nicht nur im laufenden Spiel. Vorher dudelte
+         * die Atmosphäre im Menü und auf dem Game-Over-Bildschirm in einem
+         * versteckten Tab munter weiter — auf einer Portalseite mit mehreren
+         * offenen Spielen ist das ein berechtigter Beschwerdegrund. */
+        this.klang.anhalten();
+      } else if (!this.states.is(GameState.PAUSED) && !this._adRunning) {
+        /* `_adRunning` ist der zweite Wächter und nicht überflüssig: während
+         * eines Spots ist der Zustand GAME_OVER, nicht PAUSED. Ohne ihn legte
+         * die Rückkehr aus einem anderen Tab den Spielton über die Werbung. */
+        this.klang.fortsetzen();
+      }
     });
 
     this._onResize();
 
     this.anim.setMode('menu');
+    /* Das Startmenü bekommt seine Atmosphäre auf demselben Weg wie jedes
+     * spätere Menü. Nötig, weil der Zustandsautomat beim Anlegen KEIN
+     * onEnter feuert — das erste Menü ist der einzige Bildschirm, den kein
+     * Übergang erreicht, und blieb deshalb als einziger stumm. `atmo()` merkt
+     * sich den Wunsch und löst ihn bei der ersten Eingabe ein. */
+    this.klang.atmo('gruen');
     this.ui.showMenu(this.score.loadHighscores());
     this.ui.setStats(this.cfg.debug.showStats ? '' : null);
 
@@ -252,6 +431,19 @@ export class Game {
       alt.dispose?.();
     }
 
+    // Texturen des VORHERIGEN Skins freigeben. Nur die selbst erzeugten —
+    // die Originale liegen im Frame-Cache und werden weiterverwendet.
+    for (const t of this._eigeneTexturen) t.dispose();
+    this._eigeneTexturen = [];
+
+    const skin = this.skins.load();
+    const { textures: frames, erzeugt } = recolorFrames(
+      this._frameCache.get(char.id),
+      skin?.filter,
+    );
+    if (erzeugt) this._eigeneTexturen = frames;
+    this.skin = skin;
+
     const playerCfg = {
       ...this.cfg.player,
       ...char.player,
@@ -271,15 +463,13 @@ export class Game {
         // Der Versatz ist ein ABSOLUTES Weltmass. Beim halb so grossen Affen
         // bliebe der Schatten sonst gleich gross und wirkte doppelt so schwer.
         offset: [ol.offset[0] * char.artScale, ol.offset[1] * char.artScale],
+        // Manche Fellfarben brauchen einen kräftigeren Umriss, um sich von der
+        // Wand abzuheben (grün vor grün, schwarz vor dunklem Laub).
+        ...(this.skin?.outline ?? {}),
       },
     };
 
-    this.player = new SpritePlayer(
-      this._frameCache.get(char.id),
-      playerCfg,
-      reviveCfg,
-      spriteCfg,
-    );
+    this.player = new SpritePlayer(frames, playerCfg, reviveCfg, spriteCfg);
     this.anim = this.player.animator;
     this.scene.add(this.player.object3D);
     this.character = char;
@@ -289,7 +479,15 @@ export class Game {
     this._updateWorldBounds();
 
     // Der weisse Affe bekommt gar keine Bananen: weder Spawn noch Anzeige.
-    if (this.spawner) this.spawner.bananasEnabled = char.bananas;
+    if (this.spawner) {
+      this.spawner.bananasEnabled = char.bananas;
+      // Die Lücken-Garantie hängt an den Massen des Affen: sein Trefferradius
+      // bestimmt, wie breit die Bahn frei bleiben muss, seine Geschwindigkeit,
+      // wie schnell sie sich bewegen darf. Ohne diese Zeile behielte der
+      // langsame orange Affe die Bahn des schnellen weissen — und käme ihr
+      // nicht hinterher.
+      this.spawner.setSpieler(this.player.cfg);
+    }
     this.ui.setReviveVisible(char.bananas && char.maxStored > 0);
   }
 
@@ -320,11 +518,34 @@ export class Game {
    * Nach dem await zählt der Wechsel nur noch, wenn er immer noch der
    * aktuellste ist UND die Auswahl überhaupt noch offen steht.
    */
+  /**
+   * Fellfarbe anlegen.
+   *
+   * Anders als der Charakterwechsel ist das SYNCHRON — es wird nichts
+   * nachgeladen, die vorhandenen Frames werden nur umgefärbt. Der
+   * Auswahl-Screen bleibt deshalb offen: man kann Farben durchprobieren und
+   * sieht das Ergebnis sofort auf den Kacheln.
+   */
+  _pickSkin(id) {
+    if (!this.skins.save(id)) return;
+    if (this.character) this._buildPlayer(this.character);
+    this.anim.setMode('menu');
+    this.anim.reset();
+    this.ui.showSkins(this.skins.all, this.skins.loadId(), undefined, this._besitzSicht);
+  }
+
   async _pickCharacter(id) {
     const char = this.cfg.characters.list[id];
     if (!char) return;
-    if (char.id === this.character?.id) {
-      this._closeCharacters();
+    // Schon gewählt? Dann ist nichts zu tun — die Auswahl bleibt OFFEN,
+    // damit danach noch das Fell drankommt.
+    if (char.id === this.character?.id) return;
+
+    /* Gesperrtes lässt sich hier nicht auswählen. Die UI fängt es schon ab,
+     * aber das ist die Stelle, die WIRKT — und sie wird auch aus load()
+     * heraus mit einer gespeicherten ID gerufen. */
+    if (!this.fortschritt.istFrei(id)) {
+      this.ui.showCharacterError(`${char.label} ist noch gesperrt.`);
       return;
     }
 
@@ -357,13 +578,68 @@ export class Game {
     this.anim.reset();
 
     this.ui.setCharactersBusy(false);
-    this._closeCharacters();
+    /* NICHT schliessen. Der Ablauf ist "Affe, dann Fell, dann Los!" — wer
+     * hier zumacht, nimmt dem Spieler den zweiten Schritt weg, obwohl der
+     * Bildschirm ihn ausdrücklich verspricht. */
+    this._zeichneAuswahl();
+  }
+
+  /** Nur-Lese-Sicht auf den Besitz für die Anzeige. */
+  get _besitzSicht() {
+    return {
+      istFrei: (id) => this.fortschritt.istFrei(id),
+      muenzen: this.fortschritt.muenzen,
+    };
+  }
+
+  /**
+   * Kachel angeklickt, die noch gesperrt ist.
+   *
+   * Der Kauf passiert in Fortschritt.kaufen — bewusst NICHT hier: sonst gäbe
+   * es zwei Stellen, an denen Münzen abgezogen werden, und eine davon wäre
+   * irgendwann falsch.
+   */
+  _kaufen(art, id) {
+    const eintrag =
+      art === 'skin' ? this.cfg.skins.list[id] : this.cfg.characters.list[id];
+    if (!eintrag) return;
+
+    const preis = eintrag.kosten ?? 0;
+    if (!this.fortschritt.kaufen(id, preis)) {
+      const fehlt = preis - this.fortschritt.muenzen;
+      this.ui.showCharacterError(
+        `${eintrag.label} kostet ${preis} Münzen — dir fehlen noch ${fehlt}.`,
+      );
+      return;
+    }
+
+    this.ui.showCharacterError('');
+    this.klang.effekt('frei');
+    this.ui.toast(`${eintrag.label} freigeschaltet!`, 'banana');
+    // Frisch Gekauftes gleich auswählen: wer 150 Münzen ausgibt, will es
+    // benutzen und nicht danach noch einmal klicken.
+    if (art === 'skin') this._pickSkin(id);
+    else this._pickCharacter(id);
+    this._zeichneAuswahl();
+  }
+
+  /** Beide Listen neu zeichnen (Besitz hat sich geändert). */
+  _zeichneAuswahl() {
+    this.ui.setMuenzenGesamt(this.fortschritt.muenzen);
+    this.ui.showCharacters(this.characters.all, this.characters.loadId(), this._besitzSicht);
+    this.ui.showSkins(
+      this.skins.all,
+      this.skins.loadId(),
+      undefined,
+      this._besitzSicht,
+    );
   }
 
   _openCharacters() {
     // KEIN Zustandswechsel: der Automat erlaubt aus MENU nur PLAYING und
     // wirft bei allem anderen. Die Auswahl ist reine Oberfläche.
-    this.ui.showCharacters(this.characters.all, this.characters.loadId());
+    this._zeichneAuswahl();
+    this.ui.showScreen('characters');
   }
 
   _closeCharacters() {
@@ -384,6 +660,25 @@ export class Game {
     this.ui.callbacks.onCharacters = () => this._openCharacters();
     this.ui.callbacks.onCharactersBack = () => this._closeCharacters();
     this.ui.callbacks.onPickCharacter = (id) => this._pickCharacter(id);
+    this.ui.callbacks.onPickSkin = (id) => this._pickSkin(id);
+    this.ui.callbacks.onKaufen = (art, id) => this._kaufen(art, id);
+    this.ui.callbacks.onErsteEingabe = () => this.klang.aufwecken();
+    this.ui.callbacks.onTonUmschalten = () => this._tonUmschalten();
+    this.ui.callbacks.onCodeLaden = (code) => this._codeLaden(code);
+    // Der Code steht nur, wenn es auch etwas zu übertragen gibt.
+    this.ui.setUebertragCode(this.spielerId ?? null);
+    // Der Schalter muss zeigen, was gespeichert ist — sonst steht dort nach
+    // einem Neuladen "Ton an", obwohl er ausgeschaltet bleibt.
+    this.ui.setTon(this.klang.stumm);
+    // "Los!" startet direkt aus der Auswahl — man hat gerade seinen Affen und
+    // sein Fell gewählt, der Umweg über das Hauptmenü wäre ein Klick zu viel.
+    this.ui.callbacks.onCharactersGo = () => {
+      this._wechselNummer++;
+      this._startRun();
+    };
+    this.ui.callbacks.onWatchAd = () => this._watchAd();
+    this.ui.callbacks.onDeclineAd = () => this._showGameOverScreen();
+    this.ui.callbacks.onCancelAd = () => this.ads.cancel();
   }
 
   _wireStates() {
@@ -391,32 +686,64 @@ export class Game {
     // den Buttons.
     this.states.onChange((_from, to) => {
       this.input.setTouchCapture(to === GameState.PLAYING);
+
+      /* Dem Portal sagen, wann wirklich gespielt wird. Es legt seine Spots
+       * danach — ohne dieses Signal kommt einer mitten in eine
+       * Ausweichbewegung. Bewusst HIER und nicht an den einzelnen
+       * Aufrufstellen: der Zustandsautomat ist die einzige Stelle, an der
+       * kein Übergang vergessen werden kann. */
+      if (to === GameState.PLAYING) this.portal.spielStart();
+      else this.portal.spielStop();
     });
 
     this.states.onEnter(GameState.MENU, () => {
+      /* Erst den Ton wieder anwerfen, dann umschalten.
+       *
+       * Über "Pause -> Hauptmenü" kommt man hier mit angehaltenem Tonkontext
+       * an (die Pause hat ihn stillgelegt). Ohne dieses `fortsetzen()` blieb
+       * das Hauptmenü auf diesem Weg komplett stumm, während es nach "Game
+       * Over -> Hauptmenü" den Dschungel spielte — derselbe Bildschirm klang
+       * je nach Weg dorthin verschieden. */
+      this.klang.fortsetzen();
+      // Im Menue laeuft die gruene Wand — dann soll auch der Dschungel zu
+      // hoeren sein und nicht die Lava des letzten Laufs.
+      this.klang.atmo('gruen');
       this.anim.setMode('menu');
       this.ui.showMenu(this.score.loadHighscores());
     });
 
-    this.states.onEnter(GameState.PLAYING, (_payload, from) => {
+    this.states.onEnter(GameState.PLAYING, (payload, from) => {
       this.ui.showScreen('playing');
-      if (from !== GameState.PAUSED) {
+      this.klang.fortsetzen();
+      // Der Brüller gehört zum Start, nicht zum Aufstehen nach Werbung.
+      if (from !== GameState.PAUSED && !payload?.weiter) this.klang.effekt('affe');
+      // Beim Weiterspielen NICHT zurücksetzen: der Affe steht schon richtig
+      // (reviveInPlace hat das erledigt) und blinkt gerade unverwundbar. Ein
+      // anim.reset() würde das Blinken abwürgen, der Brüller wäre fehl am
+      // Platz — er gehört zum Start, nicht zum Aufstehen.
+      if (from !== GameState.PAUSED && !payload?.weiter) {
         this.anim.setMode('locomotion');
         this.anim.reset();
         this.anim.playOneShot('roar');
       }
     });
 
-    this.states.onEnter(GameState.PAUSED, () => this.ui.showScreen('paused'));
+    this.states.onEnter(GameState.PAUSED, () => {
+      this.klang.anhalten();
+      this.ui.showScreen('paused');
+    });
 
     this.states.onEnter(GameState.GAME_OVER, () => {
-      const meters = this.score.meters;
-      this.ui.showGameOver({
-        score: meters,
-        qualifies: this.score.qualifies(meters),
-        isNewBest: this.score.isNewBest(meters),
-        highscores: this.score.loadHighscores(),
-      });
+      // Solange ein zweites Leben zu haben ist, kommt zuerst das Angebot.
+      // Erst wenn es abgelehnt oder aufgebraucht ist, folgt der eigentliche
+      // Game-Over-Screen mit der Bestenliste — sonst könnte man sich
+      // eintragen UND weiterklettern und stünde zweimal in der Liste.
+      this.klang.effekt('gameover');
+      if (this._continueAvailable()) {
+        this.ui.showContinueOffer(this.score.meters);
+      } else {
+        this._showGameOverScreen();
+      }
     });
   }
 
@@ -431,12 +758,145 @@ export class Game {
     // von vorne an, statt aus der letzten Stufe herüberzublenden.
     this.wall.setStage(0, true);
     this._deathTimer = 0;
+    this._adsUsed = 0;
+    this._muenzenImLauf = 0;
+    // Sonst feuert der erste Vogelruf im allerersten Frame des Laufs — der
+    // Timer stand nur im Konstruktor auf 0 und lief danach nie zurück.
+    this._tupferTimer = this.cfg.klang.tupferMin;
+    this.ui.setMuenzenLauf(0);
+
+    /* Runde bei der Weltliste anmelden. Der Server stempelt den Start mit
+     * seiner Uhr und misst die Spielzeit später selbst — nur deshalb lässt
+     * sie sich nicht erfinden.
+     *
+     * BEWUSST OHNE await: der Affe soll sofort losklettern, nicht auf eine
+     * Netzantwort warten. Die Marke wird erst am Ende gebraucht, und bis
+     * dahin ist sie längst da. Klappt es nicht, zählt der Lauf lokal — das
+     * ist besser, als ihn gar nicht beginnen zu lassen. */
+    this._weltLauf = null;
+    // Der Eintrag des VORIGEN Laufs darf den nächsten Game-Over-Screen nicht
+    // mehr beschriften.
+    this._eigenerEintrag = null;
+    /* Erstes Lebenszeichen SOFORT, sobald die Marke da ist.
+     *
+     * Hier stand ein voller Takt (20 s) — mit fatalem Ergebnis: ein Lauf, der
+     * vorher endet, hatte null Lebenszeichen, damit rechnete der Server null
+     * Sekunden Spielzeit und wies JEDEN Punktestand als unplausibel ab. Wer
+     * nach zwölf Sekunden stirbt, bekam eine Betrugsmeldung — auch beim
+     * allerersten Eintrag auf einer leeren Liste.
+     *
+     * Der Zähler läuft ohnehin erst, wenn `_weltLauf` steht (siehe
+     * _updatePlaying), es geht also nichts ins Leere. */
+    this._tickTimer = 0;
+    if (this.bestenliste.weltweit) {
+      const marke = ++this._laufNummer;
+      this.bestenliste.laufStarten().then((id) => {
+        // Nur übernehmen, wenn inzwischen kein neuer Lauf begonnen hat.
+        if (marke === this._laufNummer) this._weltLauf = id;
+      });
+    }
 
     this.ui.updateScore(0);
     this.ui.setRevive(false);
     this.ui.clearToast();
 
     this.states.transitionTo(GameState.PLAYING);
+  }
+
+  /* ------------------------------------------------- Zweites Leben (Werbung) */
+
+  /** Ist in diesem Lauf noch ein Weiterspielen zu haben? */
+  _continueAvailable() {
+    const cfg = this.cfg.ad;
+    return cfg.enabled && this._adsUsed < cfg.maxPerRun && this.ads.isReady();
+  }
+
+  _showGameOverScreen() {
+    const meters = this.score.meters;
+
+    /* Namensfeld zeigen, wenn der Lauf FÜR IRGENDEINE Liste zählt.
+     *
+     * Vorher hing es allein an der lokalen Top 10. Wer die auf diesem Gerät
+     * nicht schlug, konnte sich nicht eintragen — auch dann nicht, wenn er
+     * weltweit Erster gewesen wäre. Genau der Spieler, den eine Weltrangliste
+     * halten soll, kam nicht hinein. */
+    const zaehlt = this.score.qualifies(meters) || (this.bestenliste.weltweit && meters > 0);
+
+    this.ui.showGameOver({
+      score: meters,
+      qualifies: zaehlt,
+      isNewBest: this.score.isNewBest(meters),
+      highscores: this.score.loadHighscores(),
+    });
+
+    /* Die Weltliste hing vorher allein an einer erfolgreichen Namenseingabe.
+     * Wer den Sprung in die eigene Liste nicht schafft — also die grosse
+     * Mehrheit der Läufe — bekam sie damit NIE zu sehen, obwohl gerade sie
+     * der Grund ist, es nochmal zu versuchen. Jetzt lädt sie bei jedem
+     * Spielende. Kein await: der Bildschirm steht sofort, die Liste tröpfelt
+     * nach, und wenn der Server schweigt, bleibt es beim Hinweistext. */
+    if (this.bestenliste.weltweit) {
+      this.ui.setWeltStatus('Weltliste wird geladen…');
+      this._zeigeWeltListe();
+    }
+  }
+
+  async _watchAd() {
+    // Doppelklick auf den Button darf nicht zwei Spots starten.
+    if (this._adRunning || !this._continueAvailable()) return;
+    this._adRunning = true;
+
+    const cfg = this.cfg.ad;
+    /* Waehrend des Spots ist der Spielton still. Der Werbeanbieter bringt
+     * seinen eigenen mit; beides gleichzeitig klingt nach Fehler und ist bei
+     * den Portalen ein berechtigter Beschwerdegrund. */
+    this.klang.anhalten();
+    this.ui.showAd(cfg.stubDuration);
+
+    let ergebnis = 'fehler';
+    try {
+      ergebnis = await this.ads.show((rest) => this.ui.setAdCountdown(rest));
+    } catch (err) {
+      console.warn('[Game] Werbung fehlgeschlagen:', err);
+    }
+    this._adRunning = false;
+    this.klang.fortsetzen();
+
+    // Der Spot lief asynchron. Wer inzwischen "Hauptmenü" gedrückt oder neu
+    // gestartet hat, will nicht plötzlich im alten Lauf landen.
+    if (!this.states.is(GameState.GAME_OVER)) return;
+
+    if (ergebnis === 'belohnt') {
+      this._continueRun();
+      return;
+    }
+
+    if (ergebnis === 'fehler') this.ui.toast('Keine Werbung verfügbar', 'revive');
+    this._showGameOverScreen();
+  }
+
+  /**
+   * Weiter an der Todesstelle.
+   *
+   * Nichts wird zurückgesetzt ausser dem Tod selbst: Höhe, Punktestand,
+   * Spielzeit und damit auch Schwierigkeit und Hintergrundstufe laufen weiter,
+   * wo sie waren. Nur der Bildschirm wird um den Affen herum freigeräumt —
+   * ohne das stürbe er im selben Frame erneut an dem Objekt, das ihn gerade
+   * erwischt hat.
+   */
+  _continueRun() {
+    const cfg = this.cfg.ad;
+    this._adsUsed++;
+
+    const weg = this.spawner.clearAround(this.player.hitX, this.player.hitY, cfg.clearRadius);
+    this.player.reviveInPlace(cfg.invulnerableTime);
+    this._deathTimer = 0;
+
+    this.states.transitionTo(GameState.PLAYING, { weiter: true });
+    this.ui.toast('Weiter geht’s!', 'revive');
+    if (this.cfg.debug.showStats) {
+      console.info(`[Game] Weiterspielen — ${weg} Objekte weggeräumt`);
+    }
   }
 
   _pause() {
@@ -451,6 +911,9 @@ export class Game {
 
   _toMenu() {
     if (this.states.is(GameState.MENU)) return;
+    // Ein laufender Spot hält sonst eine Promise offen, die nach der Rückkehr
+    // ins Menü noch "belohnt" liefern und den alten Lauf wiederbeleben würde.
+    this.ads.cancel();
     // PLAYING -> MENU ist kein erlaubter Direktübergang (der Automat kennt nur
     // PAUSED/GAME_OVER -> MENU). Ein laufendes Spiel wird deshalb erst
     // angehalten — so bleibt die Übergangstabelle streng, ohne dass der
@@ -461,13 +924,69 @@ export class Game {
     this.states.transitionTo(GameState.MENU);
   }
 
-  _submitName(name) {
+  async _submitName(name) {
     const meters = this.score.meters;
     const wasBest = this.score.isNewBest(meters);
-    const rank = this.score.submit(name, meters);
+    const mitWerbung = this._adsUsed > 0;
+
+    /* EINMAL normalisieren, für beide Listen dieselbe Regel.
+     *
+     * Vorher normalisierte nur die lokale Liste (leer -> "AFFE"). An den
+     * Server ging der Rohwert: ein leeres Feld erzeugte dort einen Fehler,
+     * und der Spieler stand lokal als AFFE in der Liste, weltweit nirgends —
+     * ohne dass irgendwo stand, warum. */
+    const sauber =
+      (name ?? '').trim().slice(0, this.cfg.score.maxNameLength).toUpperCase() ||
+      this.cfg.score.defaultName;
+
+    // Lokal IMMER eintragen: die eigene Liste soll auch dann stimmen, wenn
+    // der Server nicht erreichbar ist.
+    const rank = this.score.submit(sauber, meters, mitWerbung);
     this.ui.updateGameOverHighscores(this.score.loadHighscores(), rank);
-    // Neuer Highscore -> Roar (Vorgabe aus dem Animations-Mapping).
     if (wasBest && rank === 0) this.anim.playOneShot('roar');
+
+    if (!this.bestenliste.weltweit) return;
+
+    /* Der Spot lief asynchron, und "Nochmal" wartet nicht. Ohne diese Marke
+     * schreibt die späte Antwort eines alten Laufs in den Bildschirm des
+     * neuen. */
+    const marke = ++this._eintragNummer;
+
+    /* Weltweit dazu. Die Spielzeit steht NICHT hier drin — sie kommt aus der
+     * Marke, die der Server beim Rundenstart gestempelt hat. */
+    this.ui.setWeltStatus('wird eingetragen…');
+    const antwort = await this.bestenliste.eintragen(this._weltLauf, sauber, meters, mitWerbung);
+    if (marke !== this._eintragNummer) return;
+
+    if (!antwort.ok) {
+      // Den ECHTEN Grund zeigen. "Nicht erreichbar" für eine fachliche
+      // Ablehnung (zu kurzer Lauf, Sperrfrist) schickt den Spieler auf die
+      // Suche nach einem Netzproblem, das es gar nicht gibt.
+      this.ui.setWeltStatus(antwort.grund ?? 'Weltliste nicht erreichbar');
+      return;
+    }
+    /* Name und Platz merken, damit die Liste sie danach ANZEIGT und stehen
+     * lässt — sonst hat man gerade etwas eingetragen und sieht nur zehn
+     * fremde Zeilen. */
+    this._eigenerEintrag = { name: sauber, rang: antwort.rang };
+    await this._zeigeWeltListe(marke);
+  }
+
+  /**
+   * Holt die weltweite Liste und zeigt sie an. Fehler bleiben still.
+   * @param {number} [marke] Lauf-Marke; eine veraltete Antwort wird verworfen
+   */
+  async _zeigeWeltListe(marke) {
+    if (!this.bestenliste.weltweit) return;
+    const meine = marke ?? ++this._eintragNummer;
+    try {
+      const eintraege = await this.bestenliste.holen(this.cfg.bestenliste.anzahl);
+      if (meine !== this._eintragNummer) return;
+      this.ui.showWeltListe(eintraege, this._eigenerEintrag);
+    } catch {
+      if (meine !== this._eintragNummer) return;
+      this.ui.setWeltStatus('Weltliste nicht erreichbar');
+    }
   }
 
   /* ================================================================ Loop */
@@ -508,7 +1027,25 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   }
 
+  /**
+   * Ton an/aus. Der einzige Weg — Taste M und der Schalter oben rechts landen
+   * beide hier, damit Zustand und Anzeige nie auseinanderlaufen.
+   */
+  _tonUmschalten() {
+    /* Ein Klick auf den Schalter ist eine echte Nutzereingabe. Wer als
+     * allererstes hier hindrückt, soll damit auch den Ton freigeben statt
+     * einen Schalter umzulegen, hinter dem noch gar kein Tonkontext steht. */
+    this.klang.aufwecken();
+    const stumm = this.klang.stummSchalten();
+    this.ui.setTon(stumm);
+    this.ui.toast(stumm ? 'Ton aus' : 'Ton an', 'revive');
+  }
+
   _handleGlobalKeys() {
+    // M schaltet stumm. Bewusst KEIN Menüpunkt: wer den Ton weghaben will,
+    // will ihn sofort weghaben, nicht nach zwei Klicks.
+    if (this.input.consumeMute?.()) this._tonUmschalten();
+
     if (this.input.consumeDebug()) {
       const on = this.debug.toggle();
       this.cfg.debug.showStats = on;
@@ -532,6 +1069,15 @@ export class Game {
     // Enter den Lauf mit dem alten Affen starten, während die Auswahl noch
     // offen ist.
     if (this.ui.currentScreen === 'characters') {
+      this.input.consumeConfirm();
+      return;
+    }
+
+    // Weiterspielen-Angebot und laufender Spot: hier gibt es keine
+    // Standardantwort. Enter würde sonst einen neuen Lauf starten und die
+    // gerade erreichte Höhe wegwerfen — dieselbe Taste, die im Game Over
+    // "Nochmal" heisst, hiesse hier "Angebot ausschlagen".
+    if (this.ui.currentScreen === 'continue' || this.ui.currentScreen === 'ad') {
       this.input.consumeConfirm();
       return;
     }
@@ -568,6 +1114,35 @@ export class Game {
     // Die Spielzeit steuert die Hintergrundstufe — der Wechsel fällt damit
     // mit dem Schwierigkeitssprung zusammen.
     this.wall.update(dt, climbed, this.difficulty.elapsed);
+    // Jede Wand wirft etwas anderes ab. Bereits fallende Objekte behalten ihr
+    // Aussehen — es wechselt nur, was ab jetzt neu erzeugt wird.
+    this.spawner.hazardLook = this.wall.stageHazard;
+
+    /* Atmosphäre folgt der Wand. atmo() erkennt selbst, ob sich etwas
+     * geändert hat — hier jeden Frame zu rufen ist billiger als den
+     * Wandwechsel an einer zweiten Stelle mitzuführen. */
+    this.klang.atmo(this.wall.stageName);
+    this._tupferTimer -= dt;
+    if (this._tupferTimer <= 0) {
+      const k = this.cfg.klang;
+      this._tupferTimer = k.tupferMin + Math.random() * (k.tupferMax - k.tupferMin);
+      this.klang.atmoTupfer();
+    }
+
+    /* Lebenszeichen an die Weltliste.
+     *
+     * BEWUSST HIER und nicht in einem eigenen Timer: dieser Zweig läuft nur,
+     * solange wirklich gespielt wird. In der Pause, während eines Werbespots
+     * und im versteckten Tab schweigt er — und genau das ist der Sinn.
+     * Vergangene Zeit ohne Lebenszeichen wird nicht angerechnet, sonst
+     * genügte ein `sleep`, um eine Stunde Spiel zu behaupten. */
+    if (this._weltLauf) {
+      this._tickTimer -= dt;
+      if (this._tickTimer <= 0) {
+        this._tickTimer = this.cfg.bestenliste.tickSekunden;
+        this.bestenliste.tick(this._weltLauf); // ohne await, Fehler bleiben still
+      }
+    }
 
     /* ---- Entities ----------------------------------------------------- */
     this.player.update(dt, this.player.alive ? axis : ZERO_AXIS, world.bounds);
@@ -581,6 +1156,7 @@ export class Game {
 
     /* ---- HUD ---------------------------------------------------------- */
     this.ui.updateScore(this.score.meters);
+    this._zeigeNaechstesGebiet();
     this.debug.update(this.player, this.spawner);
 
     /* ---- Tod: kurze Verzögerung, damit "Die" sichtbar wird ------------ */
@@ -590,6 +1166,36 @@ export class Game {
         this.states.transitionTo(GameState.GAME_OVER);
       }
     }
+  }
+
+  /**
+   * "Noch 240 m bis zum Pilzwald" — samt Vorschaubild der nächsten Wand.
+   *
+   * Die Meter sind eine Hochrechnung, keine exakte Zahl: die Wand wechselt
+   * nach SEKUNDEN, der Punktestand zählt aber METER, und die
+   * Scrollgeschwindigkeit wächst dazwischen noch. Gerechnet wird mit dem
+   * aktuellen Tempo — die Anzeige läuft dadurch minimal vor, was der
+   * ehrlichere Fehler ist: sie verspricht nie mehr Strecke, als kommt.
+   */
+  _zeigeNaechstesGebiet() {
+    const stages = this.cfg.wall.stages;
+    const t = this.difficulty.elapsed;
+    const naechster = (this.wall.stageIndex + 1) % stages.length;
+
+    // Nach der letzten Wand geht es zyklisch weiter — dann zählt der
+    // Schleifentakt, nicht die (längst überschrittene) Startsekunde.
+    const letzte = stages[stages.length - 1];
+    let zielZeit;
+    if (this.wall.stageIndex >= stages.length - 1 || t >= letzte.afterSeconds) {
+      const seitLetzter = t - letzte.afterSeconds;
+      const runde = Math.floor(seitLetzter / this.cfg.wall.stageLoopSeconds) + 1;
+      zielZeit = letzte.afterSeconds + runde * this.cfg.wall.stageLoopSeconds;
+    } else {
+      zielZeit = stages[naechster].afterSeconds;
+    }
+
+    const rest = Math.max(0, zielZeit - t);
+    this.ui.setNaechstesGebiet(stages[naechster].near, rest * this.difficulty.scrollSpeed);
   }
 
   /** Menü und Game-Over: Wand scrollt langsam weiter, Affe klettert weiter. */
@@ -609,12 +1215,21 @@ export class Game {
 
   _onRockHit(_rock) {
     const result = this.player.applyHit();
+    if (result !== 'ignored') this.klang.effekt('treffer');
     if (result === 'revived') {
       this.ui.setRevive(false);
       this.ui.toast('Wiederbelebt!', 'revive');
     } else if (result === 'dead') {
       this._deathTimer = this.cfg.flow.gameOverDelay;
     }
+  }
+
+  _onCoinHit(coin) {
+    this.spawner.collectCoin(coin);
+    this.klang.effekt('muenze');
+    this._muenzenImLauf++;
+    this.fortschritt.gutschreiben(1);
+    this.ui.setMuenzenLauf(this._muenzenImLauf);
   }
 
   _onBananaHit(banana) {
@@ -636,16 +1251,24 @@ export class Game {
       this._fpsAccum = 0;
       this._fpsFrames = 0;
     }
+    const d = this.difficulty;
+    const warn = d.vorwarnung(this.player.hitY, this.player.hitRadius + 0.636);
     this.ui.setStats(
       `${this._fps.toFixed(0)} fps\n` +
-        `t        ${this.difficulty.elapsed.toFixed(1)} s\n` +
-        `scroll   ${this.difficulty.scrollSpeed.toFixed(2)} u/s\n` +
-        `rockSpd  ${this.difficulty.rockFallSpeed.toFixed(2)} u/s\n` +
-        `interval ${this.difficulty.spawnDelay.toFixed(2)} s\n` +
-        `burst    ${this.difficulty.burstCount}\n` +
-        `steine   ${this.spawner.rocks.activeCount}/${this.spawner.rocks.size}\n` +
+        `t        ${d.elapsed.toFixed(1)} s\n` +
+        `wand     ${d.wand.toFixed(2)}  (${this.wall.stageName})\n` +
+        `härte    ${d.haerte.toFixed(2)}\n` +
+        `tempo    ${d.tempo.toFixed(2)} u/s  (scroll ${d.scrollSpeed.toFixed(2)})\n` +
+        // Die Zahl, an der Fairness hängt: so lange bleibt vom Sichtbarwerden
+        // bis zum Gefährlichwerden. Unter ~0.3 s wird es Glückssache.
+        `vorwarn  ${warn.toFixed(2)} s\n` +
+        `dichte   ${d.dichte.toFixed(2)}/s  (alle ${d.spawnDelay.toFixed(2)}s${d.amAnschlag ? ', max' : ''})\n` +
+        `abstand  ${d.mindestZeit.toFixed(2)}s min\n` +
+        `steine   ${this.spawner.rocks.activeCount}/${this.spawner.rocks.size}` +
+        ` (${this.spawner.rockTypeCounts()})\n` +
+        `mix      ${(d.rockWeights ?? []).join('/')}\n` +
+        `bahn     x ${this.spawner.korridor.x.toFixed(2)}\n` +
         `bananen  ${this.spawner.bananas.activeCount}/${this.spawner.bananas.size}\n` +
-        `stufe    ${this.wall.stageName} (${this.wall.stageIndex})\n` +
         `anim     ${this.anim._locomotionKey ?? '-'}`,
     );
   }
@@ -699,6 +1322,15 @@ export class Game {
     // Steine nur dort erzeugen, wo sie auch zu sehen sind — sonst fällt der
     // Grossteil im Hochformat unsichtbar neben dem Bild herunter.
     view.spawnHalfWidth = Math.min(base.spawnHalfWidth, limit + 0.4);
+
+    /* Die garantierte Bahn steht schon für die nächsten Sekunden fest, und
+     * zwar geklemmt an die BISHERIGEN Grenzen. Wird das Feld enger, läge sie
+     * ausserhalb dessen, was der Affe überhaupt erreichen darf — die
+     * Zusicherung zeigte dann auf einen Ort, den es nicht mehr gibt.
+     *
+     * Das passiert nicht nur beim Drehen des Geräts: die Grenzen hängen am
+     * Trefferradius, also verschiebt sie AUCH JEDER CHARAKTERWECHSEL. */
+    this.spawner?.korridor.grenzenAendern(view.bounds.minX, view.bounds.maxX);
   }
 }
 

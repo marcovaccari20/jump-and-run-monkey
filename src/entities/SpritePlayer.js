@@ -210,6 +210,29 @@ export class SpritePlayer {
     this._resetAnimation();
   }
 
+  /**
+   * Weiterspielen an der Todesstelle (zweites Leben per Werbung).
+   *
+   * Bewusst NICHT reset(): Position, gesammelte Bananen und der Punktestand
+   * bleiben, wie sie waren. Zurückgesetzt wird nur, was der Tod angerichtet
+   * hat — das Wegsacken und der tote Zustand.
+   *
+   * @param {number} invulnerableTime Sekunden Unverwundbarkeit
+   * @returns {boolean} false, wenn der Affe gar nicht tot war
+   */
+  reviveInPlace(invulnerableTime) {
+    if (this.alive) return false;
+    this.alive = true;
+    this.vx = 0;
+    this.vy = 0;
+    this.speed = 0;
+    this.invulnerableTimer = invulnerableTime;
+    this._blinkPhase = 0;
+    this.art.visible = true;
+    this._resetAnimation();
+    return true;
+  }
+
   /* =============================================================== Loop */
 
   update(dt, axis, bounds) {

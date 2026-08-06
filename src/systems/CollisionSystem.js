@@ -39,14 +39,29 @@ export class CollisionSystem {
    *
    * @param {import('../entities/Player.js').Player} player
    * @param {import('./Spawner.js').Spawner} spawner
-   * @param {{onRock: (rock:any)=>void, onBanana: (banana:any)=>void}} handlers
+   * @param {{onRock: Function, onBanana: Function, onCoin: Function}} handlers
    */
   static check(player, spawner, handlers) {
     const px = player.hitX;
     const py = player.hitY;
     const pr = player.hitRadius;
 
-    // Bananen zuerst: wenn Stein und Banane im selben Frame treffen, soll die
+    /* Münzen zuerst, dann Bananen, dann erst die Hindernisse.
+     *
+     * Die Reihenfolge ist eine Entscheidung, keine Willkür: wer im selben
+     * Frame eine Münze berührt UND stirbt, soll die Münze noch bekommen. Der
+     * umgekehrte Fall — Tod zuerst, Münze verfällt — wäre für den Spieler
+     * nicht zu unterscheiden und fühlte sich nach Betrug an. */
+    const coins = spawner.coins.active;
+    for (let i = coins.length - 1; i >= 0; i--) {
+      const coin = coins[i];
+      if (!coin.active) continue;
+      if (circleOverlap(px, py, pr, coin.x, coin.y, coin.hitRadius)) {
+        handlers.onCoin(coin);
+      }
+    }
+
+    // Bananen: wenn Stein und Banane im selben Frame treffen, soll die
     // Wiederbelebung noch gutgeschrieben werden, bevor der Treffer zählt.
     const bananas = spawner.bananas.active;
     for (let i = bananas.length - 1; i >= 0; i--) {

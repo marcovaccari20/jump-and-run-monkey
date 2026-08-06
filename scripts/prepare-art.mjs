@@ -34,6 +34,11 @@ const OUT = resolve(ROOT, 'public/textures');
 // Stufen mal zwei Fassungen macht das den Unterschied zwischen einem
 // 9-MB- und einem 2-MB-Build.
 // Reihenfolge = Reihenfolge der Stufen im Spiel (siehe CONFIG.wall.stages).
+//
+// Die Nummer im Namen ist die Reihenfolge, in der die Bilder GELIEFERT
+// wurden — nicht die Reihenfolge im Spiel. Die steht allein in
+// CONFIG.wall.stages. Die vier später dazugekommenen Wände tragen deshalb
+// gar keine Nummer mehr.
 const BACKGROUNDS = [
   'stage1_green',
   'stage2_flowers',
@@ -44,6 +49,9 @@ const BACKGROUNDS = [
   'stage7_clouds',
   'stage8_lava',
   'stage9_ash',
+  'wall_mushroom',
+  'wall_water',
+  'wall_crystal',
 ].map((name) => ({ src: `${name}.png`, out: `${name}.webp` }));
 
 /* Kletter-Frames: bereits freigestellte Einzelbilder aus den Bewegungsvideos.

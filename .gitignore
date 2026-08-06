@@ -33,3 +33,4 @@ public/_tmp_*
 # `npm run prep:chars` bzw. `npm run video:frames -- probe` neu erzeugt.
 assets-src/art/_debug/
 assets-src/art/_probe/
+pakete/

@@ -64,6 +64,140 @@ body {
   z-index: 10;
 }
 
+/* ------------------------------------------------------------- Ton-Schalter
+ *
+ * Liegt über allen Screens (z-index) und ausserhalb von ihnen, damit er in
+ * jedem Zustand erreichbar bleibt. Auf Touch-Geräten ist er der einzige Weg,
+ * den Ton abzustellen — die Taste M gibt es dort nicht.
+ *
+ * Oben RECHTS: links unten sitzt der Joystick, oben links die Wiederbelebungs-
+ * Anzeige, oben mittig der Punktestand. Rechts oben ist die einzige Ecke, die
+ * in keinem Zustand belegt ist.
+ */
+.ton-schalter {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 40;
+  pointer-events: auto;
+
+  /* 44 px ist das kleinste Ziel, das sich blind zuverlässig treffen lässt. */
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+
+  font-size: 20px;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(8, 20, 12, 0.55);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: transform 0.12s ease, background 0.15s ease, opacity 0.15s ease;
+  /* Doppeltipp-Zoom auf iOS unterbinden. */
+  touch-action: manipulation;
+}
+
+.ton-schalter:hover {
+  background: rgba(8, 20, 12, 0.8);
+}
+
+.ton-schalter:active {
+  transform: scale(0.92);
+}
+
+.ton-schalter:focus-visible {
+  outline: 2px solid var(--accent, #7bd66f);
+  outline-offset: 2px;
+}
+
+/* Stumm: sichtbar zurückgenommen, aber nicht unsichtbar — man muss ihn ja
+   wiederfinden, um den Ton zurückzuholen. */
+.ton-schalter[data-stumm='ja'] {
+  opacity: 0.55;
+}
+
+/* `hidden` allein verliert gegen `display: grid` oben. */
+.ton-schalter[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------- Fortschritt mitnehmen
+ *
+ * Bewusst zugeklappt und ganz unten: die allermeisten Spieler brauchen das
+ * nie. Wer es braucht, braucht es dringend.
+ */
+.uebertrag {
+  margin-top: 18px;
+  width: min(420px, 100%);
+  font-size: 13px;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.uebertrag > summary {
+  cursor: pointer;
+  padding: 6px 0;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.uebertrag > summary:hover {
+  color: #fff;
+}
+
+.uebertrag__hinweis {
+  margin: 8px 0 4px;
+  line-height: 1.45;
+}
+
+.uebertrag__code {
+  display: block;
+  /* Umbruch erzwingen: eine UUID ist länger als das Feld auf dem Handy. */
+  word-break: break-all;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #fff;
+  user-select: all; /* ein Klick markiert alles */
+}
+
+.uebertrag__form {
+  display: flex;
+  gap: 6px;
+}
+
+.uebertrag__eingabe {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.btn--klein {
+  padding: 7px 12px;
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.uebertrag__status {
+  margin-top: 6px;
+  min-height: 1.2em;
+}
+
+.uebertrag[hidden] {
+  display: none;
+}
+
 /* ------------------------------------------------------------------ Screens */
 
 .screen {
@@ -428,6 +562,10 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+  /* Die rechte obere Ecke gehört dem Ton-Schalter. Ohne diese Reserve schob
+     `space-between` den Münzzähler im Hochformat exakt unter den Schalter —
+     gemessen bei 375 px Breite: Zähler 321-340, Schalter 321-365. */
+  padding-right: 52px;
 }
 
 .hud__score {
@@ -715,4 +853,332 @@ body.is-coarse .joystick {
   * {
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ------------------------------------------------------------- Fellfarben */
+
+.panel__title--spaced {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.skins {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: min(560px, 100%);
+}
+
+.skin {
+  pointer-events: auto;
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px 4px;
+  border-radius: 10px;
+  border: 2px solid rgba(198, 240, 138, 0.22);
+  background: rgba(8, 24, 12, 0.72);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.skin:hover,
+.skin:focus-visible {
+  outline: none;
+  border-color: var(--leaf);
+  background: rgba(47, 107, 52, 0.85);
+  transform: translateY(-2px);
+}
+
+.skin.is-active {
+  border-color: var(--banana);
+  background: rgba(255, 210, 63, 0.14);
+  color: var(--banana);
+}
+
+.skin__img {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  /* Das Vorschaubild ist quadratisch beschnitten; der Kopf sitzt oben. */
+  object-position: center top;
+}
+
+.skin__name {
+  letter-spacing: 0.02em;
+}
+
+/* =========================================================== Weiterspielen */
+
+/* Kurzer Erklärtext auf dem Weiterspielen-Screen. */
+.hint {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+/* Markierung in der Bestenliste für Läufe mit zweitem Leben.
+   Bewusst klein und blass: es ist eine Fussnote, kein Vorwurf. */
+.highscores .score__mark {
+  margin-left: 6px;
+  font-size: 0.8em;
+  color: var(--text-dim);
+  cursor: help;
+}
+
+/* ------------------------------------------------------------ Werbespot */
+
+.ad-badge {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Platzhalterfläche. Wo später der Spot des Anbieters liegt, steht hier ein
+   Rahmen mit Countdown — gleiche Grösse, gleicher Ablauf. */
+.ad-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: min(78vw, 22rem);
+  aspect-ratio: 4 / 3;
+  padding: 16px;
+  border: 2px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.ad-box__count {
+  margin: 0;
+  font-size: clamp(2.4rem, 10vw, 3.8rem);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--banana);
+  font-variant-numeric: tabular-nums;
+}
+
+.ad-box__note {
+  margin: 0;
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+/* ============================================================== Münzen */
+
+/* Münz-Symbol. Bewusst CSS statt <img>: es taucht an vier Stellen auf, und
+   ein geteiltes Hintergrundbild spart drei DOM-Knoten und drei Ladeanfragen. */
+.hud__coin-icon,
+.besitz__icon {
+  display: inline-block;
+  background: url('/hazards/muenze.webp') center/contain no-repeat;
+  vertical-align: -0.12em;
+}
+
+.hud__coins {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 14px;
+  font-size: 0.52em;
+  font-weight: 800;
+  color: var(--banana);
+  font-variant-numeric: tabular-nums;
+  transition: transform 0.12s ease;
+}
+
+.hud__coin-icon {
+  width: 1.05em;
+  height: 1.05em;
+}
+
+/* Kurzer Stoss beim Einsammeln — im Augenwinkel sichtbar, ohne abzulenken. */
+.hud__coins.is-pop {
+  animation: muenz-pop 0.28s ease-out;
+}
+
+@keyframes muenz-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+/* Gesamtbestand im Auswahlbildschirm. */
+.besitz {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: var(--banana);
+  font-variant-numeric: tabular-nums;
+}
+
+.besitz__icon {
+  width: 1.3em;
+  height: 1.3em;
+}
+
+.besitz__label {
+  font-size: 0.62em;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ========================================================== Schlösser */
+
+/* Gesperrte Kacheln bleiben LESBAR.
+   Nur abgedunkelt und entsättigt, nicht verdeckt: wer nicht weiss, was ein
+   Affe kann, gibt keine 150 Münzen für ihn aus. Das Schloss sagt "noch
+   nicht", nicht "geht dich nichts an". */
+.char.is-locked,
+.skin.is-locked {
+  position: relative;
+  filter: saturate(0.35) brightness(0.62);
+  cursor: pointer;
+}
+
+/* Reicht der Bestand, wird die Kachel wieder hell und bekommt einen
+   goldenen Rand — der Unterschied zwischen "kann ich mir leisten" und
+   "noch nicht" muss auf einen Blick erkennbar sein. */
+.char.is-locked.is-affordable,
+.skin.is-locked.is-affordable {
+  filter: saturate(0.8) brightness(0.9);
+  border-color: var(--banana);
+}
+
+.schloss {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 1.15rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+}
+
+.preis {
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--banana);
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.preis::before {
+  content: '';
+  width: 0.85em;
+  height: 0.85em;
+  background: url('/hazards/muenze.webp') center/contain no-repeat;
+}
+
+/* ================================================== Nächstes Gebiet */
+
+/* Rundes Vorschaubild der kommenden Wand, darüber ein Pfeil, darunter die
+   verbleibenden Meter. Rechts oben unter dem Punktestand, damit es beim
+   Ausweichen nicht im Weg ist. */
+.naechstes {
+  position: absolute;
+  top: 88px;
+  right: 16px;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.naechstes.is-visible {
+  display: flex;
+}
+
+.naechstes__bild {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+.naechstes__pfeil {
+  font-size: 0.8rem;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.75);
+  margin-top: 1px;
+}
+
+.naechstes__meter {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Im Hochformat ist rechts oben wenig Platz — kleiner und enger. */
+@media (max-width: 560px) {
+  .naechstes {
+    top: 74px;
+    right: 10px;
+  }
+  .naechstes__bild {
+    width: 40px;
+    height: 40px;
+  }
+  .naechstes__meter {
+    font-size: 0.68rem;
+  }
+}
+
+/* ================================================= Weltweite Bestenliste */
+
+/* Verborgen, solange keine Zugangsdaten konfiguriert sind. Ein leeres
+   Weltweit-Feld sieht nach Fehler aus, auch wenn keiner vorliegt. */
+.panel--welt {
+  display: none;
+}
+
+.panel--welt.is-visible {
+  display: block;
+}
+
+.welt__status {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  font-style: italic;
 }

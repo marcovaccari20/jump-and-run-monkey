@@ -23,6 +23,7 @@
 import {
   AdditiveBlending,
   CanvasTexture,
+  Color,
   Group,
   Mesh,
   MeshBasicMaterial,
@@ -30,6 +31,9 @@ import {
 } from 'three';
 
 import { visibleRectAt } from '../core/viewport.js';
+
+/** Wiederverwendet — Stufenwechsel darf nichts allokieren. */
+const HILFSFARBE = new Color();
 
 /** Eine Parallax-Ebene mit Überblendung zwischen zwei Texturen. */
 class WallLayer {
@@ -69,9 +73,28 @@ class WallLayer {
     return [this.meshA, this.meshB];
   }
 
+  /**
+   * Färbt eine Ebene ein: Ebenen-Tint mal Stufen-Tint.
+   *
+   * Der Stufen-Tint (CONFIG.wall.stages[*].tint) dämpft sehr helle Wände.
+   * Vor der weissen Eiswand ist ein weisser Eiszapfen sonst kaum zu sehen —
+   * und was man nicht sieht, kann man nicht ausweichen.
+   *
+   * @param {import('three').Mesh} mesh
+   * @param {number} [stageTint]
+   */
+  _tint(mesh, stageTint) {
+    mesh.material.color.setHex(this.cfg.tint);
+    if (stageTint !== undefined && stageTint !== 0xffffff) {
+      HILFSFARBE.setHex(stageTint);
+      mesh.material.color.multiply(HILFSFARBE);
+    }
+  }
+
   /** Setzt die Textur sofort (ohne Überblendung). */
-  setTextureImmediate(texture) {
+  setTextureImmediate(texture, stageTint) {
     this._apply(this.meshA, texture);
+    this._tint(this.meshA, stageTint);
     this.meshA.material.opacity = this.cfg.opacity;
     this.meshB.visible = false;
     this.meshB.material.opacity = 0;
@@ -81,8 +104,11 @@ class WallLayer {
   }
 
   /** Startet die Überblendung auf eine neue Textur. */
-  beginFade(texture) {
+  beginFade(texture, stageTint) {
     this._apply(this.meshB, texture);
+    // Nur die EINGEHENDE Ebene umfärben. Würde man beide sofort umfärben,
+    // sprünge die alte Wand für die Dauer der Überblendung in die neue Farbe.
+    this._tint(this.meshB, stageTint);
     this.meshB.visible = true;
     this.meshB.material.opacity = 0;
     this.fade = 0;
@@ -101,6 +127,7 @@ class WallLayer {
   finishFade() {
     const texB = this.meshB.material.map;
     this._apply(this.meshA, texB);
+    this.meshA.material.color.copy(this.meshB.material.color);
     this.meshA.material.opacity = this.cfg.opacity;
     this.meshB.visible = false;
     this.meshB.material.opacity = 0;
@@ -227,8 +254,8 @@ export class PlantWall {
       const url = stage[layer.cfg.slot];
       const texture = this.getTexture(url);
       if (!texture) continue;
-      if (immediate) layer.setTextureImmediate(texture);
-      else layer.beginFade(texture);
+      if (immediate) layer.setTextureImmediate(texture, stage.tint);
+      else layer.beginFade(texture, stage.tint);
     }
 
     if (immediate) {
@@ -344,6 +371,11 @@ export class PlantWall {
 
   get stageName() {
     return this.cfg.stages[this.stageIndex]?.name ?? '-';
+  }
+
+  /** Welches Objekt an dieser Wand herunterfällt (CONFIG.rock.looks). */
+  get stageHazard() {
+    return this.cfg.stages[this.stageIndex]?.hazard ?? 'stein';
   }
 
   dispose() {

@@ -16,6 +16,9 @@ const SCREEN_SETS = {
   characters: ['screen-characters'],
   playing: ['screen-hud'],
   paused: ['screen-hud', 'screen-paused'],
+  // Zwischenschritt vor dem Game Over, solange ein zweites Leben übrig ist.
+  continue: ['screen-hud', 'screen-continue'],
+  ad: ['screen-hud', 'screen-ad'],
   gameover: ['screen-hud', 'screen-gameover'],
 };
 
@@ -35,6 +38,7 @@ export class UI {
       btnCharacters: $('btn-characters'),
 
       characterList: $('character-list'),
+      skinList: $('skin-list'),
       characterError: $('character-error'),
       btnCharactersBack: $('btn-characters-back'),
 
@@ -54,6 +58,33 @@ export class UI {
       btnRetry: $('btn-retry'),
       btnGameoverMenu: $('btn-gameover-menu'),
 
+      continueScore: $('continue-score'),
+      btnWatchAd: $('btn-watch-ad'),
+      btnDeclineAd: $('btn-decline-ad'),
+      adCountdown: $('ad-countdown'),
+      btnCancelAd: $('btn-cancel-ad'),
+
+      hudCoins: $('hud-coin-value'),
+      besitzWert: $('besitz-wert'),
+      btnCharactersGo: $('btn-characters-go'),
+      naechstes: $('naechstes'),
+      naechstesBild: $('naechstes-bild'),
+      naechstesMeter: $('naechstes-meter'),
+
+      weltPanel: $('welt-panel'),
+      weltListe: $('welt-liste'),
+      weltStatus: $('welt-status'),
+
+      btnTon: $('btn-ton'),
+      tonSymbol: $('ton-symbol'),
+
+      uebertrag: $('uebertrag'),
+      uebertragCode: $('uebertrag-code'),
+      uebertragForm: $('uebertrag-form'),
+      uebertragEingabe: $('uebertrag-eingabe'),
+      uebertragStatus: $('uebertrag-status'),
+      btnCodeKopieren: $('btn-code-kopieren'),
+
       touchLayer: $('touch-layer'),
     };
 
@@ -69,6 +100,18 @@ export class UI {
       onCharacters: () => {},
       onCharactersBack: () => {},
       onPickCharacter: () => {},
+      onPickSkin: () => {},
+      onWatchAd: () => {},
+      onDeclineAd: () => {},
+      onCancelAd: () => {},
+      onCharactersGo: () => {},
+      onKaufen: () => {},
+      onTonUmschalten: () => {},
+      /** (code: string) => void — Fortschritt von einem anderen Gerät holen */
+      onCodeLaden: () => {},
+      // Wird beim ERSTEN echten Klick gerufen. Browser erlauben Ton nur aus
+      // einer Nutzereingabe heraus — deshalb hier und nicht beim Laden.
+      onErsteEingabe: () => {},
     };
 
     this._toastTimer = 0;
@@ -80,22 +123,99 @@ export class UI {
   }
 
   _bind() {
+    /* Jeder Klick und jeder Tastendruck weckt den Ton. Browser erlauben Audio
+     * nur aus einer Nutzereingabe heraus, deshalb überhaupt dieser Umweg.
+     *
+     * HIER STAND `{ once: true }`, UND DAS WAR EIN ERNSTER FEHLER.
+     * `_bind()` läuft im Konstruktor, also sofort beim Seitenaufruf. Der
+     * echte Weckruf wird aber erst am Ende von `Game.load()` eingehängt —
+     * nach dem Portal, den Modellen und den Texturen. Wer im Ladebildschirm
+     * einmal tippte, feuerte gegen den leeren Platzhalter oben, und `once`
+     * meldete den Zuhörer danach ab. Auf dem Handy gibt es kein `keydown` als
+     * zweite Chance: das Spiel blieb die GANZE Sitzung stumm. Isoliert
+     * nachgestellt und bestätigt.
+     *
+     * Dauerhaft zuzuhören kostet praktisch nichts (ein Funktionsaufruf, der
+     * sofort zurückkehrt, sobald der Ton läuft) und bringt zusätzlich etwas:
+     * nach einem Tabwechsel ist der Tonkontext oft angehalten, und so weckt
+     * ihn die nächste Eingabe von selbst wieder auf. */
+    for (const ereignis of ['pointerdown', 'keydown', 'touchstart']) {
+      window.addEventListener(ereignis, () => this.callbacks.onErsteEingabe(), { passive: true });
+    }
+
+    this.el.btnTon.addEventListener('click', (e) => {
+      this.callbacks.onTonUmschalten();
+      /* DEN FOKUS WIEDER LOSLASSEN — sonst schluckt der Schalter Enter.
+       *
+       * Er ist der einzige Knopf des Spiels, der nie ausgeblendet wird, und
+       * behält den Tastaturfokus deshalb über jeden Bildschirmwechsel hinweg.
+       * Der InputHandler gibt Enter und Leertaste an einen fokussierten
+       * Button ab (damit sich Buttons normal bedienen lassen). Gemessene
+       * Folge: EIN Mausklick hierauf, und das Spiel liess sich nicht mehr
+       * per Enter starten oder nach dem Tod neu starten.
+       *
+       * `detail > 0` unterscheidet Maus/Finger von Tastatur: wer sich per Tab
+       * hierher bewegt hat, behält den Fokus zu Recht — sonst wäre der
+       * Schalter mit der Tastatur nicht mehr bedienbar. */
+      if (e.detail > 0) this.el.btnTon.blur();
+    });
+
     this.el.btnStart.addEventListener('click', () => this.callbacks.onStart());
     this.el.btnResume.addEventListener('click', () => this.callbacks.onResume());
     this.el.btnPauseMenu.addEventListener('click', () => this.callbacks.onMenu());
     this.el.btnRetry.addEventListener('click', () => this.callbacks.onRetry());
     this.el.btnGameoverMenu.addEventListener('click', () => this.callbacks.onMenu());
 
+    this.el.btnWatchAd.addEventListener('click', () => this.callbacks.onWatchAd());
+    this.el.btnDeclineAd.addEventListener('click', () => this.callbacks.onDeclineAd());
+    this.el.btnCancelAd.addEventListener('click', () => this.callbacks.onCancelAd());
+
     this.el.btnCharacters.addEventListener('click', () => this.callbacks.onCharacters());
     this.el.btnCharactersBack.addEventListener('click', () => this.callbacks.onCharactersBack());
+    this.el.btnCharactersGo.addEventListener('click', () => this.callbacks.onCharactersGo());
 
     // EIN Listener auf dem Container statt einer pro Kachel: die Kacheln
     // werden bei jedem Öffnen neu gezeichnet, einzeln gebundene Listener
     // müssten dabei jedes Mal wieder abgeräumt werden.
+    this.el.skinList.addEventListener('click', (e) => {
+      const kachel = e.target.closest('[data-skin]');
+      if (!kachel || kachel.disabled) return;
+      // Gesperrt: der Klick kauft, statt auszuwählen. Bewusst DERSELBE Klick
+      // und kein zweiter Knopf — sonst müsste man erst herausfinden, wo man
+      // kauft, und das Schloss wäre nur Dekoration.
+      if (kachel.dataset.gesperrt === 'ja') {
+        this.callbacks.onKaufen('skin', kachel.dataset.skin);
+        return;
+      }
+      this.callbacks.onPickSkin(kachel.dataset.skin);
+    });
+
     this.el.characterList.addEventListener('click', (e) => {
       const kachel = e.target.closest('[data-character]');
       if (!kachel || kachel.disabled) return;
+      if (kachel.dataset.gesperrt === 'ja') {
+        this.callbacks.onKaufen('charakter', kachel.dataset.character);
+        return;
+      }
       this.callbacks.onPickCharacter(kachel.dataset.character);
+    });
+
+    this.el.uebertragForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const code = this.el.uebertragEingabe.value;
+      if (code.trim()) this.callbacks.onCodeLaden(code);
+    });
+
+    this.el.btnCodeKopieren.addEventListener('click', async () => {
+      const code = this.el.uebertragCode.textContent;
+      try {
+        await navigator.clipboard.writeText(code);
+        this.setUebertragStatus('Code kopiert.');
+      } catch {
+        /* Zwischenablage gesperrt (Fremd-Rahmen, kein HTTPS) — dann muss man
+         * ihn eben markieren. Der Code steht ja sichtbar da. */
+        this.setUebertragStatus('Kopieren nicht erlaubt — Code von Hand markieren.');
+      }
     });
 
     this.el.nameForm.addEventListener('submit', (e) => {
@@ -203,6 +323,16 @@ export class UI {
       score.textContent = `${entry.score} m`;
 
       li.append(rank, name, score);
+
+      // Läufe mit zweitem Leben markieren (CONFIG.score.markAdRevive).
+      if (entry.ad && this.cfg.score.markAdRevive) {
+        const mark = document.createElement('span');
+        mark.className = 'score__mark';
+        mark.textContent = '▸';
+        mark.title = 'Lauf wurde nach dem Tod fortgesetzt';
+        li.appendChild(mark);
+      }
+
       listEl.appendChild(li);
     });
   }
@@ -220,7 +350,105 @@ export class UI {
    * @param {Array<{id:string,label:string,blurb:string,preview:string}>} liste
    * @param {string} aktiv ID des gewählten Affen
    */
-  showCharacters(liste, aktiv) {
+  /**
+   * Fellfarben-Kacheln.
+   *
+   * Die Vorschau ist das Charakterbild mit DEMSELBEN CSS-Filter, den auch das
+   * Sprite bekommt — die Kachel zeigt also exakt, was im Spiel ankommt, ohne
+   * dass dafür ein einziges zusätzliches Bild nötig wäre.
+   *
+   * @param {Array<{id:string,label:string,filter:string}>} liste
+   * @param {string} aktiv
+   * @param {string} [vorschauBild] Bild des gerade gewählten Affen
+   */
+  /**
+   * @param {Array} liste
+   * @param {string} aktiv
+   * @param {string} [vorschauBild]
+   * @param {{istFrei:Function, muenzen:number}} [besitz]
+   */
+  showSkins(liste, aktiv, vorschauBild, besitz = null) {
+    const host = this.el.skinList;
+    host.textContent = '';
+
+    // Vorschau vom aktiven Charakter nehmen, sonst vom ersten Bild im Screen.
+    const quelle =
+      vorschauBild ??
+      this.el.characterList.querySelector('.char.is-active .char__img')?.getAttribute('src') ??
+      this.el.characterList.querySelector('.char__img')?.getAttribute('src');
+
+    for (const s of liste) {
+      const kachel = document.createElement('button');
+      kachel.type = 'button';
+      kachel.className = 'skin';
+      kachel.dataset.skin = s.id;
+      kachel.classList.toggle('is-active', s.id === aktiv);
+      kachel.setAttribute('aria-pressed', String(s.id === aktiv));
+      kachel.title = s.label;
+
+      if (quelle) {
+        const bild = document.createElement('img');
+        bild.className = 'skin__img';
+        bild.src = quelle;
+        bild.alt = '';
+        bild.width = 64;
+        bild.height = 64;
+        if (s.filter && s.filter !== 'none') bild.style.filter = s.filter;
+        kachel.appendChild(bild);
+      }
+
+      const name = document.createElement('span');
+      name.className = 'skin__name';
+      name.textContent = s.label;
+      kachel.appendChild(name);
+
+      if (besitz) this._sperre(kachel, s.kosten ?? 0, besitz.istFrei(s.id), besitz.muenzen);
+      host.appendChild(kachel);
+    }
+  }
+
+
+  /**
+   * Legt Schloss und Preis auf eine Kachel.
+   *
+   * Das Schloss liegt ÜBER der Kachel, verdeckt sie aber nicht: was ein Affe
+   * kann, muss man lesen können, bevor man ihn kauft. Wer nicht weiss, wofür
+   * er 150 Münzen ausgibt, gibt sie nicht aus.
+   *
+   * @param {HTMLElement} kachel
+   * @param {number} preis
+   * @param {boolean} frei
+   * @param {number} bestand
+   */
+  _sperre(kachel, preis, frei, bestand) {
+    kachel.dataset.gesperrt = frei ? 'nein' : 'ja';
+    kachel.classList.toggle('is-locked', !frei);
+    if (frei) return;
+
+    const reicht = bestand >= preis;
+    kachel.classList.toggle('is-affordable', reicht);
+
+    const marke = document.createElement('span');
+    marke.className = 'schloss';
+    marke.textContent = reicht ? '🔓' : '🔒';
+    kachel.appendChild(marke);
+
+    const p = document.createElement('span');
+    p.className = 'preis';
+    p.textContent = `${preis}`;
+    kachel.appendChild(p);
+
+    kachel.title = reicht
+      ? `Für ${preis} Münzen freischalten`
+      : `Kostet ${preis} Münzen — du hast ${bestand}`;
+  }
+
+  /**
+   * @param {Array} liste
+   * @param {string} aktiv
+   * @param {{istFrei:Function, muenzen:number}} [besitz]
+   */
+  showCharacters(liste, aktiv, besitz = null) {
     const host = this.el.characterList;
     host.textContent = '';
 
@@ -254,6 +482,7 @@ export class UI {
       text.textContent = c.blurb;
 
       kachel.append(bild, name, text);
+      if (besitz) this._sperre(kachel, c.kosten ?? 0, besitz.istFrei(c.id), besitz.muenzen);
       host.appendChild(kachel);
     }
 
@@ -350,6 +579,13 @@ export class UI {
     this.el.gameoverHeadline.textContent = isNewBest ? 'Neuer Rekord!' : 'Game Over';
     this.el.gameoverHeadline.classList.toggle('headline--best', isNewBest);
 
+    /* Das Weltlisten-Feld zurücksetzen. Ohne das blieb ein "Weltliste nicht
+     * erreichbar" vom letzten Mal stehen und sah aus, als beträfe es den
+     * gerade beendeten Lauf. */
+    this.el.weltPanel.classList.remove('is-visible');
+    this.el.weltStatus.textContent = '';
+    this.el.weltListe.textContent = '';
+
     this.el.nameForm.classList.toggle('is-visible', qualifies);
     if (qualifies) {
       this.el.nameInput.value = '';
@@ -360,6 +596,149 @@ export class UI {
     this.renderHighscores(this.el.gameoverHighscores, highscores);
     this.clearToast();
     this.showScreen('gameover');
+  }
+
+  /* ---------------------------------------------------------- Weiterspielen */
+
+  /** Angebot "Werbung ansehen und weiterklettern". */
+  showContinueOffer(score) {
+    this.el.continueScore.textContent = String(score);
+    this.clearToast();
+    this.showScreen('continue');
+  }
+
+  /** Werbespot läuft. */
+  showAd(restSekunden) {
+    this.el.adCountdown.textContent = String(restSekunden);
+    this.showScreen('ad');
+  }
+
+  /** Restsekunden im laufenden Spot. */
+  setAdCountdown(restSekunden) {
+    this.el.adCountdown.textContent = String(restSekunden);
+  }
+
+  /* -------------------------------------------------- Weltweite Liste */
+
+  /**
+   * Zeigt die weltweite Liste. Ohne Einträge bleibt das Feld unsichtbar —
+   * eine leere Bestenliste sieht nach Fehler aus, auch wenn keiner vorliegt.
+   */
+  /**
+   * @param {Array} eintraege
+   * @param {{name?: string, rang?: number}} [eigen] eigener Eintrag, wird
+   *   hervorgehoben; steht er ausserhalb der Top 10, sagt es der Hinweistext
+   */
+  showWeltListe(eintraege, eigen = null) {
+    if (!eintraege?.length) {
+      this.el.weltPanel.classList.remove('is-visible');
+      return;
+    }
+    this.el.weltPanel.classList.add('is-visible');
+
+    /* Den eigenen Eintrag markieren. Ohne das sucht man seinen Namen in
+     * zehn Zeilen — und findet ihn nicht, wenn er gar nicht dabei ist. */
+    let index = -1;
+    if (eigen?.name) {
+      const gesucht = eigen.name.trim().toLowerCase();
+      index = eintraege.findIndex((e) => String(e.name).trim().toLowerCase() === gesucht);
+    }
+
+    this.renderHighscores(this.el.weltListe, eintraege, index);
+
+    if (eigen?.rang && index < 0) {
+      // Eingetragen, aber nicht in der Top 10 — das ist kein Fehler, und der
+      // Platz gehört trotzdem gezeigt.
+      this.el.weltStatus.textContent = `Dein Platz weltweit: ${eigen.rang}`;
+    } else if (eigen?.rang) {
+      this.el.weltStatus.textContent = `Platz ${eigen.rang} weltweit`;
+    } else {
+      this.el.weltStatus.textContent = '';
+    }
+  }
+
+  /* --------------------------------------------------------- Ton-Schalter */
+
+  /**
+   * Bringt den Ton-Schalter auf den Stand des Klangsystems. Wird von beiden
+   * Wegen gerufen — Klick auf den Schalter UND Taste M — damit die Anzeige
+   * nie auseinanderläuft.
+   *
+   * @param {boolean} stumm
+   */
+  setTon(stumm) {
+    // Der erste Aufruf kommt aus der Verdrahtung — ab hier ist der Knopf
+    // wirksam und darf sichtbar werden.
+    this.el.btnTon.hidden = false;
+    this.el.btnTon.dataset.stumm = stumm ? 'ja' : 'nein';
+    this.el.btnTon.setAttribute('aria-label', stumm ? 'Ton einschalten' : 'Ton ausschalten');
+    this.el.tonSymbol.textContent = stumm ? '🔇' : '🔊';
+  }
+
+  /* ------------------------------------------------ Fortschritt mitnehmen */
+
+  /**
+   * Zeigt den Wiederherstellungscode. Ohne Code bleibt der ganze Abschnitt
+   * verborgen — auf CrazyGames hängt der Stand am Konto, und ohne Server gibt
+   * es nichts mitzunehmen. Ein Feld, das nichts tut, verwirrt nur.
+   *
+   * @param {string|null} code
+   */
+  setUebertragCode(code) {
+    if (!code) {
+      this.el.uebertrag.hidden = true;
+      return;
+    }
+    this.el.uebertrag.hidden = false;
+    this.el.uebertragCode.textContent = code;
+  }
+
+  setUebertragStatus(text) {
+    this.el.uebertragStatus.textContent = text;
+  }
+
+  /** Kurzer Hinweis über der Weltliste (lädt, nicht erreichbar …). */
+  setWeltStatus(text) {
+    this.el.weltPanel.classList.add('is-visible');
+    this.el.weltStatus.textContent = text;
+  }
+
+  /* ------------------------------------------------------------- Münzen */
+
+  /** Münzen DIESES Laufs (HUD). */
+  setMuenzenLauf(n) {
+    this.el.hudCoins.textContent = String(n);
+    // Kurz aufblitzen, damit man das Einsammeln auch im Augenwinkel merkt.
+    const box = this.el.hudCoins.parentElement;
+    box.classList.remove('is-pop');
+    void box.offsetWidth; // Reflow erzwingen, sonst startet die Animation nicht neu
+    if (n > 0) box.classList.add('is-pop');
+  }
+
+  /** Gesamtbestand (Auswahlbildschirm). */
+  setMuenzenGesamt(n) {
+    this.el.besitzWert.textContent = String(n);
+  }
+
+  /* --------------------------------------------------- Nächstes Gebiet */
+
+  /**
+   * Zeigt, was als Nächstes kommt und wie weit es noch ist.
+   *
+   * @param {string|null} bildUrl Vorschau der nächsten Wand
+   * @param {number} meter        verbleibende Höhenmeter
+   */
+  setNaechstesGebiet(bildUrl, meter) {
+    if (!bildUrl) {
+      this.el.naechstes.classList.remove('is-visible');
+      return;
+    }
+    this.el.naechstes.classList.add('is-visible');
+    const url = `url("${assetUrl(bildUrl)}")`;
+    if (this.el.naechstesBild.style.backgroundImage !== url) {
+      this.el.naechstesBild.style.backgroundImage = url;
+    }
+    this.el.naechstesMeter.textContent = `${Math.max(0, Math.round(meter))} m`;
   }
 
   /** Nach dem Eintragen: Liste neu zeichnen und den neuen Eintrag hervorheben. */
