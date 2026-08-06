@@ -1,0 +1,103 @@
+# ============================================================================
+#  Hält die Supabase-Datenbank wach
+#
+#  Freie Supabase-Projekte werden nach EINER WOCHE ohne einen einzigen
+#  API-Aufruf pausiert. Für ein Spiel, das noch nicht täglich gespielt wird,
+#  heisst das: Die Datenbank schläft ein, und der nächste Spieler bekommt
+#  keine Bestenliste und keinen gespeicherten Fortschritt, bis das Projekt im
+#  Dashboard von Hand geweckt wird.
+#
+#  Dieser Ablauf schickt alle drei Tage eine winzige Leseanfrage. Das genügt
+#  als Lebenszeichen.
+#
+#  ------------------------------------------------------------------------
+#  DER ZWEITE TERMIN IST KEIN VERSEHEN
+#
+#  GitHub schaltet zeitgesteuerte Abläufe in öffentlichen Projekten nach
+#  60 TAGEN OHNE REPOSITORY-AKTIVITÄT ab — und als Aktivität zählen
+#  ausschliesslich COMMITS. Issues, Tags oder Releases nicht.
+#
+#  Ein reiner Ping-Job würde sich damit selbst stilllegen: Er läuft brav,
+#  erzeugt aber keinen Commit, GitHub hält das Projekt für tot und schaltet
+#  ihn ab. Danach schläft die Datenbank eine Woche später ein — beides ohne
+#  Fehlermeldung, man merkt es erst, wenn jemand spielen will.
+#
+#  Deshalb der zweite Termin: einmal im Monat wird ein Zeitstempel in eine
+#  Datei geschrieben und committet. Das setzt die 60-Tage-Uhr zurück, lange
+#  bevor sie abläuft, und kostet zwölf Commits im Jahr.
+# ============================================================================
+
+name: Datenbank wachhalten
+
+on:
+  schedule:
+    # Alle drei Tage: Lebenszeichen an die Datenbank (Pause droht nach 7 Tagen).
+    - cron: '17 4 */3 * *'
+    # Am 1. jedes Monats zusätzlich: Commit gegen die 60-Tage-Abschaltung.
+    - cron: '23 5 1 * *'
+  # Zum Ausprobieren von Hand, ohne auf den Zeitplan zu warten.
+  workflow_dispatch:
+
+# Nur was gebraucht wird: Lesen für alles, Schreiben für den Monats-Commit.
+permissions:
+  contents: write
+
+jobs:
+  wachhalten:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Adresse und Schlüssel kommen aus src/config.js — der EINEN Stelle, an
+      # der sie ohnehin stehen. Sie hier zu wiederholen hiesse, dass ein
+      # gewechselter Schlüssel unbemerkt das falsche Projekt anpingt.
+      #
+      # Der Schlüssel ist der öffentliche (`sb_publishable_…`). Er steckt
+      # zwangsläufig im ausgelieferten JavaScript und ist damit ohnehin nicht
+      # geheim — hier steht also nichts, was nicht jeder Spieler schon hat.
+      - name: Zugangsdaten aus der Config lesen
+        id: cfg
+        run: |
+          node -e "
+            import('./src/config.js').then((m) => {
+              const b = m.CONFIG.bestenliste;
+              if (!b?.url || !b?.schluessel) {
+                console.error('CONFIG.bestenliste unvollständig');
+                process.exit(1);
+              }
+              console.log('url=' + b.url);
+              console.log('key=' + b.schluessel);
+            });
+          " >> "$GITHUB_OUTPUT"
+
+      - name: Lebenszeichen an die Datenbank
+        run: |
+          # -f lässt curl bei HTTP-Fehlern scheitern, -S zeigt den Grund.
+          # Ohne beides liefe der Ablauf grün durch, während die Datenbank
+          # längst nicht mehr antwortet — genau der Fall, den er verhindern soll.
+          code=$(curl -fsS -o /dev/null -w '%{http_code}' \
+            -H "apikey: ${{ steps.cfg.outputs.key }}" \
+            -H "Authorization: Bearer ${{ steps.cfg.outputs.key }}" \
+            "${{ steps.cfg.outputs.url }}/rest/v1/bestenliste?select=name&limit=1")
+          echo "Datenbank hat mit HTTP $code geantwortet."
+
+      # Nur am Monatstermin. `github.event.schedule` enthält genau den
+      # cron-Ausdruck, der den Lauf ausgelöst hat — so trennen sich die beiden
+      # Termine ohne zweite Datei.
+      - name: Monatlicher Commit gegen die 60-Tage-Abschaltung
+        if: github.event.schedule == '23 5 1 * *'
+        run: |
+          mkdir -p .github
+          date -u '+%Y-%m-%d %H:%M UTC' > .github/wachhalten-zuletzt.txt
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/wachhalten-zuletzt.txt
+          # --quiet gibt 1 zurück, wenn sich nichts geändert hat. Dann gibt es
+          # nichts zu committen, und das ist kein Fehler.
+          if git diff --staged --quiet; then
+            echo 'Keine Änderung — nichts zu committen.'
+          else
+            git commit -m 'Wachhalten: Zeitstempel (haelt den Zeitplan aktiv)'
+            git push
+          fi

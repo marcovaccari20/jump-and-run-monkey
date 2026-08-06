@@ -519,6 +519,35 @@ Bei `eintragen` weiter oben ist das Zurückdrehen übrigens **erwünscht**: dort
 soll die Lauf-Marke jeden Fehlversuch überleben. Dieselbe Eigenschaft, zwei
 gegensätzliche Anforderungen.
 
+### Die Datenbank darf nicht einschlafen
+
+Freie Supabase-Projekte werden **nach einer Woche ohne einen einzigen
+API-Aufruf pausiert**. Für ein Spiel, das noch nicht täglich gespielt wird,
+heisst das: Bestenliste und Fortschritt fallen still auf lokal zurück, bis das
+Projekt im Dashboard von Hand geweckt wird.
+
+Dagegen läuft
+[`.github/workflows/datenbank-wachhalten.yml`](.github/workflows/datenbank-wachhalten.yml):
+alle drei Tage eine winzige Leseanfrage. Adresse und Schlüssel liest der
+Ablauf aus `src/config.js` — nicht abgeschrieben, sonst pingt ein gewechselter
+Schlüssel unbemerkt ins Leere.
+
+**Der zweite Termin im selben Ablauf ist kein Versehen.** GitHub schaltet
+zeitgesteuerte Abläufe in öffentlichen Projekten nach **60 Tagen ohne
+Repository-Aktivität** ab, und als Aktivität zählen ausschliesslich *Commits* —
+Issues, Tags und Releases nicht. Ein reiner Ping-Job legt sich damit selbst
+stillt: Er läuft brav, erzeugt aber keinen Commit, GitHub hält das Projekt für
+tot und schaltet ihn ab; eine Woche später schläft die Datenbank ein. Beides
+ohne Fehlermeldung. Deshalb schreibt der Ablauf am 1. jedes Monats einen
+Zeitstempel nach `.github/wachhalten-zuletzt.txt` und committet ihn.
+
+`curl` läuft mit `-fsS`: Antwortet die Datenbank nicht mehr, wird der Ablauf
+**rot**. Ohne das liefe er grün durch, während genau der Fall eingetreten ist,
+den er verhindern soll.
+
+Von Hand auslösen geht über den Reiter **Actions → Datenbank wachhalten → Run
+workflow**; dann wird nur gepingt, nicht committet.
+
 ### Zwei Fallen, die beim Bauen zugeschlagen haben
 
 - **Erst auflösen, dann die eigene Kennung überschreiben.** Die alte Fassung
