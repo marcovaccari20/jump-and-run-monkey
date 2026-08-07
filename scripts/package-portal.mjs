@@ -35,6 +35,14 @@ const ERLAUBT = [
   'https://api.gamemonetize.com/', // GameMonetize-SDK, dito
   'http://www.w3.org/', // XML-Namensraum in SVG, kein Netzwerkaufruf
   'https://jcgt.org/', // Quellenangabe in einem three.js-Kommentar
+  /* Die eigene Supabase-Instanz: Bestenliste und Fortschritt.
+   *
+   * Das ist ein echter Fremdserver, und er MUSS in der Liste stehen — sonst
+   * lässt sich gar nicht mehr paketieren, seit die Weltliste konfiguriert
+   * ist. Die Portale verlangen, dass ein Spiel ohne Fremdserver SPIELBAR
+   * bleibt, nicht dass es keine kennt: fällt Supabase aus, laufen Spiel und
+   * lokale Bestenliste unverändert weiter (siehe Bestenliste.js). */
+  'https://tbhaxppbpzywpypmeopo.supabase.co',
 ];
 
 const PORTALE = {
@@ -123,11 +131,38 @@ if (!existsSync(join(DIST, 'index.html'))) {
   befunde.push('index.html fehlt in der Wurzel des Builds.');
 }
 
-// 2) absolute Pfade
+/* 2) absolute Pfade — in index.html UND in den JavaScript-Bündeln.
+ *
+ * Die Prüfung sah nur index.html an, und genau daran ist ein echter Fehler
+ * vorbeigerutscht: die Gebietsmusik wurde als `/musik/gruen.ogg` geladen.
+ * Auf einem Portal, das im Unterordner ausliefert, zeigt der führende
+ * Schrägstrich auf die Wurzel der PORTALSEITE — es hätte dort schlicht keine
+ * Musik gegeben, und `<audio>` meldet einen 404 nicht einmal.
+ *
+ * Gesucht wird nach Zeichenketten, die wie ein Asset-Pfad aussehen: ein
+ * führender Schrägstrich plus eine bekannte Dateiendung. Nach Pfaden allein
+ * zu suchen wäre unbrauchbar — im gebündelten three.js stehen dutzende
+ * Zeichenketten mit Schrägstrich, die keine Adressen sind.
+ */
 const html = readFileSync(join(DIST, 'index.html'), 'utf8');
 for (const m of html.matchAll(/(?:src|href)="(\/[^"/][^"]*)"/g)) {
   befunde.push(`Absoluter Pfad in index.html: ${m[1]} — bricht im Unterordner des Portals.`);
 }
+
+/* KEIN statischer Test auf absolute Pfade IM BÜNDEL — der Versuch ist
+ * gescheitert, und zwar aus einem lehrreichen Grund.
+ *
+ * Die Konfiguration schreibt Pfade absichtlich absolut ("/textures/x.webp")
+ * und löst sie zur Laufzeit über `assetUrl()` gegen die Vite-Base auf. Ein
+ * Textsucher im gebauten JavaScript sieht davon nichts: er kann nicht
+ * unterscheiden, ob ein Pfad später durch `assetUrl()` läuft oder roh
+ * verwendet wird. Ein solcher Test meldete alle 40 Texturen als Fehler und
+ * hätte jedes Paket blockiert.
+ *
+ * Der Fehler, der ihn ausgelöst hat (Musik über `/musik/…` statt `assetUrl`),
+ * ist trotzdem real gewesen. Er lässt sich nur zur LAUFZEIT finden:
+ * `npm run pruef:unterordner` legt den Build in einen Unterordner, ruft ihn
+ * dort auf und meldet jede Datei, die 404 liefert. */
 
 // 3) fremde Server
 const fremd = new Map();
@@ -182,8 +217,11 @@ for (const key of ziele) {
       const text = readFileSync(datei, 'utf8');
       for (const m of text.matchAll(/https?:\/\/[a-zA-Z0-9.-]+/g)) {
         const url = m[0];
-        // Namensräume und Quellenangaben sind keine Netzwerkaufrufe.
-        if (url.startsWith('http://www.w3.org/') || url.startsWith('https://jcgt.org/')) continue;
+        /* Namensräume und Quellenangaben sind keine Netzwerkaufrufe.
+         * OHNE Schrägstrich vergleichen: der Ausdruck oben trifft die Adresse
+         * ohne Pfad, mit `.../` verglichen ging die Ausnahme ins Leere und
+         * beide wurden fälschlich als Fremdserver gemeldet. */
+        if (url.startsWith('http://www.w3.org') || url.startsWith('https://jcgt.org')) continue;
         if (!verboten.includes(url)) verboten.push(url);
       }
     }

@@ -29,6 +29,36 @@
  * ─────────────────────────────────────────────────────────────────────────
  */
 
+import { assetUrl } from '../core/AssetLoader.js';
+
+/**
+ * Blendkurve mit GLEICHER LEISTUNG statt gerader Linie.
+ *
+ * Zwei lineare Blenden, die sich kreuzen, stehen in der Mitte beide bei 0.5.
+ * Für unkorrelierte Signale — und zwei verschiedene Musikstücke sind das —
+ * addieren sich nicht die Pegel, sondern die LEISTUNGEN: √(0.5² + 0.5²) =
+ * 0.71. Das ist ein hörbarer Einbruch von rund 3 dB, mitten in jedem
+ * Gebietswechsel und an jedem Schleifenpunkt. Bei `eiszeit` (26 s) alle 26
+ * Sekunden.
+ *
+ * Mit der Viertelwelle des Kosinus gilt cos²+sin²=1, die Summe der
+ * Leistungen bleibt also konstant und man hört keine Delle.
+ *
+ * @param {number} von  Startwert
+ * @param {number} bis  Zielwert
+ * @param {number} n    Stützstellen (32 reichen für eine glatte Blende)
+ */
+function blendkurve(von, bis, n = 32) {
+  const k = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    // 0..1 als Viertelwelle: sanft raus, sanft rein, in der Mitte 0.707.
+    const t = i / (n - 1);
+    const anteil = Math.sin((t * Math.PI) / 2);
+    k[i] = von + (bis - von) * anteil;
+  }
+  return k;
+}
+
 export class Musik {
   /**
    * @param {typeof import('../config.js').CONFIG.klang.musik} cfg
@@ -60,8 +90,21 @@ export class Musik {
     return ogg === 'probably' || ogg === 'maybe' ? 'ogg' : 'mp3';
   }
 
+  /**
+   * ÜBER `assetUrl`, NICHT als roher Pfad.
+   *
+   * Hier stand `${this.cfg.ordner}${gebiet}.${endung}` und ergab
+   * `/musik/gruen.ogg` — einen ABSOLUTEN Pfad. Die Portale liefern das Spiel
+   * aber aus einem Unterordner aus, und dort zeigt ein führender Schrägstrich
+   * auf die Wurzel der Portalseite. Ergebnis wäre gewesen: auf CrazyGames und
+   * GameMonetize überhaupt keine Musik, ohne eine einzige Fehlermeldung —
+   * `<audio>` schweigt bei 404 einfach.
+   *
+   * Genau dafür gibt es `assetUrl`: es löst gegen `base: './'` aus
+   * vite.config.js auf. Jedes andere Asset im Spiel geht schon diesen Weg.
+   */
   _pfad(gebiet) {
-    return `${this.cfg.ordner}${gebiet}.${this._endung}`;
+    return assetUrl(`${this.cfg.ordner}${gebiet}.${this._endung}`);
   }
 
   /** Legt (einmalig) die zwei Abspieler eines Gebiets an. */
@@ -79,7 +122,12 @@ export class Musik {
       // KEIN loop: die Schleife macht der Wechsel zwischen a und b, sonst
       // liefen beide Mechanismen gegeneinander.
       el.loop = false;
-      el.crossOrigin = 'anonymous';
+      /* KEIN `crossOrigin`. Die Musik liegt im eigenen Build, ist also immer
+       * gleicher Herkunft — dann braucht ein MediaElementAudioSourceNode
+       * nichts dergleichen. Gesetzt bewirkt es das Gegenteil: es erzwingt
+       * eine CORS-Anfrage. Antwortet der Server ohne die passende Kopfzeile
+       * (Portal-CDN, oder `file://` in der Android-Hülle), liefert der Knoten
+       * STILLE statt Musik — ohne Fehlermeldung. */
       const quelle = this.ctx.createMediaElementSource(el);
       const eigen = this.ctx.createGain();
       eigen.gain.value = 0;
@@ -108,8 +156,7 @@ export class Musik {
       const alt = this._gebiete.get(this._aktuell);
       if (alt) {
         alt.gain.gain.cancelScheduledValues(jetzt);
-        alt.gain.gain.setValueAtTime(alt.gain.gain.value, jetzt);
-        alt.gain.gain.linearRampToValueAtTime(0, jetzt + fade);
+        alt.gain.gain.setValueCurveAtTime(blendkurve(alt.gain.gain.value, 0), jetzt, fade);
         const zuStoppen = alt;
         clearTimeout(zuStoppen.uhr);
         zuStoppen.uhr = setTimeout(() => {
@@ -143,8 +190,11 @@ export class Musik {
     this._starten(neu.a.el);
 
     neu.gain.gain.cancelScheduledValues(jetzt);
-    neu.gain.gain.setValueAtTime(neu.gain.gain.value, jetzt);
-    neu.gain.gain.linearRampToValueAtTime(this._pegel(gebiet), jetzt + fade);
+    neu.gain.gain.setValueCurveAtTime(
+      blendkurve(neu.gain.gain.value, this._pegel(gebiet)),
+      jetzt,
+      fade,
+    );
   }
 
   /** Lautstärke eines Gebiets: einheitlich, sofern nichts anderes dasteht. */
@@ -190,12 +240,10 @@ export class Musik {
     this._starten(anderer.el);
 
     anderer.eigen.gain.cancelScheduledValues(jetzt);
-    anderer.eigen.gain.setValueAtTime(0, jetzt);
-    anderer.eigen.gain.linearRampToValueAtTime(1, jetzt + fade);
+    anderer.eigen.gain.setValueCurveAtTime(blendkurve(0, 1), jetzt, fade);
 
     laufend.eigen.gain.cancelScheduledValues(jetzt);
-    laufend.eigen.gain.setValueAtTime(laufend.eigen.gain.value, jetzt);
-    laufend.eigen.gain.linearRampToValueAtTime(0, jetzt + fade);
+    laufend.eigen.gain.setValueCurveAtTime(blendkurve(laufend.eigen.gain.value, 0), jetzt, fade);
 
     e.aktiv = anderer;
 
@@ -220,8 +268,11 @@ export class Musik {
     const jetzt = this.ctx.currentTime;
     for (const e of this._gebiete.values()) {
       e.gain.gain.cancelScheduledValues(jetzt);
-      e.gain.gain.setValueAtTime(e.gain.gain.value, jetzt);
-      e.gain.gain.linearRampToValueAtTime(0, jetzt + this.cfg.wechselFade);
+      e.gain.gain.setValueCurveAtTime(
+        blendkurve(e.gain.gain.value, 0),
+        jetzt,
+        this.cfg.wechselFade,
+      );
       clearTimeout(e.uhr);
       e.uhr = setTimeout(() => {
         for (const s of [e.a, e.b]) {

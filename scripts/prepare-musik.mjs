@@ -17,18 +17,18 @@
  *    üblich, weil darüber noch Spielgeräusche liegen.
  *
  * 3. KLEINER MACHEN. 47 MB Vorlagen sind für ein Browserspiel zu viel: das
- *    Spiel selbst wiegt rund 10 MB. Bei 96 kbit/s stereo bleibt genug
+ *    Spiel OHNE Musik wiegt rund 6 MB, die Musik wäre also das Achtfache. Bei 96 kbit/s stereo bleibt genug
  *    Qualität für Hintergrundmusik und es passt in jede Portal-Grenze.
  *
  * 4. ZWEI FORMATE. `.ogg` (Vorbis) für Chrome, Firefox, Edge und Safari ab
  *    15; `.mp3` als Rückfall für alles Ältere. Das Spiel wählt beim Laden
- *    selbst aus (siehe Klang.js).
+ *    selbst aus (Musik.js, `_formatWaehlen`).
  *
  * WARUM NICHT NAHTLOS GESCHNITTEN
  * Die Stücke sind nicht als Schleife komponiert. Statt sie zurechtzuschneiden
- * blendet das Spiel am Ende in den eigenen Anfang über (siehe Klang.js,
- * `_schleifeUeberblenden`) — das kaschiert sowohl die fehlende
- * Schleifenfähigkeit als auch die Kodierlücke von MP3.
+ * blendet das Spiel am Ende in den eigenen Anfang über (Musik.js, `update`)
+ * — das kaschiert sowohl die fehlende Schleifenfähigkeit als auch die
+ * Kodierlücke von MP3.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
@@ -43,7 +43,7 @@ const QUELLE = resolve(process.env.USERPROFILE ?? process.env.HOME ?? '', 'Deskt
 const ZIEL = join(ROOT, 'public', 'musik');
 
 /* Zuordnung Stück -> Gebiet. Die Gebietsnamen sind die aus
- * CONFIG.wall.stages; sie sind zugleich die Schlüssel in CONFIG.klang.gebiete. */
+ * CONFIG.wall.stages und zugleich die Dateinamen in public/musik. */
 const STUECKE = [
   { datei: 'Jungle Adventure.mp3', gebiet: 'gruen', was: 'erstes Gebiet, Dschungel' },
   { datei: 'Flower Jungle.mp3', gebiet: 'blumen', was: 'zweites Gebiet, Blumen' },
@@ -122,7 +122,25 @@ const kb = (p) => Math.round(statSync(p).size / 1024);
 
 mkdirSync(ZIEL, { recursive: true });
 
-// Altbestand weg: sonst bleiben Dateien von umbenannten Stücken liegen.
+/* ERST PRÜFEN, DANN LÖSCHEN — in dieser Reihenfolge, und das ist wichtig.
+ *
+ * Hier wurde zuerst der Altbestand gelöscht und erst danach geschaut, ob die
+ * Vorlagen überhaupt da sind. Die liegen auf dem DESKTOP, also ausserhalb des
+ * Projekts und nicht in Git. Auf jedem anderen Rechner — oder sobald der
+ * Desktop aufgeräumt ist — hätte ein versehentliches `npm run prep:musik`
+ * alle zwölf Stücke gelöscht und sich mit einem Fehler beendet. Gerettet
+ * hätte nur noch Git.
+ */
+const fehltVorab = STUECKE.filter((s) => !existsSync(join(QUELLE, s.datei)));
+if (fehltVorab.length) {
+  console.error(`Vorlagen fehlen in ${QUELLE}:`);
+  for (const s of fehltVorab) console.error(`  ${s.datei}   (für ${s.gebiet})`);
+  console.error('\nNichts gelöscht, nichts geändert. Vorlagen dorthin legen und erneut starten.');
+  process.exit(1);
+}
+
+// Jetzt ist der Weg frei: Altbestand weg, sonst bleiben Dateien von
+// umbenannten Stücken liegen.
 for (const f of readdirSync(ZIEL)) {
   if (/\.(ogg|mp3)$/i.test(f)) unlinkSync(join(ZIEL, f));
 }

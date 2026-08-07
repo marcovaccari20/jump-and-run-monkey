@@ -15,7 +15,8 @@
     "test:fair": "node scripts/fairness.mjs",
     "balance": "node scripts/balance.mjs",
     "paket": "node scripts/package-portal.mjs",
-    "prep:musik": "node scripts/prepare-musik.mjs"
+    "prep:musik": "node scripts/prepare-musik.mjs",
+    "pruef:unterordner": "node scripts/pruef-unterordner.mjs"
   },
   "type": "module",
   "dependencies": {
