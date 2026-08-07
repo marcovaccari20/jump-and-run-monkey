@@ -850,6 +850,29 @@ export const CONFIG = {
         ],
       },
 
+      /* Banane: ein zweites LEBEN, kein Kleingeld — und das muss man hören.
+       *
+       * Die Münze sind zwei kurze, harte Rechteck-Töne. Die Banane bekommt
+       * bewusst das Gegenteil: ein aufsteigender Dreiklang aus weichen
+       * Dreieckstönen, spürbar länger, mit einem vierten Ton eine Oktave
+       * über dem ersten als Abschluss. Aufsteigend heisst "gewonnen", die
+       * Länge heisst "wichtig", das weiche Timbre unterscheidet es vom
+       * Klimpern der Münzen.
+       *
+       * Bis hierher hatte das Einsammeln einer Banane ÜBERHAUPT keinen
+       * Klang — man bekam ein zweites Leben und merkte es nur am Symbol. */
+      banane: {
+        mindestAbstand: 0.2,
+        toene: [
+          { von: 523, bis: 523, dauer: 0.16, gain: 0.2, form: 'triangle' },
+          { von: 659, bis: 659, dauer: 0.16, gain: 0.2, form: 'triangle', verzoegerung: 0.075 },
+          { von: 784, bis: 784, dauer: 0.2, gain: 0.21, form: 'triangle', verzoegerung: 0.15 },
+          { von: 1047, bis: 1047, dauer: 0.5, gain: 0.19, form: 'triangle', verzoegerung: 0.24 },
+          // Leiser Oberton darüber: gibt Glanz, ohne schriller zu werden.
+          { von: 2093, bis: 2093, dauer: 0.4, gain: 0.05, form: 'sine', verzoegerung: 0.24 },
+        ],
+      },
+
       /* Treffer: tiefer Schlag plus kurzes Rauschen. Der Schlag allein klingt
        * nach Ton, das Rauschen allein nach Zischen — erst zusammen nach
        * Aufprall. */
@@ -917,7 +940,13 @@ export const CONFIG = {
     // Bild aus scripts/prepare-hazards.mjs (nur die KLEINSTE der drei
     // gelieferten Münzen, ausdrücklicher Wunsch).
     bild: '/hazards/muenze.webp',
-    radius: 0.34,
+    /* War 0.34 und damit im Spiel kaum zu erkennen — die Münze ist das
+     * einzige Objekt, das man TREFFEN will, und sie war das kleinste im Bild.
+     * Der Trefferkreis wächst mit (er leitet sich aus dem Radius ab), das ist
+     * hier erwünscht: Einsammeln soll grosszügig sein, Münzen sind
+     * ungefährlich und hängen an keiner Fairness-Zusicherung.
+     * Das Symbol im HUD bleibt unverändert — das ist ein eigenes Bild. */
+    radius: 0.47,
     hitRadiusFactor: 1.35, // grosszügig: Einsammeln soll sich gut anfühlen
     // Langsamer als die Hindernisse. Eine Münze im Steintempo wäre kein
     // Bonus, sondern ein zweiter Reflextest.

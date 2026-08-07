@@ -182,7 +182,7 @@ export class Klang {
 
   /**
    * Kurzer Effekt.
-   * @param {'muenze'|'treffer'|'gameover'|'affe'|'frei'} name
+   * @param {'muenze'|'banane'|'treffer'|'gameover'|'affe'|'frei'} name
    */
   effekt(name) {
     if (!this.ctx) return;

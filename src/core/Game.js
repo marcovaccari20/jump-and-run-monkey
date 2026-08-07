@@ -1335,6 +1335,14 @@ export class Game {
   _onBananaHit(banana) {
     this.spawner.collect(banana);
     if (this.player.collectBanana()) {
+      /* Klang NUR wenn sie auch gezählt hat.
+       *
+       * `collectBanana()` gibt false zurück, wenn das Lager schon voll ist
+       * (maxStored) oder die Figur gar keine Wiederbelebung kennt — der
+       * weisse Affe. Der Klang gehört zur Gutschrift, nicht zur Berührung:
+       * ein Fanfarenstoss für eine Banane, die nichts bringt, wäre eine
+       * Lüge. */
+      this.klang.effekt('banane');
       this.ui.setRevive(true);
       this.ui.toast('+1 Wiederbelebung', 'banana');
     }
