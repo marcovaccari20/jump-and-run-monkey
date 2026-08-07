@@ -27,6 +27,7 @@
  * hört nichts und sieht keinen Fehler.
  */
 
+import { assetUrl } from '../core/AssetLoader.js';
 import { Musik } from './Musik.js';
 
 export class Klang {
@@ -66,6 +67,13 @@ export class Klang {
     /* Rauschpuffer für die Effekte (Treffer, Knistern). Die Atmosphären
      * brauchten ihn früher auch — die sind jetzt Musikdateien. */
     this._rauschen = null;
+    /* Echte Aufnahmen für einzelne Effekte (Banane, Affenruf).
+     *
+     * Diese hier werden ENTPACKT gehalten, anders als die Musik: sie sind
+     * unter anderthalb Sekunden lang (rund 250 KB entpackt), müssen ohne
+     * jede Verzögerung auslösen und sich beliebig oft überlappen. Genau das
+     * kann ein AudioBuffer und ein <audio>-Element nicht. */
+    this._proben = new Map();
     // Nächster erlaubter Zeitpunkt je Effekt — gegen das Maschinengewehr,
     // wenn im selben Frame mehrere Münzen eingesammelt werden.
     this._letzte = new Map();
@@ -116,6 +124,7 @@ export class Klang {
     // Musik hängt am selben Mischpult wie die Effekte: Lautstärke,
     // Stummschaltung und Pause gelten damit für alles gemeinsam.
     this.musik = new Musik(this.cfg.musik, this.ctx, this.master);
+    this._probenLaden();
 
     // Ein Menü, das schon vor der ersten Eingabe Musik angefordert hat,
     // bekommt sie jetzt — sonst bliebe das Startmenü als einziger Bildschirm
@@ -181,6 +190,43 @@ export class Klang {
   /* ================================================================ Effekte */
 
   /**
+   * Lädt die aufgenommenen Effekte und entpackt sie EINMAL in den Speicher.
+   *
+   * Läuft nebenher: bis sie da sind, greift für dieselben Namen das
+   * prozedurale Rezept. Man hört dadurch nie Stille, höchstens in den ersten
+   * Sekunden den erzeugten statt des aufgenommenen Klangs.
+   *
+   * Format wie bei der Musik über `canPlayType`, Pfad über `assetUrl` —
+   * sonst bricht es im Unterordner der Portale.
+   */
+  async _probenLaden() {
+    const proben = this.cfg.proben;
+    if (!proben) return;
+
+    const pruef = document.createElement('audio');
+    const ogg = pruef.canPlayType('audio/ogg; codecs="vorbis"');
+    const endung = ogg === 'probably' || ogg === 'maybe' ? 'ogg' : 'mp3';
+
+    for (const [name, basis] of Object.entries(proben)) {
+      try {
+        const antwort = await fetch(assetUrl(`${basis}.${endung}`));
+        if (!antwort.ok) throw new Error(`HTTP ${antwort.status}`);
+        const roh = await antwort.arrayBuffer();
+        this._proben.set(name, await this.ctx.decodeAudioData(roh));
+      } catch (err) {
+        /* Kein Beinbruch: dann bleibt es beim erzeugten Klang.
+         *
+         * ABER LAUT genug melden. Beim ersten Anlauf fehlte hier der Import
+         * von `assetUrl` — der ReferenceError landete in genau diesem catch,
+         * und die Aufnahmen blieben stumm, ohne dass etwas auffiel.
+         * `console.warn` statt `info`, damit so etwas nicht wieder im
+         * Grundrauschen verschwindet. */
+        console.warn(`[Klang] Aufnahme "${name}" nicht geladen: ${err.message} — nehme das Rezept.`);
+      }
+    }
+  }
+
+  /**
    * Kurzer Effekt.
    * @param {'muenze'|'banane'|'treffer'|'gameover'|'affe'|'frei'} name
    */
@@ -204,13 +250,33 @@ export class Klang {
   _effektJetzt(name) {
     if (!this.bereit) return;
     const rezept = this.cfg.effekte[name];
-    if (!rezept) return;
+    const probe = this._proben.get(name);
+    if (!rezept && !probe) return;
 
     // Mindestabstand: sonst summieren sich gleichzeitige Effekte zu einem
     // Knacken, und das Clipping hört man deutlicher als den Effekt selbst.
     const jetzt = this.ctx.currentTime;
     if (jetzt < (this._letzte.get(name) ?? 0)) return;
-    this._letzte.set(name, jetzt + (rezept.mindestAbstand ?? 0.04));
+    this._letzte.set(name, jetzt + (rezept?.mindestAbstand ?? 0.04));
+
+    /* AUFNAHME SCHLÄGT REZEPT.
+     *
+     * Wo eine echte Aufnahme geladen ist, gewinnt sie — das Rezept bleibt
+     * als Rückfall stehen, solange die Datei noch lädt oder fehlt. Beides
+     * gleichzeitig abzuspielen wäre Matsch. */
+    if (probe) {
+      const quelle = this.ctx.createBufferSource();
+      quelle.buffer = probe;
+      // Leichte Tonhöhenstreuung: derselbe Klang zwanzigmal exakt gleich
+      // klingt nach Maschine. ±6 % fällt einzeln nicht auf, in der Summe
+      // aber sehr wohl.
+      quelle.playbackRate.value = 1 + (Math.random() * 2 - 1) * (this.cfg.probenStreuung ?? 0.06);
+      const g = this.ctx.createGain();
+      g.gain.value = this.cfg.probenPegel ?? 1;
+      quelle.connect(g).connect(this.master);
+      quelle.start(jetzt);
+      return;
+    }
 
     for (const ton of rezept.toene) {
       this._ton(ton, jetzt + (ton.verzoegerung ?? 0));

@@ -1095,9 +1095,17 @@ body.is-coarse .joystick {
   transition: transform 0.12s ease;
 }
 
+/* Deutlich grösser (war 1.05em).
+ *
+ * Bezugsgrösse ist .hud__coins mit font-size 0.52em — das Symbol war damit
+ * gut halb so hoch wie die Punktzahl daneben und im Spiel kaum zu erkennen.
+ * Die Münze IM SPIEL war nie das Problem; die ist unverändert. */
 .hud__coin-icon {
-  width: 1.05em;
-  height: 1.05em;
+  /* Gemessen: die Bezugsschrift ist 8.6 px, das Symbol war damit 9 px hoch
+     gegen eine 32 px hohe Punktzahl. 2.4em ergibt 21 px — deutlich sichtbar,
+     ohne die Zahl daneben zu erschlagen. */
+  width: 2.4em;
+  height: 2.4em;
 }
 
 /* Kurzer Stoss beim Einsammeln — im Augenwinkel sichtbar, ohne abzulenken. */

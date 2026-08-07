@@ -1,0 +1,85 @@
+# Baut das Spiel und stellt es unter einer echten Adresse bereit.
+#
+# WOZU
+# Zum Ausprobieren auf dem Handy. Eine ZIP-Datei auf Google Drive nützt dafür
+# nichts: Drive liefert HTML nicht aus, es bietet es nur zum Herunterladen an,
+# und ein entpacktes Spiel lässt sich auf Android kaum sinnvoll öffnen.
+# Hier entsteht stattdessen eine Adresse, die man am Telefon einfach aufruft:
+#
+#     https://marcovaccari20.github.io/jump-and-run-monkey/
+#
+# NEBENEFFEKT, DER MEHR WERT IST ALS DIE VORSCHAU
+# GitHub Pages liefert unter einem UNTERORDNER aus (/jump-and-run-monkey/) —
+# genau wie CrazyGames und GameMonetize. Wer hier testet, testet damit
+# automatisch den Fall, in dem absolute Pfade brechen. Genau daran wäre die
+# Gebietsmusik auf den Portalen gescheitert.
+#
+# EINMALIG IM REPO EINSCHALTEN
+#   Settings -> Pages -> Source: "GitHub Actions"
+# Ohne das läuft der Ablauf durch und veröffentlicht nichts.
+
+name: Handy-Vorschau
+
+on:
+  push:
+    branches: [main]
+  # Von Hand auslösbar, ohne dass man etwas ändern muss.
+  workflow_dispatch:
+
+# Rechte nur so weit wie nötig.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Ein laufender Build wird abgebrochen, wenn ein neuerer kommt — sonst
+# überholen sich zwei Veröffentlichungen gegenseitig.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # `npm ci` statt `npm install`: baut exakt das, was in der
+      # package-lock.json steht. Sonst kann ein Build hier anders aussehen
+      # als der auf dem Rechner.
+      - run: npm ci
+
+      - run: npm run build
+
+      # Kontrolle, dass die Musik wirklich mitgeht. Sie liegt in public/ und
+      # wird von Vite kopiert — wenn dort etwas fehlt, ist das Spiel stumm,
+      # und das fällt sonst erst auf dem Handy auf.
+      - name: Musik im Build?
+        run: |
+          anzahl=$(ls dist/musik/*.ogg 2>/dev/null | wc -l)
+          echo "Musikstücke im Build: $anzahl"
+          if [ "$anzahl" -lt 12 ]; then
+            echo "FEHLER: es fehlen Musikstücke (erwartet 12)."
+            exit 1
+          fi
+          ls -la dist/klang/ || { echo "FEHLER: Effekt-Aufnahmen fehlen."; exit 1; }
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  veroeffentlichen:
+    needs: bauen
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v4

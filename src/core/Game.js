@@ -78,6 +78,9 @@ export class Game {
     this._weltLauf = null;
     /** Zuletzt eingetragener Name + Platz, damit die Liste ihn hervorhebt. */
     this._eigenerEintrag = null;
+    // Wechselnde Abstaende fuer den Affenruf (siehe _affenRuf).
+    this._affenSchritt = 0;
+    this._affenTimer = 6;
 
     this.klang = new Klang(CONFIG.klang);
 
@@ -890,6 +893,9 @@ export class Game {
      * Der Zähler läuft ohnehin erst, wenn `_weltLauf` steht (siehe
      * _updatePlaying), es geht also nichts ins Leere. */
     this._tickTimer = 0;
+    // Der erste Ruf soll nicht sofort im Startmoment kommen.
+    this._affenSchritt = 0;
+    this._affenTimer = 6 + Math.random() * 4;
     if (this.bestenliste.weltweit) {
       const marke = ++this._laufNummer;
       this.bestenliste.laufStarten().then((id) => {
@@ -1130,6 +1136,56 @@ export class Game {
   }
 
   /**
+   * Lässt den Affen ab und zu von sich hören.
+   *
+   * WECHSELNDE ABSTÄNDE, nicht ein fester Takt. Ein Ruf alle zehn Sekunden
+   * ist nach zwei Minuten ein Metronom und danach eine Belästigung. Die Folge
+   * in CONFIG.klang.affenRuf.abstaende wird reihum durchlaufen und jeder Wert
+   * noch gestreut — mal kommt schnell einer, mal dauert es eine halbe Minute.
+   *
+   * Läuft NUR im Spiel (dieser Zweig gehört zu _updatePlaying): in der Pause,
+   * im Menü und während eines Werbespots ist Ruhe.
+   */
+  _affenRuf(dt) {
+    const cfg = this.cfg.klang.affenRuf;
+    if (!cfg?.abstaende?.length) return;
+
+    this._affenTimer -= dt;
+    if (this._affenTimer > 0) return;
+    this._affenTimer = this._naechsterAffenAbstand();
+    this.klang.effekt('affe');
+  }
+
+  _naechsterAffenAbstand() {
+    const cfg = this.cfg.klang.affenRuf;
+    const wert = cfg.abstaende[this._affenSchritt % cfg.abstaende.length];
+    this._affenSchritt++;
+    const streu = 1 + (Math.random() * 2 - 1) * (cfg.streuung ?? 0);
+    return Math.max(2, wert * streu);
+  }
+
+  /**
+   * Freudenruf nach einem Erfolg — mit Wahrscheinlichkeit, nicht immer.
+   *
+   * Verzögert, damit er HINTER dem Münz- bzw. Bananenklang liegt. Beide
+   * gleichzeitig klingt nach Fehler, nacheinander nach Reaktion.
+   *
+   * Setzt den regulären Timer zurück: sonst käme kurz nach dem Freudenruf
+   * womöglich gleich der nächste planmässige.
+   */
+  _affeFreutSich(wahrscheinlichkeit) {
+    if (Math.random() >= wahrscheinlichkeit) return;
+    const cfg = this.cfg.klang.affenRuf;
+    setTimeout(
+      () => {
+        if (this.states.is(GameState.PLAYING)) this.klang.effekt('affe');
+      },
+      (cfg.nachErfolgVerzoegerung ?? 0.3) * 1000,
+    );
+    this._affenTimer = this._naechsterAffenAbstand();
+  }
+
+  /**
    * Ton an/aus. Der einzige Weg — Taste M und der Schalter oben rechts landen
    * beide hier, damit Zustand und Anzeige nie auseinanderlaufen.
    */
@@ -1228,6 +1284,7 @@ export class Game {
      * Zufallstakt für einzelne Vogelrufe — die gehörten zu den prozeduralen
      * Atmosphären und sind mit ihnen weg. */
     this.klang.musikUpdate();
+    this._affenRuf(dt);
 
     /* Lebenszeichen an die Weltliste.
      *
@@ -1327,6 +1384,7 @@ export class Game {
   _onCoinHit(coin) {
     this.spawner.collectCoin(coin);
     this.klang.effekt('muenze');
+    this._affeFreutSich(this.cfg.klang.affenRuf?.beiMuenze ?? 0);
     this._muenzenImLauf++;
     this.fortschritt.gutschreiben(1);
     this.ui.setMuenzenLauf(this._muenzenImLauf);
@@ -1343,6 +1401,7 @@ export class Game {
        * ein Fanfarenstoss für eine Banane, die nichts bringt, wäre eine
        * Lüge. */
       this.klang.effekt('banane');
+      this._affeFreutSich(this.cfg.klang.affenRuf?.beiBanane ?? 0);
       this.ui.setRevive(true);
       this.ui.toast('+1 Wiederbelebung', 'banana');
     }

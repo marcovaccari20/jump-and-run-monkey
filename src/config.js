@@ -794,6 +794,50 @@ export const CONFIG = {
     speicherSchluessel: 'jungle-climber.stumm.v1',
     lautstaerke: 0.32,
 
+    /* ECHTE AUFNAHMEN für einzelne Effekte.
+     *
+     * Sie schlagen das Rezept unten, sobald sie geladen sind — das Rezept
+     * bleibt als Rückfall, solange die Datei noch unterwegs ist oder fehlt.
+     * Entstehen mit `npm run prep:klaenge` aus den Vorlagen im
+     * Downloads-Ordner (scripts/prepare-klaenge.mjs).
+     *
+     * Ohne Endung: Musik.js und Klang.js wählen .ogg oder .mp3 selbst. */
+    proben: {
+      banane: '/klang/banane',
+      affe: '/klang/affe',
+    },
+    /* WANN DER AFFE VON SICH HÖREN LÄSST.
+     *
+     * Ein fester Takt fällt sofort als Takt auf und wird zur Belästigung.
+     * Deshalb eine Folge WECHSELNDER Abstände, die reihum durchlaufen wird —
+     * mal kommt schnell einer, mal dauert es. Dazu eine kleine Streuung, damit
+     * auch die Folge selbst nicht erkennbar wird.
+     *
+     * `beiMuenze` / `beiBanane`: mit dieser Wahrscheinlichkeit ruft er direkt
+     * nach dem Einsammeln — als würde er sich freuen. Das ist die Stelle, an
+     * der der Ruf am meisten Sinn ergibt, deshalb häufiger als von allein.
+     * `nachErfolgVerzoegerung` schiebt ihn hinter den Münzklang, sonst reden
+     * beide gleichzeitig. */
+    affenRuf: {
+      abstaende: [10, 20, 15, 20, 5, 25, 12, 30],
+      streuung: 0.25, // ±25 % auf jeden Abstand
+      beiMuenze: 0.18,
+      beiBanane: 0.65,
+      nachErfolgVerzoegerung: 0.28,
+    },
+
+    /* Pegel der Aufnahmen gegenüber den erzeugten Effekten.
+     *
+     * Gemessen bei 0.85: Banane Spitze 0.265, Affe 0.248 — gegen die Münze
+     * mit 0.069 also fast das VIERFACHE. Die Aufnahmen sind zudem länger und
+     * wirken dadurch nochmal lauter. 0.42 bringt sie auf rund das
+     * Anderthalbfache der Münze: hörbar wichtiger, aber kein Schreck. */
+    probenPegel: 0.42,
+    /* Zufällige Tonhöhenstreuung je Auslösung (±Anteil). Derselbe Klang
+     * zwanzigmal exakt gleich klingt nach Maschine; 6 % fallen einzeln nicht
+     * auf, in der Wiederholung aber sehr wohl. */
+    probenStreuung: 0.06,
+
     /* --------------------------------- GEBIETSMUSIK -------------------- *
      * Je Wand ein komponiertes Stueck, in Dauerschleife, ueberblendet beim
      * Wechsel. Die Dateien entstehen aus den Vorlagen mit
@@ -940,13 +984,11 @@ export const CONFIG = {
     // Bild aus scripts/prepare-hazards.mjs (nur die KLEINSTE der drei
     // gelieferten Münzen, ausdrücklicher Wunsch).
     bild: '/hazards/muenze.webp',
-    /* War 0.34 und damit im Spiel kaum zu erkennen — die Münze ist das
-     * einzige Objekt, das man TREFFEN will, und sie war das kleinste im Bild.
-     * Der Trefferkreis wächst mit (er leitet sich aus dem Radius ab), das ist
-     * hier erwünscht: Einsammeln soll grosszügig sein, Münzen sind
-     * ungefährlich und hängen an keiner Fairness-Zusicherung.
-     * Das Symbol im HUD bleibt unverändert — das ist ein eigenes Bild. */
-    radius: 0.47,
+    /* ZURÜCK AUF 0.34. Ich hatte das kurzzeitig auf 0.47 gezogen — falsch
+     * verstanden: die Münze IM SPIEL war schon richtig gross. Zu klein war
+     * das Symbol in der Anzeige oben, und das ist ein eigenes Bild
+     * (.hud__coin-icon in style.css). */
+    radius: 0.34,
     hitRadiusFactor: 1.35, // grosszügig: Einsammeln soll sich gut anfühlen
     // Langsamer als die Hindernisse. Eine Münze im Steintempo wäre kein
     // Bonus, sondern ein zweiter Reflextest.

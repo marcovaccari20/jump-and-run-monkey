@@ -16,7 +16,8 @@
     "balance": "node scripts/balance.mjs",
     "paket": "node scripts/package-portal.mjs",
     "prep:musik": "node scripts/prepare-musik.mjs",
-    "pruef:unterordner": "node scripts/pruef-unterordner.mjs"
+    "pruef:unterordner": "node scripts/pruef-unterordner.mjs",
+    "prep:klaenge": "node scripts/prepare-klaenge.mjs"
   },
   "type": "module",
   "dependencies": {
