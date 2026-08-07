@@ -93,13 +93,35 @@ export const CONFIG = {
     // Unterhalb dieser Geschwindigkeit gilt der Affe als stehend (climbIdle).
     idleThreshold: 0.55,
 
-    // Klettern: Vertikal-Input zahlt zusätzlich auf die Scrollgeschwindigkeit ein,
-    // damit sich "W" wie echtes Steigen anfühlt und nicht nur wie Ausweichen.
-    // Auf 0 setzen => reines Auto-Scrolling, W/S bewegen nur innerhalb des Bildes.
-    climbAssist: 1.0,
-    // Selbst bei vollem "S" bleibt dieser Anteil der Grundscrollgeschwindigkeit
-    // erhalten — der Affe kann den Aufstieg also bremsen, aber nie ganz stoppen.
-    minScrollFactor: 0.35,
+    /* AUF NULL, UND DAS IST DER WICHTIGE TEIL.
+     *
+     * Der Vertikal-Input zahlte auf die Scrollgeschwindigkeit ein — und die
+     * steuert nicht nur die Wand, sondern auch das Tempo ALLER fallenden
+     * Objekte (Game.js -> Spawner.update). Gemessen an der ersten Wand:
+     *
+     *     kein Input   Objekt 3.80 Einheiten/s
+     *     W gedrückt   Objekt 4.80   (+26 %)
+     *     S gedrückt   Objekt 2.80   (−26 %)
+     *
+     * Wer sich unten hielt, spielte also dauerhaft auf 74 % Tempo. Dazu kam
+     * ein zweiter, rein geometrischer Vorteil: unten hat ein Objekt 7.12
+     * statt 5.62 Einheiten Weg — nochmal +72 % Reaktionszeit. Beides zusammen
+     * machte "unten kleben" zur überlegenen Strategie.
+     *
+     * Mit 0 fällt alles immer gleich schnell, egal wo der Affe steht. W und S
+     * bewegen ihn nur noch im Bild — und genau das ist bei einem
+     * Ausweichspiel auch ihre Aufgabe.
+     *
+     * WAS ES KOSTET: "W" bringt keine Punkte mehr. Das trifft alle gleich,
+     * die Bestenliste bleibt also stimmig — und es behebt nebenbei, dass der
+     * weisse Affe (climbAssist 1.3) dort im Vorteil war, obwohl die drei
+     * ausdrücklich gleich stark sein sollen.
+     * ⚠ scripts/bestenliste.sql (klettern_max) muss mitgezogen werden. */
+    climbAssist: 0.0,
+    /* Ohne climbAssist ist das hier wirkungslos — der Scroll hängt nicht mehr
+     * am Input, es gibt also nichts mehr zu bremsen. Bleibt stehen, weil zwei
+     * Stellen im Spawner damit den langsamstmöglichen Fall abschätzen. */
+    minScrollFactor: 1.0,
 
     // Kollisionskreis in der Wandebene (Units). Bewusst kleiner als das Modell:
     // wohlwollende Hitbox fühlt sich fairer an ("coyote hitbox").
@@ -222,8 +244,12 @@ export const CONFIG = {
           moveSpeed: 8.4, // 1.00
           acceleration: 30.0, // 1.00
           damping: 20.0, // 1.00
-          climbAssist: 1.0, // 1.00
-          minScrollFactor: 0.35,
+          // Alle drei auf 0: siehe CONFIG.player.climbAssist. Objekte müssen
+          // gleich schnell fallen, egal wo der Affe steht — und die drei
+          // Affen sollen gleich stark sein, was mit einem Punktebonus je
+          // Figur nicht zusammenging.
+          climbAssist: 0.0,
+          minScrollFactor: 1.0,
           hitRadius: 0.42, // 1.00
           hitOffsetY: 0.0,
         },
@@ -252,8 +278,8 @@ export const CONFIG = {
           moveSpeed: 10.9, // x1.30  flinker
           acceleration: 37.0, // x1.23  spitzeres Anfahren
           damping: 25.0, // x1.25
-          climbAssist: 1.3, // x1.30  steigt auch wirklich schneller
-          minScrollFactor: 0.35,
+          climbAssist: 0.0, // war 1.3 — gab ihm einen Punktevorteil
+          minScrollFactor: 1.0,
           hitRadius: 0.21, // x0.50  halbe Hitbox
           hitOffsetY: 0.0,
         },
@@ -283,8 +309,8 @@ export const CONFIG = {
           moveSpeed: 6.7, // x0.80  langsamer in x UND y
           acceleration: 22.0, // x0.73  träge
           damping: 15.0, // x0.75  rollt länger aus
-          climbAssist: 0.8, // x0.80  steigt auch wirklich langsamer
-          minScrollFactor: 0.35,
+          climbAssist: 0.0, // war 0.8 // x0.80  steigt auch wirklich langsamer
+          minScrollFactor: 1.0,
           hitRadius: 0.42, // 1.00  bewusst NICHT grösser
           hitOffsetY: 0.0,
         },
@@ -1255,8 +1281,31 @@ export const CONFIG = {
     // Bildrate = cycleSpeed * frames.length (hier 1.4 * 12 ≈ 17 Bilder/s).
     // Der Zyklus im Video dauert 1.017 s, also entspricht 1.0 dem Originaltempo.
     cycleSpeed: 1.4,
-    // Grundtakt im Stillstand, damit der Zyklus beim Anfahren nicht springt.
-    idleCycleSpeed: 0.4,
+    /* AUF NULL: im Stillstand steht der Zyklus.
+     *
+     * Der Kommentar hier behauptete das Gegenteil ("damit der Zyklus beim
+     * Anfahren nicht springt") — tatsächlich bewirkte 0.4 genau den Sprung,
+     * den er verhindern sollte: das Bild hängt im Stillstand fest auf
+     * `idleFrame`, die PHASE lief aber weiter. Beim Anfahren sprang der Affe
+     * deshalb an eine zufällige Stelle des Zyklus statt sauber loszuklettern.
+     * Mit 0 bleiben Bild und Phase beieinander. */
+    idleCycleSpeed: 0.0,
+
+    /* Neigung in Bewegungsrichtung.
+     *
+     * Hier stand einmal ausdrücklich "keine prozedurale Zusatzbewegung". Auf
+     * Wunsch wieder da, aber DEZENT: das Sprite ist eine flache Ebene, und
+     * eine stark gedrehte Ebene sieht sofort nach Papier aus. 8 Grad reichen,
+     * um Gewicht anzudeuten — der Modell-Pfad darf mit 14 mehr, weil ein
+     * echtes Modell die Drehung verträgt.
+     *
+     * Die Trefferprüfung hängt NICHT daran: CollisionSystem rechnet mit
+     * this.x/this.y, nicht mit der Darstellung. Geprüft. */
+    lean: {
+      proTempo: 1.6, // Grad je Einheit/s Seitwärtsgeschwindigkeit
+      max: 8, // Grad
+      glaettung: 9.0, // je höher, desto schneller folgt die Neigung
+    },
 
     // Tempo des Kletterzyklus in MENÜ, CHARAKTERAUSWAHL und GAME OVER,
     // als Anteil der vollen Bewegung.

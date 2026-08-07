@@ -59,6 +59,35 @@ const PORTALE = {
       'Danach das neue ZIP hochladen. Ein Parameter in der Adresse ist nicht nötig.',
     ],
   },
+
+  /* Play Store.
+   *
+   * Das ZIP hier ist NICHT die App — es ist die Weboberfläche, die später in
+   * eine Android-Hülle (Capacitor) gelegt wird. Es getrennt zu schnüren hat
+   * einen Zweck: die Prüfungen unten (relative Pfade, keine Fremdserver)
+   * gelten für eine App noch strenger als fürs Web. In einer Android-App wird
+   * die Seite über `file://` bzw. `https://localhost` geladen; ein einziger
+   * absoluter Pfad oder ein Fremd-SDK, das der Play Store nicht kennt, fällt
+   * dort sofort auf.
+   *
+   * Die eigentliche App-Hülle steht in scripts/app-huelle.md — sie braucht
+   * Android Studio und ein Entwicklerkonto, beides ausserhalb dieses
+   * Skripts. */
+  playstore: {
+    label: 'Play Store (Web-Teil der App)',
+    maxMB: 150,
+    // Kein Web-Werbe-SDK: in einer echten App nimmt man AdMob, und die
+    // Portal-SDKs würden dort nicht einmal laden.
+    ohneFremdSdk: true,
+    hinweise: [
+      'Dieses ZIP ist NICHT die fertige App — es ist ihr Inhalt.',
+      'CONFIG.ad.provider auf "admob" stellen (bzw. "none", solange AdMob fehlt).',
+      '  Die Web-SDKs von CrazyGames/GameMonetize laufen in einer App nicht.',
+      'Weiter geht es mit Capacitor: siehe scripts/app-huelle.md.',
+      'Play Store verlangt zusätzlich: Datenschutzerklärung, Alterseinstufung,',
+      '  Symbol 512x512, Funktionsgrafik 1024x500, mindestens 2 Screenshots.',
+    ],
+  },
 };
 
 /* ------------------------------------------------------------- Argumente */
@@ -137,6 +166,35 @@ const ziele = nur ? [nur] : Object.keys(PORTALE);
 
 for (const key of ziele) {
   const p = PORTALE[key];
+
+  /* Für die App-Fassung gilt eine SCHÄRFERE Regel als fürs Web.
+   *
+   * Im Browser sind die Portal-SDKs erlaubt — dort gehören sie hin. In einer
+   * Android-App lädt die Seite über `file://` bzw. `https://localhost`; ein
+   * Web-Werbe-SDK von CrazyGames oder GameMonetize läuft dort gar nicht erst
+   * an, und der Play Store beanstandet Fremdaufrufe, die in der
+   * Datenschutzerklärung nicht auftauchen. Deshalb hier nochmal prüfen — mit
+   * einer leeren Erlaubnisliste. */
+  if (p.ohneFremdSdk) {
+    const verboten = [];
+    for (const datei of dateien) {
+      if (!/\.(js|html|css|json)$/i.test(datei)) continue;
+      const text = readFileSync(datei, 'utf8');
+      for (const m of text.matchAll(/https?:\/\/[a-zA-Z0-9.-]+/g)) {
+        const url = m[0];
+        // Namensräume und Quellenangaben sind keine Netzwerkaufrufe.
+        if (url.startsWith('http://www.w3.org/') || url.startsWith('https://jcgt.org/')) continue;
+        if (!verboten.includes(url)) verboten.push(url);
+      }
+    }
+    if (verboten.length) {
+      console.log(`\n${p.label}: ÜBERSPRUNGEN — Fremdaufrufe, die in einer App nicht laufen:`);
+      for (const u of verboten) console.log('  ✗ ' + u);
+      console.log('  CONFIG.ad.provider auf "none" oder "admob" stellen und neu bauen.');
+      continue;
+    }
+  }
+
   const zip = join(OUT, `jungle-climber-${key}.zip`);
   rmSync(zip, { force: true });
 

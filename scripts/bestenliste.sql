@@ -141,7 +141,11 @@ declare
   pro_wand      constant numeric := 1.25;  -- difficulty.proWand
   sek_pro_wand  constant numeric := 132;   -- difficulty.sekundenProWand
   tempo_exp     constant numeric := 0.62;  -- difficulty.tempoExponent
-  klettern_max  constant numeric := 1.3;   -- grösster characters[].climbAssist (weiss)
+  /* War 1.3 (der weisse Affe). Seit climbAssist überall 0 ist, zahlt der
+   * Vertikal-Input nicht mehr auf den Punktestand ein — bliebe hier 1.3
+   * stehen, wäre die Schranke bei einem Fünf-Minuten-Lauf 69 % über dem
+   * überhaupt Erreichbaren. Nachgemessen mit scripts/punkte-grenze.mjs. */
+  klettern_max  constant numeric := 0.0;   -- grösster characters[].player.climbAssist
 
   -- Luft nach oben für Bildraten-Schwankungen und Rundungsfehler beim
   -- Aufsummieren über zehntausende Frames. 8 % sind reichlich; die Lücke

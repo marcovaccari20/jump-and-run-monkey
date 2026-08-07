@@ -21,6 +21,8 @@
  */
 import { Group, Mesh, MeshBasicMaterial, PlaneGeometry } from 'three';
 
+const GRAD = Math.PI / 180;
+
 const TAU = Math.PI * 2;
 
 export class SpritePlayer {
@@ -108,6 +110,7 @@ export class SpritePlayer {
     this._inputX = 0;
     this._inputY = 0;
     this._phase = 0;
+    this._lean = 0;
     this._blinkPhase = 0;
     this._dieTimer = 0;
     // true, solange der Zyklus im Menü läuft (siehe updateAmbient)
@@ -184,6 +187,8 @@ export class SpritePlayer {
   _resetAnimation() {
     this._frameIndex = -1;
     this._phase = 0;
+    // Ohne das startet ein neuer Lauf mit der Schräglage des letzten.
+    this._lean = 0;
     this._dieTimer = 0;
     this.material.opacity = 1;
     this.pivot.position.set(0, 0, 0);
@@ -294,10 +299,9 @@ export class SpritePlayer {
   /**
    * Die gesamte Bewegung steckt in den Frames.
    *
-   * Es gibt hier bewusst KEINE prozedurale Zusatzbewegung mehr — keine
-   * Neigung, kein Nicken, kein Stauchen und keine Spiegelung beim
-   * Richtungswechsel. Das Sprite wird unverzerrt und ungedreht dargestellt,
-   * es wechselt nur das Bild.
+   * Kein Nicken, kein Stauchen, keine Spiegelung beim Richtungswechsel — das
+   * Sprite wird unverzerrt dargestellt und wechselt nur das Bild. EINE
+   * Ausnahme: eine dezente Neigung in Bewegungsrichtung (siehe unten).
    */
   _animate(dt) {
     const sc = this.sc;
@@ -339,7 +343,26 @@ export class SpritePlayer {
       const norm = (((this._phase % TAU) + TAU) % TAU) / TAU; // 0..1
       this._setFrame(Math.min(n - 1, Math.floor(norm * n)));
     } else {
+      // Zyklus zurück auf Anfang, nicht bloss das Bild festhalten. Sonst
+      // steht der Affe auf idleFrame, die Phase wandert unsichtbar weiter,
+      // und beim Anfahren springt er mitten in den Zyklus.
+      this._phase = 0;
       this._setFrame(sc.idleFrame % n);
+    }
+
+    /* --- Neigung in Bewegungsrichtung --------------------------------- */
+    /* Vorzeichen: `-vx`. Der Affe schaut aus dem Bild heraus, seine Rechte
+     * liegt also auf unserer Linken — ohne das Minus lehnte er sich gegen die
+     * Laufrichtung. Im Menü bleibt er gerade: dort gibt es keine echte
+     * Seitwärtsbewegung, nur den Kletterzyklus. */
+    const lean = sc.lean;
+    if (lean) {
+      const ziel = this._ambient
+        ? 0
+        : Math.max(-lean.max, Math.min(lean.max, -this.vx * lean.proTempo));
+      // Exponentielle Annäherung statt linearer: bildratenunabhängig.
+      this._lean += (ziel - this._lean) * (1 - Math.exp(-lean.glaettung * dt));
+      this.pivot.rotation.z = this._lean * GRAD;
     }
   }
 
