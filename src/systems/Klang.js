@@ -1,23 +1,24 @@
 /**
- * Ton — Atmosphäre je Gebiet plus die kurzen Effekte.
+ * Ton — das Mischpult. Musik je Gebiet plus die kurzen Effekte.
  *
- * WARUM ERZEUGT STATT ABGESPIELT
- * Es liegt keine einzige Audiodatei im Build. Alles hier entsteht zur Laufzeit
- * aus Rauschen und Oszillatoren. Drei Gründe, in dieser Reihenfolge:
+ * ZWEI WEGE, UND DAS HAT EINEN GRUND
  *
- *   1. RECHTE. Die Developer Terms von CrazyGames verlangen die Zusicherung,
- *      alle Inhalte rechtmässig nutzen zu dürfen, samt Freistellung bei
- *      Ansprüchen Dritter. Bei selbst erzeugtem Klang gibt es diese Frage
- *      nicht — und zwar dauerhaft, nicht nur bis jemand nachfragt.
- *   2. GRÖSSE. Zwölf Atmosphären als Schleifen wären schnell 15–20 MB, mehr
- *      als das ganze übrige Spiel. Hier sind es null Byte.
- *   3. ANPASSBARKEIT. Eine Wand mehr heisst: ein Eintrag in CONFIG.klang.
- *      Kein Aufnehmen, kein Schneiden, kein Konvertieren.
+ *   MUSIK  kommt aus Dateien (siehe Musik.js). Zwölf komponierte Stücke, je
+ *          eins pro Wand, in Dauerschleife und beim Wechsel überblendet.
+ *   EFFEKTE entstehen weiterhin zur Laufzeit aus Rauschen und Oszillatoren:
+ *          Münze, Treffer, Game Over, Affenruf, Freischalten. Sie müssen im
+ *          Millisekundenbereich auslösen und dutzendfach hintereinander —
+ *          dafür ist eine Datei der falsche Weg, und sie kosten null Byte.
  *
- * ECHTE AUFNAHMEN NACHRÜSTEN
- * Das ist vorgesehen, nicht verbaut. `atmo(name)` und `effekt(name)` sind die
- * einzigen zwei Methoden, die das Spiel kennt. Wer Dateien will, ersetzt deren
- * Innenleben durch einen Buffer-Player — am Rest ändert sich nichts.
+ * Hier stand einmal, es liege "keine einzige Audiodatei im Build", samt
+ * Begründung über Rechte und Grösse. Das gilt jetzt nur noch für die
+ * Effekte. Für die Musik heisst es: die Stücke sind selbst erzeugt, und die
+ * Zusicherung gegenüber den Portalen muss der Betreiber geben, nicht der
+ * Code.
+ *
+ * ALLES HÄNGT AM SELBEN MASTER. Lautstärke, Stummschaltung, Pause und das
+ * Stilllegen während eines Werbespots gelten deshalb für Musik und Effekte
+ * gemeinsam — es gibt keinen zweiten Regler, den man vergessen könnte.
  *
  * WAS DER BROWSER VORSCHREIBT
  * Ton darf erst nach einer echten Nutzereingabe starten. Der AudioContext
@@ -25,6 +26,8 @@
  * (`aufwecken()`). Ohne das bleibt er in Chrome dauerhaft "suspended" — man
  * hört nichts und sieht keinen Fehler.
  */
+
+import { Musik } from './Musik.js';
 
 export class Klang {
   /**
@@ -58,8 +61,10 @@ export class Klang {
      * lauschen, holte JEDER Klick den Ton mitten aus der Pause zurück — und
      * legte ihn im Zweifel über den laufenden Werbespot. */
     this._absichtlichStill = false;
-    /** Laufende Atmosphäre: { name, quellen[], gain } */
-    this._atmo = null;
+    /** Gebietsmusik. Entsteht erst mit dem AudioContext (siehe aufwecken). */
+    this.musik = null;
+    /* Rauschpuffer für die Effekte (Treffer, Knistern). Die Atmosphären
+     * brauchten ihn früher auch — die sind jetzt Musikdateien. */
     this._rauschen = null;
     // Nächster erlaubter Zeitpunkt je Effekt — gegen das Maschinengewehr,
     // wenn im selben Frame mehrere Münzen eingesammelt werden.
@@ -108,9 +113,13 @@ export class Klang {
     const daten = this._rauschen.getChannelData(0);
     for (let i = 0; i < laenge; i++) daten[i] = Math.random() * 2 - 1;
 
-    // Ein Menü, das schon vor der ersten Eingabe eine Atmosphäre angefordert
-    // hat, bekommt sie jetzt — sonst bliebe das Startmenü als einziger
-    // Bildschirm des Spiels ohne Ton.
+    // Musik hängt am selben Mischpult wie die Effekte: Lautstärke,
+    // Stummschaltung und Pause gelten damit für alles gemeinsam.
+    this.musik = new Musik(this.cfg.musik, this.ctx, this.master);
+
+    // Ein Menü, das schon vor der ersten Eingabe Musik angefordert hat,
+    // bekommt sie jetzt — sonst bliebe das Startmenü als einziger Bildschirm
+    // des Spiels ohne Ton.
     this._wunschEinloesen();
   }
 
@@ -136,204 +145,40 @@ export class Klang {
     return this.stumm;
   }
 
-  /* ================================================================ Bausteine */
-
-  /** Rauschquelle mit Filter — die Grundlage jeder Atmosphäre. */
-  _rauschQuelle({ typ, frequenz, guete, gain }) {
-    const q = this.ctx.createBufferSource();
-    q.buffer = this._rauschen;
-    q.loop = true;
-
-    const f = this.ctx.createBiquadFilter();
-    f.type = typ;
-    f.frequency.value = frequenz;
-    f.Q.value = guete;
-
-    const g = this.ctx.createGain();
-    g.gain.value = gain;
-
-    q.connect(f).connect(g);
-    q.start();
-    return { quelle: q, ausgang: g };
-  }
-
-  /** Dauerton — gibt einer Atmosphäre ihre Stimmung (tief = bedrohlich). */
-  _drone({ frequenz, form, gain, schweben }) {
-    const o = this.ctx.createOscillator();
-    o.type = form;
-    o.frequency.value = frequenz;
-
-    const g = this.ctx.createGain();
-    g.gain.value = gain;
-
-    /* Zweiter, leicht verstimmter Ton — aber DEUTLICH LEISER.
-     *
-     * Hier lag ein Fehler, den man nur mit einer Messung findet: vorher liefen
-     * beide Oszillatoren mit derselben Amplitude in denselben Gain. Zwei
-     * gleich laute Sinus löschen sich einmal je Schwebungsperiode VOLLSTÄNDIG
-     * aus — der Dauerton verschwand also periodisch ganz und kam wieder.
-     * Gemessen wurden bis zu 21.6 dB Pegeleinbruch bei 0.24–1.06 Hz, und das
-     * hört sich nicht nach Schimmer an, sondern nach Wackelkontakt.
-     *
-     * Mit halber Amplitude bleibt der Grundton immer stehen und der zweite
-     * moduliert ihn nur — das ist die Schwebung, die gemeint war. */
-    let o2 = null;
-    if (schweben) {
-      o2 = this.ctx.createOscillator();
-      o2.type = form;
-      o2.frequency.value = frequenz * (1 + schweben);
-
-      // Eigener Pegel, dann in denselben Ausgang: so bleibt der zweite Ton
-      // unter der Lautstärkeregelung der Atmosphäre.
-      const g2 = this.ctx.createGain();
-      g2.gain.value = gain * 0.45;
-      o2.connect(g2);
-      g2.connect(g);
-      o2.start();
-    }
-
-    o.connect(g);
-    o.start();
-    return { quelle: o, quelle2: o2, ausgang: g };
-  }
-
-  /* ============================================================== Atmosphäre */
+  /* =============================================================== Musik */
 
   /**
-   * Wechselt die Hintergrundatmosphäre — überblendet, nie hart geschnitten.
+   * Wechselt die Gebietsmusik. Game ruft das jeden Frame; `Musik.spiele`
+   * erkennt selbst, ob sich etwas geändert hat.
    *
-   * @param {string} name Schlüssel aus CONFIG.klang.gebiete (= Wandname)
+   * HIER STAND DAS PROZEDURALE ATMOSPHÄREN-SYSTEM: gefiltertes Rauschen,
+   * Dauertöne, einzelne Vogelrufe, dazu zwei Pegel und ein Abbau-Timer —
+   * rund 200 Zeilen. Es war der Notbehelf, solange es keine Musik gab.
+   * Jetzt gibt es zwölf komponierte Stücke, und beides gleichzeitig wäre nur
+   * Matsch gewesen. Die kurzen EFFEKTE weiter unten bleiben prozedural — die
+   * müssen im Millisekundenbereich auslösen.
+   *
+   * @param {string} name Wandname aus CONFIG.wall.stages
    */
   atmo(name) {
     /* Den Wunsch IMMER merken, auch wenn gerade kein Ton möglich ist.
-     *
-     * Vorher wurde der Aufruf hier ersatzlos verworfen. Gemessene Folgen:
-     * das Hauptmenü war nach "Pause -> Hauptmenü" komplett stumm (der
-     * Kontext war noch angehalten), und `_atmo` zeigte weiter auf das letzte
-     * Gebiet — wer danach im Affenladen etwas kaufte, weckte damit den Ton
-     * und bekam im Hauptmenü plötzlich die Lava zu hören. */
+     * Browser lassen `play()` erst nach einer Nutzereingabe zu; ohne das
+     * bliebe das Startmenü stumm, bis zufällig ein Wandwechsel kommt. */
     this._wunsch = name;
-    if (!this.bereit) return;
-    if (this._atmo?.name === name) return;
-
-    const rezept = this.cfg.gebiete[name] ?? this.cfg.gebiete.standard;
-    const jetzt = this.ctx.currentTime;
-    const fade = this.cfg.atmoFade;
-
-    // Alte ausblenden und danach abbauen.
-    if (this._atmo) this._abbauen(this._atmo);
-
-    const gain = this.ctx.createGain();
-    gain.gain.value = 0;
-    gain.connect(this.master);
-
-    /* ZWEITER PEGEL, NUR FÜR DIE TUPFER.
-     *
-     * Der Vogelruf soll mit überblenden, aber NICHT den Gebietspegel
-     * mitnehmen. Der ist ein Ausgleich für die sehr unterschiedliche Leistung
-     * der Rauschbetten (1.13 bis 2.95) und hat mit der Lautstärke eines Rufs
-     * nichts zu tun. Hingen die Tupfer am selben Knoten, wäre der Vogel in
-     * einem Gebiet fast dreimal so laut wie im nächsten — obwohl in der
-     * Konfiguration überall dieselbe Zahl steht.
-     *
-     * Also: gleiche Überblendung, eigener Pegel. */
-    const tupferGain = this.ctx.createGain();
-    tupferGain.gain.value = 0;
-    tupferGain.connect(this.master);
-
-    const teile = [];
-    for (const r of rezept.rauschen ?? []) {
-      const t = this._rauschQuelle(r);
-      t.ausgang.connect(gain);
-      teile.push(t);
-    }
-    for (const d of rezept.drones ?? []) {
-      const t = this._drone(d);
-      t.ausgang.connect(gain);
-      teile.push(t);
-    }
-
-    gain.gain.setTargetAtTime(rezept.gain ?? 1, jetzt, fade / 3);
-    tupferGain.gain.setTargetAtTime(1, jetzt, fade / 3);
-    this._atmo = { name, teile, gain, tupferGain, rezept };
+    if (!this.bereit || !this.musik) return;
+    this.musik.spiele(name);
   }
 
   /**
-   * Blendet eine Atmosphäre aus und räumt sie danach ab.
-   *
-   * Stand vorher zweimal fast gleich im Code — einmal beim Wandwechsel,
-   * einmal in `atmoAus()`. Beim Nachrüsten des zweiten Pegels (`tupferGain`)
-   * hätte man ihn an einer der beiden Stellen zwangsläufig vergessen.
-   *
-   * Der Timer ist nötig: ein sofort gestopptes Oszillatornetz knackt hörbar.
-   *
-   * @param {{teile: Array, gain: GainNode, tupferGain?: GainNode}} alt
+   * Muss jeden Frame laufen: kümmert sich um den Schleifenpunkt. Die Stücke
+   * sind nicht als Schleife komponiert, deshalb blendet Musik.js kurz vor
+   * dem Ende in den eigenen Anfang.
    */
-  _abbauen(alt) {
-    const jetzt = this.ctx.currentTime;
-    const fade = this.cfg.atmoFade;
-    alt.gain.gain.setTargetAtTime(0, jetzt, fade / 3);
-    alt.tupferGain?.gain.setTargetAtTime(0, jetzt, fade / 3);
-
-    setTimeout(() => {
-      for (const t of alt.teile) {
-        try {
-          t.quelle.stop();
-          t.quelle2?.stop();
-        } catch {
-          /* schon gestoppt */
-        }
-      }
-      for (const knoten of [alt.gain, alt.tupferGain]) {
-        try {
-          knoten?.disconnect();
-        } catch {
-          /* egal */
-        }
-      }
-    }, fade * 1000 + 200);
+  musikUpdate() {
+    if (this.bereit) this.musik?.update();
   }
 
-  /**
-   * Einzelne Umgebungsgeräusche — Vogel, Tropfen, Knistern.
-   *
-   * Wird von Game im Takt gerufen. Sie sind der Unterschied zwischen "da
-   * rauscht etwas" und "da ist ein Wald": ein gleichmässiges Rauschen nimmt
-   * das Ohr nach zwanzig Sekunden nicht mehr wahr, ein unregelmässiger Ruf
-   * immer.
-   */
-  atmoTupfer() {
-    if (!this.bereit || !this._atmo) return;
-    const t = this._atmo.rezept.tupfer;
-    if (!t) return;
-
-    const jetzt = this.ctx.currentTime;
-    const o = this.ctx.createOscillator();
-    o.type = t.form ?? 'sine';
-
-    const g = this.ctx.createGain();
-    const von = t.von * (0.85 + Math.random() * 0.3);
-    const bis = t.bis * (0.85 + Math.random() * 0.3);
-    o.frequency.setValueAtTime(von, jetzt);
-    o.frequency.exponentialRampToValueAtTime(Math.max(20, bis), jetzt + t.dauer);
-
-    g.gain.setValueAtTime(0, jetzt);
-    g.gain.linearRampToValueAtTime(t.gain, jetzt + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, jetzt + t.dauer);
-
-    /* An den Tupfer-Pegel der Atmosphäre hängen, nicht direkt an den Master.
-     *
-     * Vorher ging der Tupfer an der 1.6-Sekunden-Überblendung vorbei: direkt
-     * nach einem Wandwechsel ertönte der Vogel des neuen Gebiets in voller
-     * Lautstärke, während dessen Rauschbett noch einblendete. Jetzt blendet
-     * er mit — aber über einen eigenen Pegel, damit der Gebietsausgleich
-     * ihn nicht mitzieht (siehe atmo()). */
-    o.connect(g).connect(this._atmo.tupferGain);
-    o.start(jetzt);
-    o.stop(jetzt + t.dauer + 0.05);
-  }
-
-  /* ================================================================= Effekte */
+  /* ================================================================ Effekte */
 
   /**
    * Kurzer Effekt.
@@ -407,26 +252,17 @@ export class Klang {
   }
 
   /**
-   * Atmosphäre ausblenden und abbauen.
+   * Musik ausblenden — im Hauptmenue nach einem Lauf.
    *
-   * Ohne das lief die zuletzt gespielte Wand endlos weiter — nach einem Lauf
-   * bis zur Lava grollte im Hauptmenü weiter die Lava.
+   * Ohne das lief das zuletzt gespielte Stueck endlos weiter: nach einem
+   * Lauf bis zur Lava dudelte im Hauptmenue weiter die Lava.
    */
   atmoAus() {
-    // Auch den gemerkten Wunsch löschen, sonst holt ihn `fortsetzen()` gleich
-    // wieder zurück.
+    // Auch den gemerkten Wunsch loeschen, sonst holt ihn 
+    // gleich wieder zurueck.
     this._wunsch = null;
-    if (!this._atmo || !this.ctx) return;
-    const alt = this._atmo;
-    // ERST abhängen, dann abbauen: ein Tupfer, der genau jetzt fiele, würde
-    // sich sonst noch an den sterbenden Pegel hängen.
-    this._atmo = null;
-    this._abbauen(alt);
+    this.musik?.aus();
   }
-
-  /* ================================================================ Aufräumen */
-
-  /** Bei Pause, Werbung und im Hintergrund: still, aber nicht abgebaut. */
   anhalten() {
     this._absichtlichStill = true;
     if (this.ctx?.state === 'running') this.ctx.suspend().catch(() => {});
@@ -452,12 +288,12 @@ export class Klang {
   }
 
   /**
-   * Holt eine Atmosphäre nach, die angefordert wurde, als noch kein Ton
-   * möglich war. Ohne das bliebe der zuletzt gemerkte Wunsch liegen, bis
-   * zufällig ein Wandwechsel `atmo()` erneut ruft.
+   * Holt Musik nach, die angefordert wurde, als noch kein Ton möglich war.
+   * Ohne das bliebe der zuletzt gemerkte Wunsch liegen, bis zufällig ein
+   * Wandwechsel `atmo()` erneut ruft.
    */
   _wunschEinloesen() {
-    if (this._wunsch && this.bereit && this._atmo?.name !== this._wunsch) {
+    if (this._wunsch && this.bereit && this.musik?.aktuell !== this._wunsch) {
       this.atmo(this._wunsch);
     }
   }

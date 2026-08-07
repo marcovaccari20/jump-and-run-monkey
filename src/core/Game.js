@@ -80,7 +80,6 @@ export class Game {
     this._eigenerEintrag = null;
 
     this.klang = new Klang(CONFIG.klang);
-    this._tupferTimer = 0;
 
     this.fortschritt = new Fortschritt(CONFIG.fortschritt);
     /* MUSS vor dem ersten loadId() stehen: die Stores merken sich ihr
@@ -866,9 +865,6 @@ export class Game {
     this._deathTimer = 0;
     this._adsUsed = 0;
     this._muenzenImLauf = 0;
-    // Sonst feuert der erste Vogelruf im allerersten Frame des Laufs — der
-    // Timer stand nur im Konstruktor auf 0 und lief danach nie zurück.
-    this._tupferTimer = this.cfg.klang.tupferMin;
     this.ui.setMuenzenLauf(0);
 
     /* Runde bei der Weltliste anmelden. Der Server stempelt den Start mit
@@ -1228,12 +1224,10 @@ export class Game {
      * geändert hat — hier jeden Frame zu rufen ist billiger als den
      * Wandwechsel an einer zweiten Stelle mitzuführen. */
     this.klang.atmo(this.wall.stageName);
-    this._tupferTimer -= dt;
-    if (this._tupferTimer <= 0) {
-      const k = this.cfg.klang;
-      this._tupferTimer = k.tupferMin + Math.random() * (k.tupferMax - k.tupferMin);
-      this.klang.atmoTupfer();
-    }
+    /* Kümmert sich um den Schleifenpunkt der Musik. Hier stand vorher ein
+     * Zufallstakt für einzelne Vogelrufe — die gehörten zu den prozeduralen
+     * Atmosphären und sind mit ihnen weg. */
+    this.klang.musikUpdate();
 
     /* Lebenszeichen an die Weltliste.
      *

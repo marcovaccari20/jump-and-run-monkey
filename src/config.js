@@ -772,181 +772,65 @@ export const CONFIG = {
   },
 
   /* ================================================================== *
-   *  TON
+   *  TON — zwei getrennte Wege
    *
-   *  Es liegt KEINE Audiodatei im Build — alles hier ist ein Rezept, aus dem
-   *  src/systems/Klang.js zur Laufzeit Klang baut. Die Begründung steht dort
-   *  ausführlich; kurz: Rechte, Grösse, Anpassbarkeit.
+   *  MUSIK kommt aus Dateien: zwölf komponierte Stücke, eins je Wand, in
+   *  public/musik. Sie entstehen mit `npm run prep:musik` aus den Vorlagen.
    *
-   *  EINE ATMOSPHÄRE besteht aus gefiltertem Rauschen (der Untergrund),
-   *  optionalen Dauertönen (die Stimmung) und "Tupfern" — einzelnen Rufen,
-   *  Tropfen, Knistern. Die Tupfer sind das Wichtigste: gleichmässiges
-   *  Rauschen nimmt das Ohr nach zwanzig Sekunden nicht mehr wahr, einen
-   *  unregelmässigen Vogelruf immer.
+   *  EFFEKTE (Münze, Treffer, Game Over, Affenruf, Freischalten) entstehen
+   *  weiterhin zur Laufzeit aus Rauschen und Oszillatoren — sie müssen im
+   *  Millisekundenbereich auslösen und kosten so null Byte.
    *
-   *    rauschen[]  { typ, frequenz, guete, gain }     Filter über weissem Rauschen
-   *    drones[]    { frequenz, form, gain, schweben } schweben = leichte Verstimmung
-   *    tupfer      { von, bis, dauer, gain, form }    einzelner Ruf/Tropfen
+   *  Hier standen 150 Zeilen Rezepte für prozedurale Gebietsatmosphären:
+   *  gefiltertes Rauschen, Dauertöne, einzelne Vogelrufe. Der Notbehelf,
+   *  solange es keine Musik gab. Beides gleichzeitig wäre nur Matsch
+   *  gewesen — die Rezepte sind raus.
+   *
+   *    toene[]  { von, bis, dauer, gain, form, rauschen, verzoegerung }
    * ================================================================== */
   klang: {
     anAmAnfang: true,
     // Merkt sich die Stummschaltung über das Neuladen hinweg.
     speicherSchluessel: 'jungle-climber.stumm.v1',
     lautstaerke: 0.32,
-    atmoFade: 1.6, // Sekunden Überblendung beim Wandwechsel
-    // Abstand zwischen zwei Tupfern (Sekunden, zufällig dazwischen).
-    tupferMin: 2.4,
-    tupferMax: 7.0,
 
-    gebiete: {
-      // Rückfall, falls eine Wand keinen eigenen Eintrag hat.
-      standard: {
-        gain: 0.9,
-        rauschen: [{ typ: 'lowpass', frequenz: 900, guete: 0.7, gain: 0.05 }],
-      },
-
-      /* Dschungel: Blätterrauschen, hohe Vogelrufe. */
-      gruen: {
-        gain: 2.75,
-        rauschen: [
-          // Breit und mittig: dichtes, nahes Blattwerk.
-          { typ: 'bandpass', frequenz: 1500, guete: 0.45, gain: 0.055 },
-          { typ: 'lowpass', frequenz: 420, guete: 0.7, gain: 0.03 },
-        ],
-        tupfer: { von: 1900, bis: 2900, dauer: 0.16, gain: 0.09, form: 'sine' },
-      },
-      /* Blumen war messbar DERSELBE Klang wie Grün: die Bandmitten lagen 3.4
-       * Halbtöne auseinander, die Durchlassbreite betrug aber 26-30 Halbtöne
-       * — zwei Gebiete, ein Geräusch. Jetzt schmaler und höher gefiltert,
-       * dazu ein warmer Dauerton und ein ABSTEIGENDER Ruf statt eines
-       * aufsteigenden. */
-      blumen: {
-        gain: 1.7,
-        rauschen: [
-          /* Hoch und nur mässig schmal.
-           *
-           * Erster Versuch war Güte 2.6 — messbar ein Fehlgriff: ein schmaler
-           * Bandpass lässt so wenig Rauschleistung durch, dass der Dauerton
-           * übrig blieb und 57 % der Energie unter 300 Hz lagen. Eine
-           * Blumenwiese, die brummt. Güte 1.4 lässt genug Luft durch, dass
-           * das Rauschen die Farbe bestimmt. */
-          { typ: 'bandpass', frequenz: 5200, guete: 1.4, gain: 0.075 },
-        ],
-        // Höher und leiser als vorher (262 -> 392 Hz): trägt noch, drückt
-        // den Schwerpunkt aber nicht mehr in den Keller.
-        drones: [{ frequenz: 392, form: 'sine', gain: 0.014, schweben: 0.004 }],
-        tupfer: { von: 3400, bis: 2100, dauer: 0.22, gain: 0.08, form: 'sine' },
-      },
-      /* WARUM ALLE DAUERTÖNE HIER LEISE SIND
+    /* --------------------------------- GEBIETSMUSIK -------------------- *
+     * Je Wand ein komponiertes Stueck, in Dauerschleife, ueberblendet beim
+     * Wechsel. Die Dateien entstehen aus den Vorlagen mit
+     * `npm run prep:musik` (siehe scripts/prepare-musik.mjs) und liegen in
+     * zwei Formaten bereit; Musik.js waehlt beim Start aus.
+     *
+     * HIER STANDEN 150 ZEILEN REZEPTE fuer prozedurale Atmosphaeren:
+     * gefiltertes Rauschen, Dauertoene, einzelne Vogelrufe. Die waren der
+     * Notbehelf, solange es keine Musik gab. Beides gleichzeitig laufen zu
+     * lassen waere nur Matsch gewesen, also sind sie raus.
+     *
+     * Die kurzen EFFEKTE weiter unten bleiben prozedural: Muenze, Treffer,
+     * Game Over und Affenruf muessen im Millisekundenbereich ausloesen,
+     * dafuer ist eine Datei der falsche Weg.
+     * ------------------------------------------------------------------ */
+    musik: {
+      ordner: '/musik/',
+      /* EINHEITLICHE LAUTSTAERKE fuer alle zwoelf Stuecke.
        *
-       * `gain` heisst bei einem Sinus etwas völlig anderes als bei
-       * gefiltertem Rauschen. Ein Sinus steckt seine ganze Leistung in eine
-       * einzige Frequenz; ein Rauschband verteilt sie über hunderte Hertz.
-       * Bei gleicher Zahl gewinnt der Sinus deutlich.
+       * Das ist keine Bequemlichkeit, sondern das Ergebnis der Aufbereitung:
+       * prepare-musik.mjs gleicht jedes Stueck auf -17 LUFS an (EBU R128,
+       * dasselbe Verfahren wie Radio und Streamingdienste). Sie sind danach
+       * gleich laut, also braucht es hier keine Einzelwerte mehr — frueher
+       * stand bei jedem Gebiet ein eigener Faktor, weil die prozeduralen
+       * Klaenge um bis zu 12 dB auseinanderlagen.
        *
-       * Gemessen führte das dazu, dass sieben Gebiete zwischen 78 % und 99 %
-       * ihrer Energie unter 300 Hz hatten — pilzwald/gift lagen 1 (!) von 200
-       * Prozentpunkten auseinander, gift/halloween 3, halloween/wasser 6.
-       * Vier Gebiete hintereinander, ein Brummen. Die Dauertöne sind deshalb
-       * jetzt Beiwerk, und das Rauschband bestimmt die Farbe. */
-
-      /* Äste: dunklerer Wind, knarrendes Holz (fallende Tonhöhe). */
-      aeste: {
-        gain: 1.68,
-        rauschen: [{ typ: 'bandpass', frequenz: 900, guete: 0.5, gain: 0.085 }],
-        drones: [{ frequenz: 72, form: 'sine', gain: 0.02, schweben: 0.008 }],
-        tupfer: { von: 420, bis: 190, dauer: 0.42, gain: 0.06, form: 'triangle' },
-      },
-      /* Pilzwald: feucht und dumpf, einzelne Tropfen. */
-      pilzwald: {
-        gain: 2.04,
-        rauschen: [{ typ: 'lowpass', frequenz: 620, guete: 0.8, gain: 0.1 }],
-        drones: [{ frequenz: 58, form: 'sine', gain: 0.018, schweben: 0.006 }],
-        tupfer: { von: 1500, bis: 620, dauer: 0.2, gain: 0.075, form: 'sine' },
-      },
-      /* Gift: blubbernd, aufsteigende Blasen. Güte 1.6 war zu schmal, um
-       * gegen den Dauerton anzukommen — jetzt 0.9. */
-      gift: {
-        gain: 2.95,
-        rauschen: [{ typ: 'bandpass', frequenz: 480, guete: 0.9, gain: 0.09 }],
-        drones: [{ frequenz: 88, form: 'triangle', gain: 0.013, schweben: 0.012 }],
-        tupfer: { von: 180, bis: 760, dauer: 0.17, gain: 0.07, form: 'sine' },
-      },
-      /* Halloween: die beiden Dauertöne liegen eine kleine Sekunde
-       * auseinander — genau das Intervall, das im Ohr nicht aufgeht und
-       * deshalb unbehaglich wirkt. Dazu ein absteigendes Heulen. */
-      halloween: {
-        gain: 1.64,
-        // Bleibt bewusst das tiefste Gebiet — das ist sein Charakter. Es
-        // unterscheidet sich von Wasser durch die Schwebung, nicht durch das
-        // Band, deshalb hier eine noch engere Kappung statt einer Anhebung.
-        rauschen: [{ typ: 'lowpass', frequenz: 230, guete: 0.9, gain: 0.05 }],
-        drones: [
-          { frequenz: 62, form: 'sawtooth', gain: 0.024, schweben: 0.01 },
-          { frequenz: 65.7, form: 'sine', gain: 0.028, schweben: 0.004 },
-        ],
-        tupfer: { von: 900, bis: 200, dauer: 0.85, gain: 0.055, form: 'sine' },
-      },
-      /* Unterwasser: alles Hohe weg, dazu Blasen. Die Kappung liegt höher als
-       * bei Halloween (520 statt 230 Hz), sonst wären die beiden direkt
-       * aufeinanderfolgenden Gebiete messbar dasselbe Geräusch. */
-      wasser: {
-        gain: 1.96,
-        rauschen: [
-          { typ: 'lowpass', frequenz: 750, guete: 1.1, gain: 0.1 },
-          // Etwas Strömung im Mittelband — ohne sie blieben Halloween und
-          // Wasser nur 20 von 200 Prozentpunkten auseinander.
-          { typ: 'bandpass', frequenz: 950, guete: 0.6, gain: 0.035 },
-        ],
-        drones: [{ frequenz: 48, form: 'sine', gain: 0.02, schweben: 0.005 }],
-        tupfer: { von: 240, bis: 900, dauer: 0.13, gain: 0.06, form: 'sine' },
-      },
-      /* Wolken: luftig, fast nur Höhen. */
-      wolken: {
-        gain: 1.13,
-        rauschen: [{ typ: 'highpass', frequenz: 1400, guete: 0.4, gain: 0.05 }],
-        drones: [{ frequenz: 330, form: 'sine', gain: 0.018, schweben: 0.003 }],
-        tupfer: { von: 1200, bis: 1800, dauer: 0.6, gain: 0.04, form: 'sine' },
-      },
-      /* Eiszeit: dünnes Flirren, klirrende Splitter. */
-      eiszeit: {
-        gain: 1.18,
-        rauschen: [{ typ: 'highpass', frequenz: 3200, guete: 0.6, gain: 0.045 }],
-        drones: [{ frequenz: 196, form: 'sine', gain: 0.022, schweben: 0.002 }],
-        tupfer: { von: 4200, bis: 5600, dauer: 0.1, gain: 0.07, form: 'sine' },
-      },
-      /* Kristall: schmalbandig und resonant — das klingt nach Glocke. */
-      kristall: {
-        gain: 2.19,
-        // Güte 3.5 war so schmal, dass fast keine Rauschleistung durchkam und
-        // der Dauerton die Wand bestimmte (89 % unter 300 Hz). 1.8 klingt
-        // immer noch nach Glocke, trägt aber.
-        rauschen: [{ typ: 'bandpass', frequenz: 2600, guete: 1.8, gain: 0.085 }],
-        drones: [{ frequenz: 147, form: 'sine', gain: 0.011, schweben: 0.004 }],
-        tupfer: { von: 1760, bis: 1320, dauer: 0.9, gain: 0.06, form: 'sine' },
-      },
-      /* Lava: tiefes Grollen, knackende Glut. Darf tief bleiben — das ist
-       * hier gewollt und steht nach dem hellen Kristall. */
-      lava: {
-        gain: 2.24,
-        rauschen: [
-          { typ: 'lowpass', frequenz: 180, guete: 1.2, gain: 0.09 },
-          { typ: 'bandpass', frequenz: 1600, guete: 0.8, gain: 0.03 },
-        ],
-        drones: [{ frequenz: 41, form: 'sawtooth', gain: 0.028, schweben: 0.014 }],
-        tupfer: { von: 700, bis: 140, dauer: 0.12, gain: 0.08, form: 'square' },
-      },
-      /* Asche: trockenes Zischen, weiche Plopps. Bei 800 Hz statt 1100, damit
-       * es sich beim Rundenwechsel nicht mit Grün (1500 Hz) überschneidet. */
-      asche: {
-        gain: 2.0,
-        rauschen: [{ typ: 'bandpass', frequenz: 800, guete: 0.45, gain: 0.075 }],
-        drones: [{ frequenz: 54, form: 'sine', gain: 0.016, schweben: 0.007 }],
-        // Kurzer trockener Plopp statt eines Glissandos: Äste benutzten
-        // schon ein abfallendes Dreieck, und zweimal dieselbe Geste hört sich
-        // nach derselben Wand an.
-        tupfer: { von: 210, bis: 180, dauer: 0.09, gain: 0.06, form: 'square' },
-      },
+       * `pegel` bleibt als Ausnahmefach: traegt man dort ein Gebiet ein,
+       * gilt der Wert nur fuer dieses. Absichtlich leer. */
+      grundPegel: 0.55,
+      pegel: {},
+      // Ueberblendung beim Gebietswechsel (Sekunden).
+      wechselFade: 2.2,
+      /* Ueberblendung am Schleifenpunkt. Die Stuecke sind nicht als
+       * Schleife komponiert — ihr Ende fuehrt nicht zurueck zum Anfang.
+       * Musik.js startet deshalb kurz vor Schluss einen zweiten Abspieler
+       * von vorn und blendet ueber. */
+      schleifeFade: 3.0,
     },
 
     /* --------------------------------- KURZE EFFEKTE ------------------- *

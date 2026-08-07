@@ -94,9 +94,18 @@ function messen(quelle) {
   }
 }
 
+/**
+ * Spieldauer in Sekunden.
+ *
+ * BEWUSST OHNE Ausgabeziel. Mit `-f null -` läuft ffmpeg erfolgreich durch,
+ * `execFileSync` wirft dann nicht, und weil stderr nur im Fehlerfall
+ * zurückkommt, war die gemessene Dauer immer 0 — die Meldung "alle Stücke
+ * unter 40 s" beim ersten Lauf war genau dieser Fehler. Ohne Ausgabeziel
+ * bricht ffmpeg ab, und die Kopfzeilen stehen in stderr.
+ */
 function dauer(datei) {
   try {
-    execFileSync(ffmpeg, ['-hide_banner', '-i', datei, '-f', 'null', '-'], {
+    execFileSync(ffmpeg, ['-hide_banner', '-i', datei], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
