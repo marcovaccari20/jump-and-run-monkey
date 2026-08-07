@@ -39,7 +39,22 @@ body {
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  touch-action: none;
+  /* KEIN `touch-action: none` MEHR AM BODY.
+   *
+   * Das war der schwerste Fehler der Handy-Fassung. `touch-action` wird über
+   * die Vorfahrenkette GESCHNITTEN: was der body verbietet, kann kein
+   * Nachfahre zurückholen. Das `pan-y` auf den Overlays weiter unten war
+   * damit wirkungslos — und die Overlays sind höher als ein Telefon.
+   * Gemessen auf einem iPhone X (375x812):
+   *     Game Over      301 px unter der Bildkante
+   *     Dschungel-Camp 159 px
+   * "Nochmal" und "Hauptmenü" waren also per Finger UNERREICHBAR. Wer starb,
+   * kam nicht mehr weiter.
+   *
+   * Das Wischen im Spiel wird jetzt dort unterbunden, wo es hingehört: am
+   * Canvas (#viewport). `manipulation` behält den Schutz gegen den
+   * Doppeltipp-Zoom. */
+  touch-action: manipulation;
   overscroll-behavior: none;
 }
 
@@ -55,6 +70,10 @@ body {
   width: 100%;
   height: 100%;
   display: block;
+  /* HIER gehört das Wisch-Verbot hin, nicht an den body: im Spiel darf ein
+     Fingerzug den Affen steuern und nicht die Seite verschieben. Die Overlays
+     darüber bleiben davon unberührt und können scrollen. */
+  touch-action: none;
 }
 
 #ui {
@@ -124,6 +143,50 @@ body {
   display: none;
 }
 
+/* Pause — spiegelbildlich zum Ton-Schalter, aber links.
+   `env(safe-area-inset-left)` statt -right, sonst rutscht er im Querformat
+   unter die Notch. */
+.pause-schalter {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 40;
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(8, 20, 12, 0.55);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: transform 0.12s ease, background 0.15s ease;
+  touch-action: manipulation;
+}
+
+.pause-schalter:hover {
+  background: rgba(8, 20, 12, 0.8);
+}
+
+.pause-schalter:active {
+  transform: scale(0.92);
+}
+
+.pause-schalter:focus-visible {
+  outline: 2px solid var(--accent, #7bd66f);
+  outline-offset: 2px;
+}
+
+.pause-schalter[hidden] {
+  display: none;
+}
+
 /* ------------------------------------------------------- Fortschritt mitnehmen
  *
  * Bewusst zugeklappt und ganz unten: die allermeisten Spieler brauchen das
@@ -139,7 +202,12 @@ body {
 
 .uebertrag > summary {
   cursor: pointer;
-  padding: 6px 0;
+  /* War 6px und ergab ein 27 px hohes Tippziel — deutlich unter den 44 px,
+     die man blind zuverlässig trifft. */
+  padding: 13px 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
   color: rgba(255, 255, 255, 0.6);
 }
 
@@ -210,13 +278,25 @@ body {
   text-indent: 0.22em;
 }
 
-.btn--klein {
-  padding: 7px 12px;
-  font-size: 12px;
+/* Zwei Klassennamen statt einem — und das ist kein Stil, sondern nötig.
+ *
+ * Diese Regel steht in der Datei VOR `.btn`. Bei gleicher Spezifität gewinnt
+ * die spätere. Die kleinen Knöpfe waren also nie klein: sie bekamen 16 px
+ * Schrift und 13px/30px Innenabstand wie jeder andere Knopf. Ironischerweise
+ * war das für den Finger besser (49 px hoch), machte die Übertrag-Zeile aber
+ * viel klobiger als geplant — und trug dazu bei, dass das Dschungel-Camp
+ * über die Bildkante hinauswuchs.
+ *
+ * Jetzt spezifischer, und bewusst grosszügiger bemessen als ursprünglich:
+ * 44 px Mindesthöhe ist das kleinste Ziel, das man blind trifft. */
+.btn.btn--klein {
+  padding: 10px 14px;
+  font-size: 13px;
+  min-height: 44px;
   flex: 0 0 auto;
 }
 
-.btn--klein:disabled,
+.btn.btn--klein:disabled,
 .uebertrag__eingabe:disabled {
   opacity: 0.5;
   cursor: progress;
@@ -1207,8 +1287,15 @@ body.is-coarse .joystick {
    Ausweichen nicht im Weg ist. */
 .naechstes {
   position: absolute;
-  top: 88px;
-  right: 16px;
+  /* MIT dem Notch-Einzug rechnen, nicht mit einer festen Zahl.
+   *
+   * Hier stand `top: 88px`. Darüber sitzt der Ton-Schalter bei
+   * `max(10px, env(safe-area-inset-top))` — auf einem Notch-iPhone sind das
+   * 47-59 px, der Schalter reicht dann bis y 103 und überlappt diese
+   * Vorschau um 29 px. Gemessen und bestätigt. Mit demselben Einzug plus
+   * fester Höhe des Schalters (44 px) plus Luft passt es auf jedem Gerät. */
+  top: calc(max(10px, env(safe-area-inset-top)) + 58px);
+  right: max(16px, env(safe-area-inset-right));
   display: none;
   flex-direction: column;
   align-items: center;

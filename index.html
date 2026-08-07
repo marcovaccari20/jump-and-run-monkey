@@ -16,6 +16,21 @@
 
       <!-- Alle Overlays liegen über dem Canvas -->
       <div id="ui">
+        <!-- Pause. NUR im laufenden Spiel sichtbar (UI.showScreen).
+             Am Handy gibt es kein Escape und kein P: ohne diesen Knopf kam
+             man aus einem Lauf nur durch Sterben heraus. Links oben, weil
+             rechts oben der Ton-Schalter sitzt und die Mitte der Punktzahl
+             gehört. -->
+        <button
+          id="btn-pause"
+          class="pause-schalter"
+          type="button"
+          aria-label="Pause"
+          hidden
+        >
+          <span aria-hidden="true">II</span>
+        </button>
+
         <!-- Ton an/aus. Liegt bewusst AUSSERHALB der Screens: er muss im
              Menü, im Spiel, in der Pause und beim Game Over erreichbar sein.
              Auf dem Handy ist er der einzige Weg — die Taste M gibt es dort

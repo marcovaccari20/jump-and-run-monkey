@@ -75,6 +75,7 @@ export class UI {
       weltListe: $('welt-liste'),
       weltStatus: $('welt-status'),
 
+      btnPause: $('btn-pause'),
       btnTon: $('btn-ton'),
       tonSymbol: $('ton-symbol'),
 
@@ -111,6 +112,8 @@ export class UI {
       onCharactersGo: () => {},
       onKaufen: () => {},
       onTonUmschalten: () => {},
+      /** Pause-Knopf im HUD - am Handy der einzige Weg (kein Escape) */
+      onPause: () => {},
       /** (code: string) => void — Fortschritt von einem anderen Gerät holen */
       onCodeLaden: () => {},
       /** (code: string) => void — vier Ziffern für dieses Gerät belegen */
@@ -150,6 +153,12 @@ export class UI {
     for (const ereignis of ['pointerdown', 'keydown', 'touchstart']) {
       window.addEventListener(ereignis, () => this.callbacks.onErsteEingabe(), { passive: true });
     }
+
+    this.el.btnPause.addEventListener('click', (e) => {
+      this.callbacks.onPause();
+      // Fokus loslassen wie beim Ton-Schalter: sonst schluckt der Knopf Enter.
+      if (e.detail > 0) this.el.btnPause.blur();
+    });
 
     this.el.btnTon.addEventListener('click', (e) => {
       this.callbacks.onTonUmschalten();
@@ -300,6 +309,12 @@ export class UI {
         if (el) el.classList.toggle('is-visible', active.has(id));
       }
     }
+    /* Der Pause-Knopf gehört NUR ins laufende Spiel.
+     *
+     * Nicht in die Pause selbst (dort steht "Weiter"), nicht ins Game Over
+     * und nicht während eines Werbespots — dort wäre er entweder sinnlos
+     * oder schädlich. */
+    this.el.btnPause.hidden = name !== 'playing';
     this._current = name;
   }
 

@@ -104,6 +104,10 @@ export class Klang {
           .then(() => this._wunschEinloesen())
           .catch(() => {});
       }
+      /* JEDE Eingabe schaltet die Musikabspieler frei und holt Abgelehntes
+       * nach. Safari verlangt die Geste pro <audio>-Element; ohne das lief
+       * auf dem iPhone das erste Stück einmal durch und danach war Ruhe. */
+      if (!this._absichtlichStill) this.musik?.freischalten();
       return;
     }
     const AC = window.AudioContext || window.webkitAudioContext;

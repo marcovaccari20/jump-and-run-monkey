@@ -74,6 +74,12 @@ export class Musik {
     this._gebiete = new Map();
     /** Gerade laufendes Gebiet. */
     this._aktuell = null;
+    /* Abspieler, deren play() der Browser abgelehnt hat. Die nächste echte
+     * Nutzereingabe holt sie über `freischalten()` nach. */
+    this._schuldig = new Set();
+    /* Abspieler, die schon einmal aus einer Geste heraus liefen. Safari
+     * verlangt das PRO Element. */
+    this._freigeschaltet = new Set();
     this._endung = this._formatWaehlen();
   }
 
@@ -204,9 +210,64 @@ export class Musik {
 
   _starten(el) {
     const p = el.play();
-    // Browser lehnen `play()` ohne Nutzergeste ab; das ist erwartbar und
-    // kein Fehler — der nächste Aufruf nach der ersten Eingabe zieht.
-    if (p?.catch) p.catch(() => {});
+    if (!p?.catch) return;
+    /* EIN ABGELEHNTES play() MUSS GEMERKT WERDEN.
+     *
+     * Hier stand nur `p.catch(() => {})`. Der Haken: `spiele()` setzt
+     * `_aktuell` VOR dem Abspielversuch, und ihre erste Zeile ist
+     * `if (this._aktuell === gebiet) return`. Ein abgelehntes play() liess das
+     * Gebiet damit die ganze Sitzung stumm — ohne Fehlermeldung. Auf iOS ist
+     * die Ablehnung der Normalfall, weil Gebietswechsel aus der Spielschleife
+     * kommen und nicht aus einem Tipp.
+     *
+     * Gemerkt wird es in `_schuldig`; `nachholen()` versucht es bei der
+     * nächsten echten Eingabe erneut. */
+    p.catch(() => {
+      this._schuldig.add(el);
+    });
+  }
+
+  /**
+   * Schaltet alle Abspieler frei und holt Abgelehntes nach.
+   *
+   * MUSS AUS EINER ECHTEN NUTZEREINGABE KOMMEN. Safari verlangt die Geste
+   * PRO ELEMENT, nicht einmal pro Seite — deshalb bekommt hier jedes
+   * angelegte Element ein play()/pause()-Paar. Ohne das lief auf dem iPhone
+   * das erste Stück einmal durch und danach war Ruhe: der zweite Abspieler
+   * (für den Schleifenpunkt) hat sein erstes play() erst nach zweieinhalb
+   * Minuten bekommen, fern jeder Geste.
+   */
+  freischalten() {
+    for (const e of this._gebiete.values()) {
+      for (const s of [e.a, e.b]) {
+        if (s === e.aktiv) continue; // der läuft schon
+        if (this._freigeschaltet.has(s.el)) continue;
+        const p = s.el.play();
+        if (p?.then) {
+          p.then(() => {
+            s.el.pause();
+            try {
+              s.el.currentTime = 0;
+            } catch {
+              /* egal */
+            }
+            this._freigeschaltet.add(s.el);
+          }).catch(() => {
+            /* noch nicht erlaubt — nächste Eingabe versucht es wieder */
+          });
+        } else {
+          s.el.pause();
+          this._freigeschaltet.add(s.el);
+        }
+      }
+    }
+
+    // Was vorhin abgelehnt wurde, jetzt nachholen.
+    for (const el of [...this._schuldig]) {
+      const p = el.play();
+      if (p?.then) p.then(() => this._schuldig.delete(el)).catch(() => {});
+      else this._schuldig.delete(el);
+    }
   }
 
   /**

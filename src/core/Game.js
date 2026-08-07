@@ -764,6 +764,8 @@ export class Game {
     this.ui.callbacks.onKaufen = (art, id) => this._kaufen(art, id);
     this.ui.callbacks.onErsteEingabe = () => this.klang.aufwecken();
     this.ui.callbacks.onTonUmschalten = () => this._tonUmschalten();
+    // Pause per Knopf. Am Handy der einzige Weg: dort gibt es kein Escape.
+    this.ui.callbacks.onPause = () => this._pause();
     this.ui.callbacks.onCodeLaden = (code) => this._codeLaden(code);
     this.ui.callbacks.onCodeBelegen = (code) => this._codeBelegen(code);
     this.ui.callbacks.onCodeVorschlag = () => this._codeVorschlag();
