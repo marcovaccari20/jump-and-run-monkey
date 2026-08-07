@@ -493,17 +493,39 @@ export const CONFIG = {
      *                  der Difficulty-Kurven während des Fluges ab.
      */
     korridor: {
-      halbbreite: 0.5,
+      /* SCHMALER ALS VORHER (war 0.5), und das ist kein Feintuning.
+       *
+       * Die freie Bahn sperrt links und rechts von sich einen Streifen, in
+       * dem nichts fallen darf. Der war so breit, dass im Hochformat 2.43
+       * von 3.88 Einheiten dauerhaft blockiert waren — 63 % des Feldes.
+       * Gemessen kam die Bildmitte dadurch auf 13.1 % der Objekte statt 33.3,
+       * und in jedem vierten 90-Sekunden-Fenster fiel überhaupt nichts durch
+       * die Mitte. Es fiel praktisch nur noch an den Rändern.
+       *
+       * Zweiter, schlimmerer Nebeneffekt: die Bahn selbst konnte nicht mehr
+       * wandern. `_tempoDamitPlatzBleibt` bremst sie, wenn neben der Sperre
+       * kein Platz mehr bleibt — im Hochformat auf 0.05 Einheiten/s. Sie
+       * stand also fast still, und damit war auch die Seite, auf der die
+       * Objekte fielen, minutenlang dieselbe.
+       *
+       * Der Sicherheitsabstand steckt ohnehin schon in `rand` (Trefferkreis
+       * des Affen plus Objektradius). `halbbreite` ist nur der Zuschlag
+       * darüber hinaus. */
+      halbbreite: 0.28,
       tempoAnteil: 0.17,
       anteilStart: 0.45,
       anteilMax: 0.85,
       anteilVollAbWand: 20,
       maxSprung: 3.4,
+      /* Zug der freien Bahn zum Rand (0 = keiner, 1 = nur noch Rand).
+       * Damit die Objekte in der MITTE ankommen — die Begründung steht in
+       * Korridor._naechsterAbschnitt und ist gegen die Anschauung. */
+      randSog: 0.32,
       haltMin: 0.14,
       haltMax: 0.55,
       horizont: 3.8,
       zeitReserve: 0.1,
-      reserve: 0.1,
+      reserve: 0.06, // war 0.1 — siehe oben
       stuetzstellen: 96,
     },
 
@@ -1281,15 +1303,18 @@ export const CONFIG = {
     // Bildrate = cycleSpeed * frames.length (hier 1.4 * 12 ≈ 17 Bilder/s).
     // Der Zyklus im Video dauert 1.017 s, also entspricht 1.0 dem Originaltempo.
     cycleSpeed: 1.4,
-    /* AUF NULL: im Stillstand steht der Zyklus.
+    /* DER AFFE KLETTERT IMMER — auch ohne Eingabe.
      *
-     * Der Kommentar hier behauptete das Gegenteil ("damit der Zyklus beim
-     * Anfahren nicht springt") — tatsächlich bewirkte 0.4 genau den Sprung,
-     * den er verhindern sollte: das Bild hängt im Stillstand fest auf
-     * `idleFrame`, die PHASE lief aber weiter. Beim Anfahren sprang der Affe
-     * deshalb an eine zufällige Stelle des Zyklus statt sauber loszuklettern.
-     * Mit 0 bleiben Bild und Phase beieinander. */
-    idleCycleSpeed: 0.0,
+     * Ich hatte das erst missverstanden und den Zyklus im Stillstand
+     * angehalten. Falsch: die Wand scrollt durchgehend, der Affe steigt also
+     * durchgehend. Ein Affe, der bei laufender Wand einfriert, klebt
+     * sichtbar am Bild. Er bewegt sich immer, nur schneller, wenn man
+     * zusätzlich ausweicht.
+     *
+     * 0.7 heisst: im Stillstand die halbe Bildrate der vollen Bewegung —
+     * ruhiges, gleichmässiges Kraxeln, das nicht mit dem Ausweichen
+     * konkurriert. */
+    idleCycleSpeed: 0.7,
 
     /* Neigung in Bewegungsrichtung.
      *
@@ -1302,9 +1327,12 @@ export const CONFIG = {
      * Die Trefferprüfung hängt NICHT daran: CollisionSystem rechnet mit
      * this.x/this.y, nicht mit der Darstellung. Geprüft. */
     lean: {
-      proTempo: 1.6, // Grad je Einheit/s Seitwärtsgeschwindigkeit
-      max: 8, // Grad
-      glaettung: 9.0, // je höher, desto schneller folgt die Neigung
+      // Nach dem ersten Anlauf deutlicher gestellt: 8 Grad waren zu zaghaft,
+      // man sah sie kaum. 15 Grad zeigen die Richtung klar, ohne dass das
+      // flache Sprite nach umkippendem Papier aussieht.
+      proTempo: 2.6, // Grad je Einheit/s Seitwärtsgeschwindigkeit
+      max: 15, // Grad
+      glaettung: 11.0, // je höher, desto schneller folgt die Neigung
     },
 
     // Tempo des Kletterzyklus in MENÜ, CHARAKTERAUSWAHL und GAME OVER,

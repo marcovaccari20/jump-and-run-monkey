@@ -141,11 +141,41 @@ export class Korridor {
       return;
     }
 
-    // Wandern: begrenzter Sprung, nie über das Spielfeld hinaus.
+    /* Wandern: begrenzter Sprung, nie über das Spielfeld hinaus.
+     *
+     * DIE BAHN ZIEHT ZUM RAND, und das ist der Kern der gleichmässigen
+     * Verteilung — auch wenn es zunächst widersinnig klingt.
+     *
+     * Objekte dürfen nur dort fallen, wo die Bahn NICHT ist. Ein Punkt in
+     * der Bildmitte wird von der Sperrzone viel öfter getroffen als einer am
+     * Rand: bei ihm liegt die ganze Sperrbreite im erreichbaren Bereich, beim
+     * Randpunkt ragt die Hälfte davon ins Nichts. Eine gleichmässig
+     * verteilte Bahn erzeugt deshalb eine RANDLASTIGE Objektverteilung —
+     * gemessen kam die Bildmitte im Hochformat auf 13 % statt 33 %.
+     *
+     * Zieht die Bahn dagegen bevorzugt an die Ränder, ist die Mitte öfter
+     * frei, und die Objekte verteilen sich. `randSog` steuert das: 0 = wie
+     * bisher gleichmässig, 1 = ausschliesslich an die Ränder.
+     *
+     * Der Sog wirkt auf das ZIEL, nicht auf den Weg — die Bahn bleibt eine
+     * durchgehende, langsam wandernde Linie, und die Lückengarantie hängt
+     * allein daran, dass sie überhaupt existiert. */
     const spanne = cfg.maxSprung;
     let ziel = x0 + (Math.random() * 2 - 1) * spanne;
     if (ziel < minX) ziel = minX;
     if (ziel > maxX) ziel = maxX;
+
+    const sog = cfg.randSog ?? 0;
+    if (sog > 0 && maxX > minX) {
+      const mitte = (minX + maxX) / 2;
+      const halb = (maxX - minX) / 2;
+      // Auf -1..+1 normieren, zum näheren Rand strecken, zurückrechnen.
+      const u = (ziel - mitte) / halb;
+      const gestreckt = Math.sign(u) * Math.pow(Math.abs(u), 1 - sog);
+      ziel = mitte + gestreckt * halb;
+      if (ziel < minX) ziel = minX;
+      if (ziel > maxX) ziel = maxX;
+    }
 
     const weg = Math.abs(ziel - x0);
     const v = Math.max(0.05, tempo);

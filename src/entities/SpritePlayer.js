@@ -320,7 +320,6 @@ export class SpritePlayer {
     const speedRatio = this._ambient
       ? this.sc.ambientCycleRatio
       : Math.min(1, this.animSpeed / this.cfg.moveSpeed);
-    const moving = this._ambient || speedRatio > 0.08;
 
     // Abwärts läuft der Zyklus rückwärts — dieselben Frames, andere Richtung.
     // Im Menü klettert er immer aufwärts.
@@ -329,26 +328,29 @@ export class SpritePlayer {
       (this._inputY < -0.2 || (Math.abs(this._inputY) < 0.2 && this.vy < -0.5));
     const dir = downward ? -1 : 1;
 
-    const rate = moving ? sc.cycleSpeed * (0.35 + 0.65 * speedRatio) : sc.idleCycleSpeed;
+    /* DER ZYKLUS LÄUFT IMMER.
+     *
+     * Hier stand eine Stillstandsschwelle (`speedRatio > 0.08`): ohne
+     * Seitwärtsbewegung fror der Affe auf einem Einzelbild ein. Das ist
+     * falsch — die Wand scrollt durchgehend, der Affe steigt also
+     * durchgehend, und ein eingefrorener Affe vor bewegter Wand sieht aus,
+     * als klebte er am Bildschirm.
+     *
+     * `idleCycleSpeed` ist jetzt der SOCKEL, nicht der Sonderfall: er
+     * kraxelt immer mindestens in diesem Takt und wird schneller, wenn man
+     * zusätzlich ausweicht. */
+    const rate = Math.max(sc.idleCycleSpeed, sc.cycleSpeed * (0.35 + 0.65 * speedRatio));
     this._phase += dir * rate * TAU * dt;
     if (this._phase > TAU) this._phase -= TAU;
     if (this._phase < -TAU) this._phase += TAU;
 
     /* --- Bildwechsel --------------------------------------------------- */
     const n = this.frames.length;
-    if (moving) {
-      // Doppeltes Modulo ist nötig: `(x % TAU) + TAU` landet bei POSITIVER
-      // Phase in [TAU, 2*TAU) und bliebe damit dauerhaft im letzten Frame
-      // hängen — aufwärts stünde die Animation still, abwärts liefe sie.
-      const norm = (((this._phase % TAU) + TAU) % TAU) / TAU; // 0..1
-      this._setFrame(Math.min(n - 1, Math.floor(norm * n)));
-    } else {
-      // Zyklus zurück auf Anfang, nicht bloss das Bild festhalten. Sonst
-      // steht der Affe auf idleFrame, die Phase wandert unsichtbar weiter,
-      // und beim Anfahren springt er mitten in den Zyklus.
-      this._phase = 0;
-      this._setFrame(sc.idleFrame % n);
-    }
+    // Doppeltes Modulo ist nötig: `(x % TAU) + TAU` landet bei POSITIVER
+    // Phase in [TAU, 2*TAU) und bliebe damit dauerhaft im letzten Frame
+    // hängen — aufwärts stünde die Animation still, abwärts liefe sie.
+    const norm = (((this._phase % TAU) + TAU) % TAU) / TAU; // 0..1
+    this._setFrame(Math.min(n - 1, Math.floor(norm * n)));
 
     /* --- Neigung in Bewegungsrichtung --------------------------------- */
     /* Vorzeichen: `-vx`. Der Affe schaut aus dem Bild heraus, seine Rechte
