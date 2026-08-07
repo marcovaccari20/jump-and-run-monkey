@@ -4,49 +4,43 @@
  * Fällt langsamer als ein Stein und hat eine grosszügigere Hitbox, damit das
  * Einsammeln sich gut anfühlt.
  */
-import {
-  Mesh,
-  MeshStandardMaterial,
-  TorusGeometry,
-  Group,
-} from 'three';
+import { DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry } from 'three';
 
-let sharedGeometry = null;
-let sharedMaterial = null;
+let geteilteGeometrie = null;
+let geteiltesMaterial = null;
 
-function getShared(cfg) {
-  if (!sharedGeometry) {
-    // Ein Torus-Ausschnitt ist von vorne die beste billige Bananenform:
-    // gebogener Zylinder mit spitz zulaufenden Enden.
-    sharedGeometry = new TorusGeometry(0.62, 0.2, 10, 22, Math.PI * 0.95);
-    sharedGeometry.rotateZ(Math.PI * 0.5);
-  }
-  if (!sharedMaterial) {
-    sharedMaterial = new MeshStandardMaterial({
-      color: cfg.color,
-      roughness: 0.42,
-      metalness: 0.05,
-      emissive: 0x4a3900,
-      emissiveIntensity: 0.55,
-    });
-  }
-  return { geometry: sharedGeometry, material: sharedMaterial };
+/** Nur für Tests: erzwingt beim nächsten Bau ein frisches Material. */
+export function _resetBananenAssets() {
+  geteilteGeometrie = null;
+  geteiltesMaterial = null;
 }
 
 export class Banana {
   /**
    * @param {number} _index
    * @param {typeof import('../config.js').CONFIG.banana} cfg
+   * @param {import('three').Texture|null} textur vorgeladenes Bild
    */
-  constructor(_index, cfg) {
+  constructor(_index, cfg, textur = null) {
     this.cfg = cfg;
-    const { geometry, material } = getShared(cfg);
 
-    // Group als Träger: der Mesh darin darf frei taumeln, ohne dass die
-    // Positionierung davon betroffen ist.
-    this.mesh = new Group();
-    this.inner = new Mesh(geometry, material);
-    this.mesh.add(this.inner);
+    /* Bis hierher war die Banane ein Torus-Ausschnitt — eine billige
+     * Bananenform aus Geometrie. Jetzt das gezeichnete Bild, genau wie bei
+     * Münze und Hindernissen. */
+    if (!geteilteGeometrie) geteilteGeometrie = new PlaneGeometry(1, 1);
+    if (!geteiltesMaterial) {
+      geteiltesMaterial = new MeshBasicMaterial({
+        map: textur,
+        transparent: true,
+        alphaTest: 0.03,
+        depthWrite: false,
+        side: DoubleSide,
+        // Das Bild ist schon beleuchtet; Tonemapping macht das Gelb stumpf.
+        toneMapped: false,
+      });
+    }
+
+    this.mesh = new Mesh(geteilteGeometrie, geteiltesMaterial);
     this.mesh.visible = false;
 
     this.x = 0;
@@ -62,9 +56,13 @@ export class Banana {
     this.y = y;
     this._bobPhase = rand01 * 6.283;
 
-    this.mesh.scale.setScalar(this.radius / 0.62);
+    /* Fläche = (2*radius)^2, aber im Seitenverhältnis des Bildes. Die
+     * freigestellte Banane ist 176x224, steht also hochkant. */
+    const seite = this.cfg.bildSeite ?? 176 / 224;
+    const h = 2 * this.radius * (this.cfg.spriteScale ?? 1);
+    this.mesh.scale.set(h * seite, h, 1);
     this.mesh.position.set(x, y, 0);
-    this.inner.rotation.set(0, 0, 0);
+    this.mesh.rotation.z = 0;
     this.mesh.visible = true;
     this.active = true;
   }
@@ -77,8 +75,9 @@ export class Banana {
 
     this.mesh.position.x = this.x;
     this.mesh.position.y = this.y;
-    this.inner.rotation.y += this.cfg.spin * dt;
-    this.inner.rotation.z = Math.sin(this._bobPhase) * 0.22;
+    // Sanftes Wiegen statt Rotation: ein flaches Bild, das sich um die
+    // Hochachse dreht, verschwindet zwischendurch zu einem Strich.
+    this.mesh.rotation.z = Math.sin(this._bobPhase) * 0.26;
   }
 
   despawn() {

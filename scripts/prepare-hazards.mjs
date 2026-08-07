@@ -176,6 +176,15 @@ const BILDER = [
     t1: 40,
   },
   {
+    // Banane = zweites Leben. Wie die Münze kein Hindernis, aber dieselbe
+    // Aufbereitung. Ein Objekt auf grauem Grund.
+    quelle: 'banane.png',
+    ziele: ['banane'],
+    objekte: 1,
+    t0: 12,
+    t1: 40,
+  },
+  {
     quelle: 'wolken.png',
     // Im Bild stehen sie als Tropfen, Hagel, Blatt — gebraucht werden sie als
     // klein, mittel, gross. `waehle` sortiert um, statt das Bild anzufassen.

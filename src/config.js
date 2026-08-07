@@ -1052,6 +1052,11 @@ export const CONFIG = {
    *  BANANEN (Wiederbelebung)
    * ================================================================== */
   banana: {
+    // Freigestelltes Bild statt der früheren Torus-Form.
+    bild: '/hazards/banane.webp',
+    // 176x224 — die Banane steht hochkant.
+    bildSeite: 176 / 224,
+    spriteScale: 1.7,
     poolSize: 8,
     // Wahrscheinlichkeit, dass ein Spawn-Event eine Banane statt eines Steins wirft.
     spawnChance: 0.085,

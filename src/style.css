@@ -627,6 +627,63 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
   color: var(--text-dim);
 }
 
+/* Bananen-Anzeige NEBEN DEN METERN.
+ *
+ * Vorher war das ein eigener Kasten links oben mit dem Wort
+ * "WIEDERBELEBUNG" und einem 🍌-Emoji. Zwei Probleme: der Blick liegt im
+ * Spiel auf den Metern, nicht in der Ecke — und ein Emoji sieht auf jedem
+ * Gerät anders aus als die Banane, die im Spiel herunterfällt. Jetzt klein,
+ * mit dem echten Bild, direkt bei der Punktzahl. */
+.hud__banane {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+  padding: 3px 9px 3px 5px;
+  border-radius: 999px;
+  background: rgba(8, 24, 12, 0.55);
+  border: 1px solid rgba(255, 210, 63, 0.45);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--banana);
+  /* Ausgeblendet, solange man keine hat — aber der Platz bleibt reserviert,
+     sonst springt die Punktzahl beim Einsammeln zur Seite. */
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.hud__banane img {
+  width: 15px;
+  height: 19px;
+  display: block;
+  /* Ohne das wirkt die Banane auf dunklem Grund flach. */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.hud__banane.is-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Der weisse Affe kennt keine Wiederbelebung — dann ganz weg. */
+.hud__banane.is-hidden {
+  display: none;
+}
+
+/* Auf schmalen Geräten ist neben den Metern kein Platz für Text; das Bild
+   allein sagt es auch. */
+@media (max-width: 520px) {
+  .hud__banane-text {
+    display: none;
+  }
+  .hud__banane {
+    padding: 3px 5px;
+  }
+}
+
 .hud__revive {
   display: flex;
   align-items: center;

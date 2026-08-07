@@ -439,6 +439,7 @@ export class Game {
     const hazardTexturen = await loader.loadTexturesParallel([
       ...hazardSpriteUrls(this.cfg.rock),
       this.cfg.coin.bild,
+      this.cfg.banana.bild,
     ]);
 
     /* --- Spawner + Debug ----------------------------------------------- */
@@ -449,6 +450,7 @@ export class Game {
       this.worldView,
       hazardTexturen,
       hazardTexturen.get(this.cfg.coin.bild) ?? null,
+      hazardTexturen.get(this.cfg.banana.bild) ?? null,
     );
     // Der Spawner entsteht NACH der Spielfigur — _buildPlayer konnte sein
     // Bananen-Flag oben also noch nicht setzen. Hier nachholen, sonst fielen

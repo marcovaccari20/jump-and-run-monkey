@@ -167,10 +167,6 @@
         <!-- ---------------------------------------------------------- HUD -->
         <section id="screen-hud" class="screen screen--hud">
           <div class="hud__top">
-            <div class="hud__revive" id="hud-revive" aria-live="polite">
-              <span class="hud__revive-icon">🍌</span>
-              <span class="hud__revive-label">Wiederbelebung</span>
-            </div>
             <div class="hud__score">
               <span id="hud-score" class="hud__score-value">0</span>
               <span class="hud__score-unit">m</span>
@@ -178,6 +174,16 @@
                    hier oben zählt nur, was der Versuch gerade einbringt. -->
               <span class="hud__coins" id="hud-coins">
                 <span class="hud__coin-icon"></span><span id="hud-coin-value">0</span>
+              </span>
+              <!-- Zweites Leben. Steht bewusst HIER bei den Metern und nicht
+                   mehr links als eigener Block mit Beschriftung: dorthin
+                   schaut man ohnehin dauernd, und im Spiel ist keine Zeit,
+                   den Blick an eine zweite Stelle zu schicken.
+                   Das 🍌-Emoji ist raus — jetzt dasselbe gezeichnete Bild,
+                   das auch herunterfällt, damit man es wiedererkennt. -->
+              <span class="hud__banane" id="hud-revive" aria-live="polite">
+                <img src="./hazards/banane.webp" alt="" aria-hidden="true" />
+                <span class="hud__banane-text">Extraleben</span>
               </span>
             </div>
           </div>

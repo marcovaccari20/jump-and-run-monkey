@@ -22,13 +22,24 @@ export class Spawner {
    * @param {Map<string, import('three').Texture>|null} hazardTexturen
    *   Vorgeladene Objektbilder. Fehlen sie, baut Rock die Objekte prozedural.
    */
-  constructor(scene, cfg, difficulty, world, hazardTexturen = null, coinTextur = null) {
+  constructor(
+    scene,
+    cfg,
+    difficulty,
+    world,
+    hazardTexturen = null,
+    coinTextur = null,
+    bananenTextur = null,
+  ) {
     this.cfg = cfg;
     this.difficulty = difficulty;
     this.world = world ?? cfg.world;
 
     this.rocks = new Pool(cfg.rock.poolSize, (i) => new Rock(i, cfg.rock, hazardTexturen));
-    this.bananas = new Pool(cfg.banana.poolSize, (i) => new Banana(i, cfg.banana));
+    this.bananas = new Pool(
+      cfg.banana.poolSize,
+      (i) => new Banana(i, cfg.banana, bananenTextur),
+    );
     this.coins = new Pool(cfg.coin.poolSize, (i) => new Coin(i, cfg.coin, coinTextur));
 
     for (const rock of this.rocks.all) scene.add(rock.mesh);
