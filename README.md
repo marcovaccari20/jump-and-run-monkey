@@ -57,11 +57,15 @@ Texturen liegen in `public/textures/`.
 
 ## Steuerung
 
+**Nur links und rechts.** Der Affe steht senkrecht fest (`CONFIG.player.startPosition[1] = -0.1`, knapp unter der Bildmitte) und weicht ausschliesslich seitlich aus. Hoch und runter gibt es nicht — `W`/`S` und die Pfeiltasten hoch/runter bewegen ihn nicht mehr. Sie bleiben nur deshalb in `CONFIG.input.keys` belegt, damit der Browser bei den Pfeiltasten nicht die Seite scrollt.
+
+Auf dem Handy tippt man **irgendwo** hin und zieht seitwärts; der Ring erscheint unter dem Finger. Der frühere Joystick mit festem Platz unten links ist weg. Knöpfe, Eingabefelder und Aufklapper haben weiterhin Vorrang — seit die Trefferprüfung auf das untere linke Viertel entfallen ist, ist diese Liste (`onControl` in `InputHandler`) der einzige Schutz vor Fehlgriffen.
+
 | Eingabe | Wirkung |
 | --- | --- |
-| `W` `A` `S` `D` | Bewegen (frei in der Wandebene) |
-| Pfeiltasten | Alias für WASD |
-| Virtueller Joystick unten links | Bewegen (Touch) |
+| `A` / `D` | Nach links und rechts |
+| Pfeiltasten | Alias dafür |
+| Irgendwo tippen und ziehen | Nach links und rechts (Touch) |
 | `Esc` / `P` | Pause |
 | `Enter` / `Leertaste` | Starten bzw. Neustart |
 | `F1` | Hitbox-Overlay + Debug-Werte ein/aus |

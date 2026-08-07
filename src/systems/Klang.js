@@ -53,6 +53,8 @@ export class Klang {
 
     /** Zuletzt gewünschte Atmosphäre, auch wenn sie noch nicht klingen kann */
     this._wunsch = null;
+    /** Dasselbe für das Abspieltempo (steigt mit jedem Gebiet). */
+    this._tempoWunsch = 1;
 
     /* ABSICHTLICH STILL — Pause, Werbespot, versteckter Tab.
      *
@@ -180,6 +182,24 @@ export class Klang {
     this._wunsch = name;
     if (!this.bereit || !this.musik) return;
     this.musik.spiele(name);
+  }
+
+  /**
+   * Abspieltempo der Musik (1 = normal). Steigt mit jedem Gebiet.
+   *
+   * Wird ebenfalls IMMER gemerkt: der AudioContext entsteht erst mit der
+   * ersten Eingabe, und ein Tempo, das vorher gesetzt wurde, dürfte dabei
+   * nicht verlorengehen.
+   */
+  tempo(faktor) {
+    this._tempoWunsch = faktor;
+    if (this.bereit) this.musik?.tempo(faktor);
+  }
+
+  /** Zurück auf Normaltempo — beim Start einer neuen Runde. */
+  tempoZuruecksetzen() {
+    this._tempoWunsch = 1;
+    this.musik?.tempoZuruecksetzen();
   }
 
   /**
@@ -365,6 +385,12 @@ export class Klang {
   _wunschEinloesen() {
     if (this._wunsch && this.bereit && this.musik?.aktuell !== this._wunsch) {
       this.atmo(this._wunsch);
+    }
+    /* Das Tempo mit einlösen. Ohne das liefe die Musik nach einem Tabwechsel
+     * mitten im zwölften Gebiet wieder auf Normaltempo an — der Ton kommt
+     * dann zwar zurück, aber mit dem Schwung des ersten Gebiets. */
+    if (this.bereit && this._tempoWunsch !== 1) {
+      this.musik?.tempo(this._tempoWunsch);
     }
   }
 }

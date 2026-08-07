@@ -5,19 +5,21 @@
  * diese Klasse exakt wie Player — Kollision, Wiederbelebung und Steuerung
  * sind identisch, die Spiellogik merkt keinen Unterschied.
  *
- * ANIMATION AUS EINEM EINZELBILD
- * Die Vorlage ist EIN Bild, es gibt keine Einzelphasen. Bewegung entsteht
- * deshalb rein aus der Transformation:
+ * NUR EINE ACHSE
+ * Der Affe steht senkrecht FEST (auf cfg.startPosition[1]) und bewegt sich
+ * ausschliesslich nach links und rechts. `update()` fasst `this.y` nicht mehr
+ * an, `this.vy` bleibt dauerhaft 0 und existiert nur noch, weil
+ * `animContext()` es liest.
  *
- *   hoch    Kletterzyklus: Nicken + wechselnde Neigung (liest sich als
- *           abwechselndes Greifen links/rechts) + Stauchen/Strecken
- *   runter  derselbe Zyklus rückwärts und langsamer
- *   seitw.  Neigung in Laufrichtung, das Sprite wird gespiegelt, damit der
- *           greifende Arm zur Bewegungsrichtung zeigt
- *   Stand   ruhiges Atmen, damit die Figur nie ganz einfriert
+ * ANIMATION
+ * Der Kletterzyklus läuft IMMER und immer vorwärts — die Wand scrollt
+ * durchgehend, also klettert der Affe durchgehend. `idleCycleSpeed` ist der
+ * Sockel, seitliches Ausweichen beschleunigt den Takt. Dazu kommt eine
+ * Neigung in Laufrichtung.
  *
- * Die Zyklusgeschwindigkeit hängt an der Bewegungsgeschwindigkeit — bei
- * langsamer Bewegung klettert er langsam, bei voller Fahrt schnell.
+ * Den früheren Rückwärtslauf für die Abwärtsbewegung gibt es nicht mehr; er
+ * wäre seit dem Wegfall der Vertikalen unerreichbar. Eine eigene
+ * Abwärts-Bildfolge gab es ohnehin nie.
  */
 import { Group, Mesh, MeshBasicMaterial, PlaneGeometry } from 'three';
 
@@ -108,7 +110,6 @@ export class SpritePlayer {
     this.alive = true;
 
     this._inputX = 0;
-    this._inputY = 0;
     this._phase = 0;
     this._lean = 0;
     this._blinkPhase = 0;
@@ -164,7 +165,8 @@ export class SpritePlayer {
   }
 
   get animSpeed() {
-    const intent = Math.hypot(this._inputX, this._inputY) * this.cfg.moveSpeed;
+    // Nur die waagerechte Absicht — eine zweite Achse gibt es nicht mehr.
+    const intent = Math.abs(this._inputX) * this.cfg.moveSpeed;
     return Math.max(this.speed, intent);
   }
 
@@ -209,7 +211,6 @@ export class SpritePlayer {
     this.invulnerableTimer = 0;
     this.alive = true;
     this._inputX = 0;
-    this._inputY = 0;
     this.root.position.set(this.x, this.y, 0);
     this.art.visible = true;
     this._resetAnimation();
@@ -240,35 +241,38 @@ export class SpritePlayer {
 
   /* =============================================================== Loop */
 
+  /**
+   * NUR NOCH WAAGERECHT.
+   *
+   * `this.y` wird hier bewusst NICHT MEHR ANGEFASST. Der Affe steht auf der
+   * Höhe, die Konstruktor und reset() aus cfg.startPosition[1] gesetzt haben,
+   * und weicht ausschliesslich seitlich aus. `this.vy` bleibt als Feld
+   * bestehen (animContext liest es) und ist dauerhaft 0.
+   *
+   * Auch `bounds.minY/maxY` werden nicht mehr ausgewertet. Die beiden Werte
+   * bleiben in CONFIG.world.bounds stehen, bedeuten aber etwas anderes als
+   * früher: nicht mehr das Bewegungsband des Affen, sondern das Gefahren-
+   * und Sichtbarkeitsband der fallenden Objekte (siehe Spawner).
+   */
   update(dt, axis, bounds) {
     const cfg = this.cfg;
     this._inputX = axis.x;
-    this._inputY = axis.y;
 
     if (this.alive) {
       const targetVx = axis.x * cfg.moveSpeed;
-      const targetVy = axis.y * cfg.moveSpeed;
       const rateX = axis.x !== 0 ? cfg.acceleration : cfg.damping;
-      const rateY = axis.y !== 0 ? cfg.acceleration : cfg.damping;
 
       this.vx += (targetVx - this.vx) * (1 - Math.exp(-rateX * dt));
-      this.vy += (targetVy - this.vy) * (1 - Math.exp(-rateY * dt));
-
       this.x += this.vx * dt;
-      this.y += this.vy * dt;
 
       if (this.x < bounds.minX) { this.x = bounds.minX; this.vx = 0; }
       else if (this.x > bounds.maxX) { this.x = bounds.maxX; this.vx = 0; }
-      if (this.y < bounds.minY) { this.y = bounds.minY; this.vy = 0; }
-      else if (this.y > bounds.maxY) { this.y = bounds.maxY; this.vy = 0; }
     } else {
       this.vx += (0 - this.vx) * (1 - Math.exp(-cfg.damping * dt));
-      this.vy += (0 - this.vy) * (1 - Math.exp(-cfg.damping * dt));
     }
 
     this.root.position.x = this.x;
-    this.root.position.y = this.y;
-    this.speed = Math.hypot(this.vx, this.vy);
+    this.speed = Math.abs(this.vx);
 
     this._animate(dt);
     this._updateInvulnerability(dt);
@@ -321,14 +325,15 @@ export class SpritePlayer {
       ? this.sc.ambientCycleRatio
       : Math.min(1, this.animSpeed / this.cfg.moveSpeed);
 
-    // Abwärts läuft der Zyklus rückwärts — dieselben Frames, andere Richtung.
-    // Im Menü klettert er immer aufwärts.
-    const downward =
-      !this._ambient &&
-      (this._inputY < -0.2 || (Math.abs(this._inputY) < 0.2 && this.vy < -0.5));
-    const dir = downward ? -1 : 1;
-
-    /* DER ZYKLUS LÄUFT IMMER.
+    /* DER ZYKLUS LÄUFT IMMER VORWÄRTS.
+     *
+     * Hier stand ein Rückwärtslauf für die Abwärtsbewegung — dieselben
+     * Frames, andere Richtung. Seit es kein Runter mehr gibt, wäre die
+     * Bedingung dauerhaft falsch und der Zweig unerreichbar. Weg damit,
+     * samt dem negativen Modulo unten, das es nur wegen der negativen Phase
+     * gab. Verloren geht nichts: eine eigene Abwärts-Bildfolge gab es nie.
+     *
+     * DER ZYKLUS LÄUFT AUCH IM STILLSTAND.
      *
      * Hier stand eine Stillstandsschwelle (`speedRatio > 0.08`): ohne
      * Seitwärtsbewegung fror der Affe auf einem Einzelbild ein. Das ist
@@ -340,16 +345,14 @@ export class SpritePlayer {
      * kraxelt immer mindestens in diesem Takt und wird schneller, wenn man
      * zusätzlich ausweicht. */
     const rate = Math.max(sc.idleCycleSpeed, sc.cycleSpeed * (0.35 + 0.65 * speedRatio));
-    this._phase += dir * rate * TAU * dt;
+    this._phase += rate * TAU * dt;
     if (this._phase > TAU) this._phase -= TAU;
-    if (this._phase < -TAU) this._phase += TAU;
 
     /* --- Bildwechsel --------------------------------------------------- */
     const n = this.frames.length;
-    // Doppeltes Modulo ist nötig: `(x % TAU) + TAU` landet bei POSITIVER
-    // Phase in [TAU, 2*TAU) und bliebe damit dauerhaft im letzten Frame
-    // hängen — aufwärts stünde die Animation still, abwärts liefe sie.
-    const norm = (((this._phase % TAU) + TAU) % TAU) / TAU; // 0..1
+    // Die Phase kann nicht mehr negativ werden (kein Rückwärtslauf), ein
+    // einfaches Modulo genügt.
+    const norm = (this._phase % TAU) / TAU; // 0..1
     this._setFrame(Math.min(n - 1, Math.floor(norm * n)));
 
     /* --- Neigung in Bewegungsrichtung --------------------------------- */

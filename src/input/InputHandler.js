@@ -1,10 +1,22 @@
 /**
- * Eingabe: Tastatur (WASD + Pfeiltasten als Alias) und Touch (virtueller
- * Joystick unten links).
+ * Eingabe: Tastatur (A/D + Pfeiltasten als Alias) und Touch.
  *
- * Nach aussen liefert der Handler nur einen normalisierten Richtungsvektor
- * `axis` (x/y jeweils -1..1, Länge <= 1) plus Edge-Events für Pause/Confirm/
- * Debug. Die Spiellogik weiss nicht, ob gerade Tastatur oder Touch benutzt wird.
+ * NUR EINE ACHSE. Der Affe bewegt sich ausschliesslich nach links und rechts
+ * und steht senkrecht fest — hoch und runter gibt es nicht mehr. `axis.y`
+ * bleibt als Feld bestehen, weil Player, SpritePlayer und Game es lesen, ist
+ * aber dauerhaft 0.
+ *
+ * TOUCH GREIFT ÜBERALL. Früher lag unten links ein virtueller Joystick mit
+ * festem Platz, und ein Finger wurde nur dort angenommen. Jetzt tippt man
+ * irgendwo hin und zieht nach links oder rechts; der Ring erscheint unter dem
+ * Finger. Bedienelemente — Knöpfe, Eingabefelder, Aufklapper — haben
+ * weiterhin Vorrang, siehe `onControl` in _bindTouch. Das ist seitdem der
+ * EINZIGE Schutz vor Fehlgriffen: die Geometrie, die vorher das obere Drittel
+ * ausnahm, gibt es nicht mehr.
+ *
+ * Nach aussen liefert der Handler nur `axis` plus Edge-Events für
+ * Pause/Confirm/Debug. Die Spiellogik weiss nicht, ob gerade Tastatur oder
+ * Finger benutzt wird.
  */
 
 export class InputHandler {
@@ -31,12 +43,14 @@ export class InputHandler {
       for (const code of codes) this._keyToAction.set(code, action);
     }
 
+    /* Nur x — es gibt keine senkrechte Steuerung mehr. `originY` bleibt, weil
+     * der Griffpunkt für die Optik des Knopfes gebraucht wird; eine
+     * y-Auslenkung wird gar nicht erst gemessen. */
     this._touch = {
       id: null,
       originX: 0,
       originY: 0,
       x: 0,
-      y: 0,
       active: false,
     };
 
@@ -120,23 +134,36 @@ export class InputHandler {
     this._joystickEl = base;
     this._knobEl = knob;
 
-    // Der Joystick reagiert auf Berührungen im ganzen unteren linken Viertel,
-    // nicht nur exakt auf dem Kreis — das trifft sich blind deutlich besser.
-    const hit = (t) =>
-      t.clientX < window.innerWidth * 0.55 && t.clientY > window.innerHeight * 0.35;
+    /* GEGRIFFEN WIRD ÜBERALL.
+     *
+     * Hier stand eine Trefferprüfung auf das untere linke Viertel
+     * (clientX < 55 % der Breite und clientY > 35 % der Höhe) — der Joystick
+     * hatte einen festen Platz, und nur dort nahm er einen Finger an. Genau
+     * das ist weg: man tippt irgendwo hin und zieht.
+     *
+     * Damit ist `onControl` unten der EINZIGE Schutz vor Fehlgriffen. Vorher
+     * war die Geometrie das zweite Netz — das obere Drittel mit Pause- und
+     * Ton-Schalter war schon durch `hit` ausgeschlossen. Die Liste unten
+     * musste deshalb erweitert werden.
+     */
 
-    // Bedienelemente haben Vorrang: eine Berührung auf einem Button ist ein
-    // Klick, kein Joystick-Griff.
+    /* Bedienelemente haben Vorrang: eine Berührung auf einem Knopf ist ein
+     * Klick, kein Steuergriff.
+     *
+     * `summary` und `details` sind dazugekommen — daran hängt der Aufklapper
+     * "Fortschritt auf ein anderes Gerät mitnehmen". `[role="button"]` deckt
+     * Elemente ab, die wie ein Knopf gemeint sind, ohne einer zu sein. */
     const onControl = (t) =>
       t.target instanceof Element &&
-      t.target.closest('button, input, a, select, textarea, label');
+      t.target.closest(
+        'button, input, a, select, textarea, label, summary, details, [role="button"]',
+      );
 
     this._onTouchStart = (e) => {
       if (!this._captureEnabled) return;
       if (this._touch.id !== null) return;
       for (const t of e.changedTouches) {
         if (onControl(t)) continue;
-        if (!hit(t)) continue;
 
         // Erst jetzt ist erwiesen, dass wirklich per Finger gespielt wird —
         // Geräte melden Touch-Fähigkeit auch, wenn eine Maus benutzt wird.
@@ -145,7 +172,7 @@ export class InputHandler {
         this._touch.originX = t.clientX;
         this._touch.originY = t.clientY;
         this._touch.x = 0;
-        this._touch.y = 0;
+
         this._touch.active = true;
         this._anyPressed = true;
         base.style.left = `${t.clientX - radius}px`;
@@ -160,16 +187,18 @@ export class InputHandler {
       if (this._touch.id === null) return;
       for (const t of e.changedTouches) {
         if (t.identifier !== this._touch.id) continue;
+
+        /* NUR NOCH WAAGERECHT. Die senkrechte Auslenkung wird gar nicht mehr
+         * gemessen — der Affe bewegt sich ausschliesslich nach links und
+         * rechts, und was nicht gemessen wird, kann auch nicht versehentlich
+         * irgendwo einfliessen. */
         let dx = (t.clientX - this._touch.originX) / radius;
-        let dy = -(t.clientY - this._touch.originY) / radius; // Bildschirm-Y ist invertiert
-        const len = Math.hypot(dx, dy);
-        if (len > 1) {
-          dx /= len;
-          dy /= len;
-        }
+        if (dx > 1) dx = 1;
+        else if (dx < -1) dx = -1;
+
         this._touch.x = dx;
-        this._touch.y = dy;
-        knob.style.transform = `translate(${dx * radius * 0.62}px, ${-dy * radius * 0.62}px)`;
+        // Der Knopf zeigt jetzt genau das, was die Steuerung tut: nur seitlich.
+        knob.style.transform = `translate(${dx * radius * 0.62}px, 0)`;
         e.preventDefault();
         break;
       }
@@ -181,7 +210,7 @@ export class InputHandler {
         this._touch.id = null;
         this._touch.active = false;
         this._touch.x = 0;
-        this._touch.y = 0;
+
         knob.style.transform = 'translate(0px, 0px)';
         base.classList.remove('joystick--active');
         base.style.left = `${anchor.left}px`;
@@ -210,7 +239,7 @@ export class InputHandler {
     this._touch.id = null;
     this._touch.active = false;
     this._touch.x = 0;
-    this._touch.y = 0;
+
     if (this._knobEl) this._knobEl.style.transform = 'translate(0px, 0px)';
     if (this._joystickEl) {
       this._joystickEl.classList.remove('joystick--active');
@@ -228,46 +257,46 @@ export class InputHandler {
   /** Muss einmal pro Frame VOR der Spiellogik laufen. */
   update() {
     let x = 0;
-    let y = 0;
 
     if (this._down.has('left')) x -= 1;
     if (this._down.has('right')) x += 1;
-    if (this._down.has('down')) y -= 1;
-    if (this._down.has('up')) y += 1;
 
-    /* Diagonalen dämpfen — aber NUR SENKRECHT.
+    /* SENKRECHT GIBT ES NICHT MEHR.
      *
-     * Vorher wurden beide Achsen mit 1/√2 gestreckt, damit man schräg nicht
-     * schneller läuft als gerade. Sauber gedacht, im Ergebnis aber eine
-     * versteckte Bestrafung: `W` zahlt über climbAssist direkt auf den
-     * Punktestand ein (an der ersten Wand +52 %), also hält es praktisch
-     * jeder Spieler dauerhaft. Wer das tut, wich seitwärts nur noch mit 5.94
-     * statt 8.4 Einheiten/s aus — ohne dass irgendwo stünde, warum.
+     * Hoch/Runter (W/S bzw. die Pfeiltasten) bewegen den Affen nicht mehr; er
+     * steht fest auf seiner Höhe und weicht ausschliesslich seitlich aus.
+     * Damit entfällt auch die frühere Diagonaldämpfung — es gibt keine
+     * Diagonale mehr, die man dämpfen könnte.
      *
-     * Die x-Achse ist die einzige, an der man stirbt. Sie darf nicht davon
-     * abhängen, ob gleichzeitig geklettert wird. Gedämpft wird deshalb nur y:
-     * schräg klettert man langsamer, ausweichen kann man immer voll.
-     */
-    if (x !== 0 && y !== 0) y *= Math.SQRT1_2;
+     * Die Tasten bleiben in CONFIG.input.keys BELEGT, obwohl sie nichts mehr
+     * bewegen: _onKeyDown kehrt bei unbekannten Tasten früh zurück, und dann
+     * fiele auch das preventDefault weg — die Pfeiltasten würden wieder die
+     * Seite scrollen. */
 
-    // Touch überschreibt die Tastatur, sobald der Stick ausgelenkt ist.
+    // Touch überschreibt die Tastatur, sobald gezogen wird.
     if (this._touch.active) {
-      const len = Math.hypot(this._touch.x, this._touch.y);
+      /* Totzone auf dem BETRAG der seitlichen Auslenkung, nicht mehr auf der
+       * Länge eines Vektors: es gibt nur noch eine Achse. Mit hypot() über
+       * ein x allein wäre das dasselbe Ergebnis, aber die Absicht wäre
+       * unklar. */
+      const len = Math.abs(this._touch.x);
       if (len > this.cfg.touch.deadZone) {
         // Totbereich herausrechnen, damit kleine Auslenkungen sauber bei 0 starten.
         const scaled = (len - this.cfg.touch.deadZone) / (1 - this.cfg.touch.deadZone);
-        // Gleiche Regel wie oben: seitwärts voll, senkrecht anteilig. Sonst
-        // wäre Ausweichen am Joystick schwächer als auf der Tastatur.
-        x = Math.max(-1, Math.min(1, (this._touch.x / len) * scaled * Math.SQRT2));
-        y = (this._touch.y / len) * scaled;
+        /* Das √2 bleibt: es stammt aus der Zeit, als der Vollausschlag auf
+         * dem Einheitskreis lag und seitwärts damit nie 1.0 erreichte. Ohne
+         * den Faktor wäre Ausweichen per Finger schwächer als per Tastatur —
+         * genau der Unterschied, den das Projekt einmal ausdrücklich
+         * beseitigt hat. */
+        x = Math.max(-1, Math.min(1, Math.sign(this._touch.x) * scaled * Math.SQRT2));
       } else {
         x = 0;
-        y = 0;
       }
     }
 
     this.axis.x = x;
-    this.axis.y = y;
+    // Bleibt als Feld bestehen — Player, SpritePlayer und Game lesen es.
+    this.axis.y = 0;
   }
 
   /** true genau einmal pro Tastendruck. */

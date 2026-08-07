@@ -44,7 +44,20 @@ export const CONFIG = {
    *  SPIELFELD
    * ================================================================== */
   world: {
-    // Bewegungsgrenzen des Affen in der Wandebene (Units, relativ zur Bildmitte).
+    /* Grenzen in der Wandebene (Units, relativ zur Bildmitte).
+     *
+     * minX/maxX sind weiterhin das Bewegungsband des Affen.
+     *
+     * minY/maxY sind es NICHT MEHR: der Affe steht senkrecht fest. Die beiden
+     * Werte bedeuten seither das GEFAHREN- UND SICHTBARKEITSBAND der
+     * fallenden Objekte und werden genau dafür gelesen —
+     * Spawner._freieStelle (Durchquerungsfenster), Spawner._darfFallen
+     * (`sichtbarBis = minY - 1.6`) und das Zeitfenster der Korridor-Garantie.
+     *
+     * SIE DÜRFEN DESHALB NICHT auf die Affenhöhe zusammengezogen werden. Wer
+     * das tut, schiebt `sichtbarBis` von -4.5 auf -1.7, während Objekte bis
+     * despawnY (-5.6) sichtbar bleiben — gemessen kippt der Anteil der Frames
+     * mit überlappenden Objektbildern dadurch von 0.000 % auf 0.278 %. */
     bounds: { minX: -4.6, maxX: 4.6, minY: -2.9, maxY: 2.7 },
     // Höhe, auf der Steine/Bananen erzeugt werden.
     // MUSS über der sichtbaren Oberkante liegen, und zwar mindestens um den
@@ -81,9 +94,33 @@ export const CONFIG = {
     modelHeight: 1.5,
     // Höhe des Sprites in World-Units (sichtbare Bildhöhe ist ca. 10).
     spriteHeight: 2.5,
-    startPosition: [0, -1.4, 0],
+    /* Startposition — und zugleich die FESTE HÖHE des Affen.
+     *
+     * Der Affe bewegt sich nur noch seitlich; y wird nach dem Setzen nie
+     * wieder angefasst (SpritePlayer.update). Der Wert ist damit keine
+     * Startposition mehr, sondern seine Höhe für den ganzen Lauf.
+     *
+     * WARUM -0.1 UND NICHT 0.35 (die echte Pixelmitte)
+     * Kamera bei [0, 1.9, 11.5], Blick auf [0, 0.35, 0], vertikales Sichtfeld
+     * 46° — Welt-y 0.35 liegt exakt in der Bildmitte. Genau dort hin wäre
+     * aber teuer: Objekte fallen von oben, wer höher sitzt, sieht sie später.
+     *
+     *   y = -1.4 (früher)   Vorwarnung 0.337 s bei Höchsttempo
+     *   y = -0.1 (jetzt)    Vorwarnung 0.256 s   (-24 %)
+     *   y =  0.35 (Mitte)   Vorwarnung 0.228 s   (-32 %)
+     *
+     * -0.1 liegt 4.5 % der Bildhöhe unter der Pixelmitte — auf einem 844 px
+     * hohen Telefon rund 38 px, im Spiel nicht wahrnehmbar — und kauft acht
+     * Prozentpunkte Vorwarnzeit zurück. Es ist ausserdem die Mitte des
+     * früheren Bewegungsbandes, wodurch das Gefahrenfenster in
+     * Spawner._freieStelle symmetrisch um den Affen liegt.
+     *
+     * Wer diesen Wert ändert, muss difficulty.tempo.max nachziehen —
+     * die beiden hängen über die Vorwarnzeit zusammen. */
+    startPosition: [0, -0.1, 0],
 
-    // Horizontale/vertikale Bewegungsgeschwindigkeit in der Wandebene.
+    // Seitliche Bewegungsgeschwindigkeit in der Wandebene. (Senkrecht gibt
+    // es nicht mehr — der Affe steht fest, siehe startPosition.)
     moveSpeed: 8.4,
     // Glättungsraten in 1/s (nicht Beschleunigung im physikalischen Sinn):
     // v nähert sich dem Zielwert mit 1 - e^(-rate * dt).
@@ -372,7 +409,22 @@ export const CONFIG = {
      */
     tempo: {
       start: 3.8, // der Anfang soll wirklich langsam sein
-      max: 16.0,
+      /* 16.0 -> 13.6, WEIL DER AFFE HÖHER SITZT.
+       *
+       * Seit er senkrecht festgenagelt ist, steht er auf y = -0.1 statt -1.4,
+       * also 1.30 Einheiten weiter oben. Die Vorwarnstrecke schrumpft dadurch
+       * von 5.394 auf 4.094 Einheiten (-24 %); bei Tempo 16.0 blieben nur noch
+       * 0.256 s — unter der Schwelle, die dieser Abschnitt selbst als Grenze
+       * zwischen Reagieren und Raten nennt.
+       *
+       * 13.6 stellt die alte Vorwarnzeit wieder her:
+       *   vorher   5.394 / 16.0 = 0.337 s
+       *   jetzt    4.094 / 13.6 = 0.301 s
+       * Derselbe Schwierigkeitsgrad, nur mit kürzerem Weg und weniger Tempo.
+       *
+       * Diese Zahl gehört zu player.startPosition[1]. Wer eine ändert, muss
+       * die andere nachrechnen. */
+      max: 13.6,
       // Anteil, der als Wandscrollen sichtbar wird. Der Rest ist
       // Eigengeschwindigkeit der Objekte. Ein fester Anteil statt zweier
       // Kurven: sonst zieht sich die Wand unter den Objekten weg.
@@ -875,6 +927,32 @@ export const CONFIG = {
        * Musik.js startet deshalb kurz vor Schluss einen zweiten Abspieler
        * von vorn und blendet ueber. */
       schleifeFade: 3.0,
+
+      /* ------------------------------------------------------ TEMPO ------ *
+       * Mit jedem Gebiet läuft die Musik ein Stück schneller.
+       *
+       * Gezählt werden die GEBIETSWECHSEL SEIT RUNDENBEGINN, nicht der Index
+       * in CONFIG.wall.stages: nach dem letzten Gebiet geht es zyklisch von
+       * vorn los, ein index-basiertes Tempo fiele dort auf 1.0 zurück und
+       * das Spiel würde mitten im schwersten Abschnitt wieder gemütlich.
+       *
+       *   Gebiet 1    1.00   normal
+       *   Gebiet 6    1.16   zügig
+       *   Gebiet 12   1.35   hektisch (Deckel)
+       *
+       * TONHÖHE BLEIBT: `preservesPitch` hält sie fest. Ohne das klänge das
+       * letzte Gebiet wie ein zu schnell laufendes Tonband — schneller UND
+       * schriller. So klingt die Musik weiter nach sich selbst.
+       *
+       * Der Deckel ist Pflicht, nicht Vorsicht: die Wände laufen zyklisch
+       * endlos weiter. Ohne ihn wäre die Musik nach einer halben Stunde
+       * unhörbar schnell. */
+      tempoProGebiet: 0.032,
+      tempoMax: 1.35,
+      /* Wie lange das neue Tempo braucht (Sekunden). Ein Sprung mitten im
+       * Takt ist deutlich hörbar; über die Wechselblende hinweg fällt die
+       * Änderung nicht auf. */
+      tempoFade: 2.2,
     },
 
     /* --------------------------------- KURZE EFFEKTE ------------------- *
@@ -1696,7 +1774,7 @@ export const CONFIG = {
       mute: ['KeyM'],
     },
     touch: {
-      enabled: true, // virtueller Joystick unten links
+      enabled: true, // Ziehen auf dem ganzen Bildschirm
       radius: 62, // px, Radius der Joystick-Basis
       deadZone: 0.16, // relativer Totbereich
       anchor: { left: 26, bottom: 26 }, // px vom Bildschirmrand

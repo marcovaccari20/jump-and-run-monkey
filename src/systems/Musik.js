@@ -81,6 +81,14 @@ export class Musik {
      * verlangt das PRO Element. */
     this._freigeschaltet = new Set();
     this._endung = this._formatWaehlen();
+
+    /* Abspieltempo. Steigt mit jedem Gebiet (siehe CONFIG.klang.musik.
+     * tempoProGebiet). Wird hier gemerkt, weil neu angelegte Abspieler es
+     * sofort brauchen — ein Gebiet, das erst spät zum ersten Mal auftaucht,
+     * liefe sonst wieder auf 1.0, mitten im schnellsten Abschnitt. */
+    this._tempo = 1;
+    /** Läuft gerade eine Tempoblende? (id des setInterval) */
+    this._tempoUhr = 0;
   }
 
   /**
@@ -134,6 +142,10 @@ export class Musik {
        * eine CORS-Anfrage. Antwortet der Server ohne die passende Kopfzeile
        * (Portal-CDN, oder `file://` in der Android-Hülle), liefert der Knoten
        * STILLE statt Musik — ohne Fehlermeldung. */
+      // Tempo sofort mitgeben: ein Gebiet, das erst spät zum ersten Mal
+      // auftaucht, liefe sonst wieder auf 1.0 an.
+      this._tempoAnwenden(el);
+
       const quelle = this.ctx.createMediaElementSource(el);
       const eigen = this.ctx.createGain();
       eigen.gain.value = 0;
@@ -206,6 +218,75 @@ export class Musik {
   /** Lautstärke eines Gebiets: einheitlich, sofern nichts anderes dasteht. */
   _pegel(gebiet) {
     return this.cfg.pegel?.[gebiet] ?? this.cfg.grundPegel;
+  }
+
+  /* ================================================================ Tempo */
+
+  /**
+   * Setzt das Abspieltempo EINES Elements.
+   *
+   * `preservesPitch` ist der ganze Punkt: ohne das steigt mit dem Tempo auch
+   * die Tonhöhe, und das letzte Gebiet klänge wie ein zu schnell laufendes
+   * Tonband. Die beiden Schreibweisen mit Präfix sind für ältere Safari- und
+   * Firefox-Fassungen; wo es keine davon gibt, wird die Musik eben etwas
+   * höher — das ist der harmlosere Ausfall gegenüber gar keinem Tempo.
+   */
+  _tempoAnwenden(el) {
+    try {
+      el.preservesPitch = true;
+      el.mozPreservesPitch = true;
+      el.webkitPreservesPitch = true;
+      el.playbackRate = this._tempo;
+    } catch {
+      /* Ein Browser, der die Rate nicht mag, spielt eben in Normaltempo. */
+    }
+  }
+
+  /**
+   * Neues Abspieltempo, sanft angefahren.
+   *
+   * Ein Sprung mitten im Takt ist deutlich hörbar. Deshalb wird über
+   * `tempoFade` Sekunden hinweg geschoben — das fällt mit der ohnehin
+   * laufenden Wechselblende zusammen und bleibt dadurch unbemerkt.
+   *
+   * `playbackRate` kennt keine Automation wie ein AudioParam (es gehört dem
+   * Medienelement, nicht dem Audiographen), deshalb hier von Hand in
+   * Schritten statt über setValueCurveAtTime.
+   *
+   * @param {number} faktor 1 = Originaltempo
+   */
+  tempo(faktor) {
+    const ziel = Math.max(0.5, Math.min(this.cfg.tempoMax ?? 2, faktor));
+    if (Math.abs(ziel - this._tempo) < 0.001) return;
+
+    clearInterval(this._tempoUhr);
+    const von = this._tempo;
+    const dauer = (this.cfg.tempoFade ?? 2) * 1000;
+    const takt = 50;
+    let t = 0;
+
+    this._tempoUhr = setInterval(() => {
+      t += takt;
+      const anteil = Math.min(1, t / dauer);
+      this._tempo = von + (ziel - von) * anteil;
+      for (const e of this._gebiete.values()) {
+        for (const s of [e.a, e.b]) this._tempoAnwenden(s.el);
+      }
+      if (anteil >= 1) {
+        clearInterval(this._tempoUhr);
+        this._tempoUhr = 0;
+      }
+    }, takt);
+  }
+
+  /** Zurück auf Originaltempo — ohne Blende, für den Rundenstart. */
+  tempoZuruecksetzen() {
+    clearInterval(this._tempoUhr);
+    this._tempoUhr = 0;
+    this._tempo = 1;
+    for (const e of this._gebiete.values()) {
+      for (const s of [e.a, e.b]) this._tempoAnwenden(s.el);
+    }
   }
 
   _starten(el) {
@@ -284,8 +365,15 @@ export class Musik {
     const dauer = laufend.el.duration;
     if (!Number.isFinite(dauer) || dauer <= 0) return; // noch nicht geladen
 
-    const fade = Math.min(this.cfg.schleifeFade, dauer / 3);
-    const rest = dauer - laufend.el.currentTime;
+    /* Die Restzeit muss in ECHTEN Sekunden gerechnet werden, nicht in
+     * Stückzeit. `currentTime` und `duration` laufen in der Zeitachse des
+     * Stücks; bei Tempo 1.35 vergeht davon pro echter Sekunde das 1.35-fache.
+     * Ohne die Division setzte die Blende bei schneller Musik zu spät ein und
+     * würde vom Ende abgeschnitten — genau an dem Bruch, den sie kaschieren
+     * soll. */
+    const tempo = laufend.el.playbackRate || 1;
+    const fade = Math.min(this.cfg.schleifeFade, dauer / tempo / 3);
+    const rest = (dauer - laufend.el.currentTime) / tempo;
     if (rest > fade) return;
 
     // Umschalten auf den anderen Abspieler.

@@ -144,6 +144,11 @@ export class Game {
     this._adsUsed = 0;
     this._adRunning = false;
 
+    // Musiktempo: Zahl der Gebietswechsel seit Rundenbeginn (siehe
+    // _updatePlaying) und das zuletzt gesehene Gebiet.
+    this._gebietWechsel = 0;
+    this._letztesGebiet = null;
+
     this._deathTimer = 0;
     this._lastTime = 0;
     this._running = false;
@@ -815,8 +820,14 @@ export class Game {
        * Over -> Hauptmenü" den Dschungel spielte — derselbe Bildschirm klang
        * je nach Weg dorthin verschieden. */
       this.klang.fortsetzen();
-      // Im Menue laeuft die gruene Wand — dann soll auch der Dschungel zu
-      // hoeren sein und nicht die Lava des letzten Laufs.
+      /* Im Menue laeuft die gruene Wand — dann soll auch der Dschungel zu
+       * hoeren sein und nicht die Lava des letzten Laufs.
+       *
+       * ZUERST DAS TEMPO ZURÜCK. `Musik.tempo()` legt die Rate auf ALLE
+       * Gebietseinträge, also auch auf 'gruen'. Ohne diese Zeile spielte das
+       * Hauptmenü nach einem langen Lauf mit bis zu 1.35 weiter — bis der
+       * Spieler die nächste Runde startet, wo _startRun ohnehin zurücksetzt. */
+      this.klang.tempoZuruecksetzen();
       this.klang.atmo('gruen');
       this.anim.setMode('menu');
       this.ui.showMenu(this.score.loadHighscores());
@@ -871,6 +882,12 @@ export class Game {
     this._adsUsed = 0;
     this._muenzenImLauf = 0;
     this.ui.setMuenzenLauf(0);
+
+    // Musiktempo zurück auf Anfang: eine neue Runde beginnt im ersten Gebiet
+    // und soll auch so klingen, egal wie hektisch die vorige endete.
+    this._gebietWechsel = 0;
+    this._letztesGebiet = null;
+    this.klang.tempoZuruecksetzen();
 
     /* Runde bei der Weltliste anmelden. Der Server stempelt den Start mit
      * seiner Uhr und misst die Spielzeit später selbst — nur deshalb lässt
@@ -1250,22 +1267,21 @@ export class Game {
   }
 
   _updatePlaying(dt) {
-    // Vom SPIELER, nicht aus CONFIG: climbAssist und minScrollFactor werden
-    // hier an der Spielfigur vorbei gelesen. Mit this.cfg.player wäre der
-    // orange Affe seitlich langsamer, würde aber unverändert schnell steigen.
-    const pCfg = this.player.cfg;
     const world = this.worldView; // seitengrössenabhängig, siehe _onResize
     this.difficulty.update(dt);
 
     /* ---- Kletterstrecke dieses Frames -------------------------------- */
-    // Vertikaler Input zahlt auf die Scrollgeschwindigkeit ein, damit sich
-    // "W" wie Steigen anfühlt. Nach unten ist der Aufstieg gebremst, aber
-    // nie ganz gestoppt.
+    /* DIE WAND SCROLLT MIT FESTEM TEMPO.
+     *
+     * Hier zahlte früher der senkrechte Input über `climbAssist` auf die
+     * Scrollgeschwindigkeit ein — "W" fühlte sich wie Steigen an. Das ist
+     * doppelt überholt: `climbAssist` steht seit dem Balancing überall auf
+     * 0.0 (es gab dem weissen Affen einen Punktevorteil), und seit dem
+     * Wegfall der Vertikalen gibt es gar keinen senkrechten Input mehr.
+     * Übrig blieb eine Rechnung, die garantiert `base` ergibt. */
     const base = this.difficulty.scrollSpeed;
     const axis = this.input.axis;
-    const assisted = base + (this.player.alive ? axis.y * pCfg.climbAssist : 0);
-    const effectiveScroll = Math.max(assisted, base * pCfg.minScrollFactor);
-    const climbed = effectiveScroll * dt;
+    const climbed = base * dt;
 
     // Die Wand scrollt während der Sterbe-Verzögerung weiter (sonst friert das
     // Bild abrupt ein), der Score aber NICHT — sonst bekäme man für die
@@ -1282,6 +1298,21 @@ export class Game {
      * geändert hat — hier jeden Frame zu rufen ist billiger als den
      * Wandwechsel an einer zweiten Stelle mitzuführen. */
     this.klang.atmo(this.wall.stageName);
+
+    /* Mit jedem Gebiet läuft die Musik ein Stück schneller.
+     *
+     * Gezählt werden die WECHSEL SEIT RUNDENBEGINN, nicht wall.stageIndex:
+     * nach dem letzten Gebiet geht es zyklisch bei 0 weiter, und ein
+     * index-basiertes Tempo fiele dort mitten im schwersten Abschnitt auf
+     * Normaltempo zurück. */
+    if (this.wall.stageName !== this._letztesGebiet) {
+      if (this._letztesGebiet !== null) this._gebietWechsel++;
+      this._letztesGebiet = this.wall.stageName;
+      const m = this.cfg.klang.musik;
+      this.klang.tempo(
+        Math.min(m.tempoMax, 1 + this._gebietWechsel * m.tempoProGebiet),
+      );
+    }
     /* Kümmert sich um den Schleifenpunkt der Musik. Hier stand vorher ein
      * Zufallstakt für einzelne Vogelrufe — die gehörten zu den prozeduralen
      * Atmosphären und sind mit ihnen weg. */
@@ -1305,7 +1336,7 @@ export class Game {
 
     /* ---- Entities ----------------------------------------------------- */
     this.player.update(dt, this.player.alive ? axis : ZERO_AXIS, world.bounds);
-    this.spawner.update(dt, this.player.revives > 0, effectiveScroll);
+    this.spawner.update(dt, this.player.revives > 0, base);
 
     if (this.player.alive) {
       CollisionSystem.check(this.player, this.spawner, this._collisionHandlers);
@@ -1474,7 +1505,15 @@ export class Game {
     const base = this.cfg.world;
     const view = this.worldView;
 
-    const half = halfWidthAt(this.camera, 0, base.bounds.maxY);
+    /* GEMESSEN WIRD AUF DER HÖHE DES AFFEN.
+     *
+     * Vorher stand hier `base.bounds.maxY` — der obere Rand des damaligen
+     * Bewegungsbandes, wo die Wand der Kamera am nächsten und damit am
+     * schmalsten ist. Das war richtig, solange der Affe dort hinkonnte. Seit
+     * er senkrecht festgenagelt ist, verschenkt diese Messung Breite: auf
+     * seiner tatsächlichen Höhe ist die Wand breiter. */
+    const affenHoehe = this.cfg.player.startPosition[1];
+    const half = halfWidthAt(this.camera, 0, affenHoehe);
     if (!Number.isFinite(half)) return;
 
     // Etwas Rand lassen, damit der Affe nicht halb im Bildrand klebt.
@@ -1488,9 +1527,19 @@ export class Game {
     view.bounds.minY = base.bounds.minY;
     view.bounds.maxY = base.bounds.maxY;
 
-    // Steine nur dort erzeugen, wo sie auch zu sehen sind — sonst fällt der
-    // Grossteil im Hochformat unsichtbar neben dem Bild herunter.
-    view.spawnHalfWidth = Math.min(base.spawnHalfWidth, limit + 0.4);
+    /* Objekte nur dort erzeugen, wo sie auch zu sehen sind — sonst fällt der
+     * Grossteil im Hochformat unsichtbar neben dem Bild herunter.
+     *
+     * DER ZUSCHLAG WAR 0.4 UND IST JETZT 0.8. Nachgerechnet fürs Hochformat
+     * (390x844, brauner Affe): mit 0.4 blieb dem garantierten Korridor nach
+     * Abzug aller Sperrbreiten eine NEGATIVE Spanne (-0.18) — die Bahn stand
+     * praktisch still, gemessen 0.85 Einheiten Wanderung in 60 s und nur
+     * 17.3 % der Objekte im mittleren Drittel (gleichverteilt wären 33.3 %).
+     * Solange man auch senkrecht ausweichen konnte, fiel das kaum auf. Jetzt,
+     * wo x die einzige Achse ist, wäre es das ganze Spiel: der Affe sitzt in
+     * der Mitte, alles fällt aussen vorbei, minutenlang passiert nichts.
+     * Mit 0.8 wird die Spanne wieder positiv und die Bahn wandert spürbar. */
+    view.spawnHalfWidth = Math.min(base.spawnHalfWidth, limit + 0.8);
 
     /* Die garantierte Bahn steht schon für die nächsten Sekunden fest, und
      * zwar geklemmt an die BISHERIGEN Grenzen. Wird das Feld enger, läge sie
