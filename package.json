@@ -20,7 +20,8 @@
     "prep:klaenge": "node scripts/prepare-klaenge.mjs",
     "prep:boss": "node scripts/prepare-boss.mjs",
     "video:frames2": "node scripts/video-frames.mjs",
-    "prep:sturz": "node scripts/prepare-sturzflug.mjs"
+    "prep:sturz": "node scripts/prepare-sturzflug.mjs",
+    "prep:weiss": "node scripts/prepare-weiss.mjs"
   },
   "type": "module",
   "dependencies": {

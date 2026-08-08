@@ -183,9 +183,40 @@ if (existsSync(schild)) {
 
 /* --- Die drei Vögel: an den Lücken aufteilen ----------------------------- */
 
+/* --- Goldene Banane ----------------------------------------------------- *
+ *
+ * Sie lag früher unter public/boss/, weil sie die Belohnung des Bosskampfs
+ * war. Der Kampf ist gelöscht, das Verzeichnis mit ihm — und weil ein
+ * fehlendes Bild bei Vite nicht als 404 ankommt, sondern als index.html mit
+ * Status 200, sah man davon nichts ausser einem Pool, der leer blieb.
+ * Deshalb liegt sie jetzt bei den anderen Sammelobjekten.
+ */
+const goldBanane = resolve(SRC, 'banane_gold.png');
+if (existsSync(goldBanane)) {
+  const r = await schreiben(await freistellen(goldBanane), resolve(OUT, 'banane_gold.webp'), 320);
+  console.log(`  banane_gold.webp    ${r.aus[0]}x${r.aus[1]}  ${(r.bytes / 1024).toFixed(0)} KB`);
+} else {
+  console.warn(`  FEHLT: ${goldBanane}`);
+}
+
+/* --- Chili ------------------------------------------------------------- */
+
+const chili = resolve(ROOT, 'assets-src/art/chili.png');
+if (existsSync(chili)) {
+  const r = await schreiben(await freistellen(chili), resolve(OUT, 'chili.webp'), 300);
+  console.log(`  chili.webp          ${r.aus[0]}x${r.aus[1]}  ${(r.bytes / 1024).toFixed(0)} KB`);
+}
+
+/* --- Die Voegel: zwei Vorlagen, sechs Arten ---------------------------- */
+
 const voegel = resolve(SRC, 'sturzvoegel.png');
-if (existsSync(voegel)) {
-  const voll = await freistellen(voegel);
+const vogelQuellen = [
+  [voegel, 0],
+  [resolve(SRC, 'sturzvoegel2.png'), 3],
+];
+for (const [quelle, versatz] of vogelQuellen) {
+  if (!existsSync(quelle)) { console.warn(`  FEHLT: ${quelle}`); continue; }
+  const voll = await freistellen(quelle);
 
   // Aufgeteilt wird an den LÜCKEN, nicht in Dritteln: die drei sind
   // verschieden breit und sitzen nicht auf gleichen Abständen.
@@ -219,10 +250,10 @@ if (existsSync(voegel)) {
     }
     const r = await schreiben(
       { rgba: teil, w: breite, h: voll.h },
-      resolve(OUT, `vogel_${i + 1}.webp`),
+      resolve(OUT, `vogel_${versatz + i + 1}.webp`),
       460,
     );
-    console.log(`  vogel_${i + 1}.webp        ${r.aus[0]}x${r.aus[1]}  ${(r.bytes / 1024).toFixed(0)} KB`);
+    console.log(`  vogel_${versatz + i + 1}.webp        ${r.aus[0]}x${r.aus[1]}  ${(r.bytes / 1024).toFixed(0)} KB`);
   }
 }
 

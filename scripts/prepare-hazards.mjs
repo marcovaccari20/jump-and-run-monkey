@@ -235,6 +235,51 @@ const BILDER = [
     // Spitze nach unten.
     kippen: [true, true, true],
   },
+  {
+    quelle: 'metall.png',
+    // Schraube, Wellblech, Zahnrad — klein, mittel, gross.
+    ziele: ['metall_klein', 'metall_mittel', 'metall_gross'],
+    objekte: 3,
+    t0: 10,
+    t1: 34,
+    /* Das Zahnrad ist rund und braucht keine Drehung; das Wellblech faellt
+     * gekippt lebendiger. */
+    dreh: [0, 25, 0],
+  },
+  {
+    quelle: 'bonbon.png',
+    // Bonbon, Keks, Lutscher — klein, mittel, gross.
+    ziele: ['bonbon_klein', 'bonbon_mittel', 'bonbon_gross'],
+    objekte: 3,
+    t0: 10,
+    t1: 34,
+    /* DER LUTSCHER STEHT IM BILD MIT DEM STIEL NACH UNTEN.
+     * Im Spiel faellt er — dann gehoert der schwere Kopf nach unten und der
+     * Stiel hinterher, sonst sieht es aus, als wuerde er hochgezogen. */
+    dreh: [0, 0, 180],
+  },
+  {
+    quelle: 'kaktus.png',
+    // Stueck, Ohr, Saeulenkaktus — klein, mittel, gross.
+    ziele: ['kaktus_klein', 'kaktus_mittel', 'kaktus_gross'],
+    objekte: 3,
+    t0: 10,
+    t1: 34,
+    /* Der Saeulenkaktus steht mit den Wurzeln nach unten. Fallend gehoert
+     * die Krone voran — sonst faellt er wie eine hochgereckte Faust. */
+    dreh: [0, 0, 180],
+  },
+  {
+    quelle: 'ruine.png',
+    // Ziegel, Schriftplatte, Steinkopf — klein, mittel, gross.
+    ziele: ['ruine_klein', 'ruine_mittel', 'ruine_gross'],
+    objekte: 3,
+    t0: 10,
+    t1: 34,
+    /* Der Steinkopf schaut in der Vorlage nach vorn. Gedreht kommt er mit
+     * dem Scheitel voran herunter — das liest sich als stuerzender Block. */
+    dreh: [0, 0, 180],
+  },
 ];
 
 mkdirSync(OUT, { recursive: true });

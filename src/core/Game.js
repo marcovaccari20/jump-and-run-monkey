@@ -22,7 +22,6 @@ import { AnimationController } from '../animation/AnimationController.js';
 import { Player } from '../entities/Player.js';
 import { SpritePlayer } from '../entities/SpritePlayer.js';
 import { groessteSpriteBreite, hazardSpriteUrls } from '../entities/Rock.js';
-import { BossKampf } from '../systems/BossKampf.js';
 import { Sturzflug } from '../systems/Sturzflug.js';
 import { PlantWall } from '../world/PlantWall.js';
 import { DifficultyCurve } from '../systems/DifficultyCurve.js';
@@ -115,13 +114,6 @@ export class Game {
     // Laufende Nummer gegen verschränkte Charakterwechsel (siehe _pickCharacter).
     this._wechselNummer = 0;
 
-    // Bosskampf. Beides bleibt null, bis der Adler zum ersten Mal gebraucht
-    // wird — seine 26 Einzelbilder werden nicht auf Vorrat geladen.
-    /** @type {import('../systems/BossKampf.js').BossKampf|null} */
-    this.boss = null;
-    this._bossLaedt = false;
-    // In welchen Gebieten schon gekaempft wurde — jedes nur einmal.
-    this._bossGehabt = new Set();
     /** Restsekunden Goldmodus (0 = aus). */
     this._goldRest = 0;
     /** @type {import('three').Texture[]|null} goldenes Fell, erst bei Bedarf geladen */
@@ -134,6 +126,25 @@ export class Game {
     this._sturzUhr = 0;
     // Wie viele Sturzfluege in DIESEM Gebiet schon gelaufen sind.
     this._sturzImGebiet = 0;
+
+    /* Chili-Durchflug. `null` heisst: kein Flug — und das MUSS null sein und
+     * nicht undefined. `_updatePlaying` schaltet den Nachschub über
+     * `this._chiliFlug !== null` ab; stand das Feld auf undefined, war der
+     * Vergleich dauerhaft wahr, und es fiel im ganzen Spiel nichts mehr.
+     * @type {{rest: number, phase: number}|null} */
+    this._chiliFlug = null;
+    /** @type {import('three').Texture[]|null} Bilder des Fluges */
+    this._chiliFrames = null;
+    // In welchen Gebieten Goldbanane bzw. Chili schon gefallen sind.
+    this._goldGebiet = -1;
+    this._chiliGebiet = -1;
+
+    /* Bahnwechsel: Merker für Doppelwisch (weiss) und Verzögerung (orange).
+     * Siehe _wischen. */
+    this._letzterWischZeit = -Infinity;
+    this._letzterWischRichtung = 0;
+    this._wischZiel = null;
+    this._wischUhr = 0;
 
     // Wirksame Spielfeldmasse. Start = Config, die seitlichen Grenzen werden
     // aber bei jedem Resize an das tatsächlich Sichtbare angepasst (siehe
@@ -157,6 +168,7 @@ export class Game {
       onRock: (rock) => this._onRockHit(rock),
       onBanana: (banana) => this._onBananaHit(banana),
       onCoin: (coin) => this._onCoinHit(coin),
+      onPowerup: (p) => this._onPowerupHit(p),
     };
 
     // Zweites Leben per Werbung. `ads` ist austauschbar (siehe AdService.js);
@@ -511,6 +523,13 @@ export class Game {
     // für den weissen Affen beim ersten Laden doch Bananen (nur nach einem
     // Wechsel wäre es richtig gewesen).
     if (this.character) this.spawner.bananasEnabled = this.character.bananas;
+
+    /* Goldbanane und Chili nachladen. Ohne await: sie fallen fruehestens im
+     * zweiten Gebiet, bis dahin sind die zwei Bilder laengst da. */
+    loader
+      .loadTexturesParallel([this.cfg.goldbanane.bild, this.cfg.chili.bild], 'Belohnungen…')
+      .then((t) => this.spawner.setzePowerupBilder(t))
+      .catch((f) => console.warn('[Belohnung] Bilder fehlen:', f));
     this.portal.ladenFertig();
     this.debug = new DebugOverlay(
       this.scene,
@@ -559,123 +578,221 @@ export class Game {
     };
   }
 
-  /* ============================================================ Bosskampf */
+  /* ============================================== Belohnungen vom Himmel */
 
   /**
-   * Ist in diesem Gebiet ein Bosskampf fällig?
+   * Sollen goldene Banane oder Chili in diesem Gebiet fallen?
    *
-   * Gezählt werden Gebietswechsel seit Rundenbeginn — dieselbe Zählung, die
-   * auch das Musiktempo steuert. Ab `abGebiet` der erste, danach alle
-   * `jedesXteGebiet`.
+   * Beide kommen NICHT in jedem Gebiet, sondern in unregelmässigen
+   * Abständen — bei der Banane jedes zweite bis dritte, beim Chili jedes
+   * dritte bis vierte. Der Abstand wird beim Auslösen neu gewürfelt, statt
+   * fest zu sein: ein starrer Rhythmus wäre nach zehn Minuten auswendig
+   * gelernt, und dann wartet man nur noch, statt zu spielen.
    *
-   * @param {number} gebiet 0-basierte Nummer des gerade erreichten Gebiets
+   * Geworfen wird EINMAL je Gebiet, kurz nach dem Wechsel — bis dahin hat
+   * sich der Bildschirm vom letzten Gebiet beruhigt.
    */
-  _bossFaellig(gebiet) {
-    const b = this.cfg.boss;
-    if (gebiet + 1 < b.abGebiet) return false;
-    return (gebiet + 1 - b.abGebiet) % b.jedesXteGebiet === 0;
-  }
+  _belohnungenPruefen() {
+    const gebiet = this._gebietWechsel + 1;
 
-  /**
-   * Kampf starten. Lädt beim ersten Mal die Bilder nach.
-   *
-   * BEWUSST OHNE await AUFGERUFEN: der Lauf soll nicht stehenbleiben,
-   * während 26 Adlerbilder über die Leitung kommen. Kommen sie zu spät,
-   * beginnt der Kampf eben eine halbe Sekunde später — die Warnung steht ja
-   * ohnehin davor.
-   */
-  async bossStarten() {
-    if (this.boss?.aktiv) return false;
-    if (this._bossLaedt) return false;
-    if (!this.states.is(GameState.PLAYING)) return false;
+    for (const [art, cfg, feld] of [
+      ['gold', this.cfg.goldbanane, '_goldGebiet'],
+      ['chili', this.cfg.chili, '_chiliGebiet'],
+    ]) {
+      if (gebiet < cfg.abGebiet) continue;
+      // Beim ersten Mal auf das früheste erlaubte Gebiet setzen.
+      if (this[feld] < 0) this[feld] = cfg.abGebiet - 1;
+      if (gebiet <= this[feld]) continue;
 
-    if (!this.boss) {
-      this._bossLaedt = true;
-      try {
-        this.boss = await this._bossBauen();
-      } catch (fehler) {
-        console.error('[Boss] konnte nicht geladen werden:', fehler);
-        return false;
-      } finally {
-        this._bossLaedt = false;
-      }
-      // Während des Ladens kann der Lauf zu Ende sein.
-      if (!this.states.is(GameState.PLAYING) || !this.player.alive) return false;
+      const j = cfg.jedesXteGebiet;
+      const abstand = j.min + Math.floor(Math.random() * (j.max - j.min + 1));
+      this[feld] = gebiet + abstand - 1;
+      this.spawner.powerupWerfen(art);
+      break; // nie beide im selben Gebiet
     }
-
-    return this.boss.starten(this.player, this.worldView);
   }
 
   /**
-   * Baut den Kampf samt aller Bilder auf. Läuft höchstens einmal je Sitzung —
-   * danach bleibt `this.boss` bestehen und wird wiederverwendet.
+   * Belohnung eingesammelt.
+   *
+   * @param {import('../entities/Powerup.js').Powerup} p
    */
-  async _bossBauen() {
-    const b = this.cfg.boss;
+  _onPowerupHit(p) {
+    const art = p.art;
+    this.spawner.collectPowerup(p);
+    if (art === 'gold') this._goldmodusStarten();
+    else this._chiliStarten();
+  }
 
-    /* KEINE ADLERBILDER MEHR.
-     *
-     * Hier wurden 26 Einzelbilder geladen (2.6 MB), aus denen der Adler als
-     * Bildfolge bestand. Er ist jetzt eine gebaute 3D-Figur (Adler3D) — die
-     * Bilder werden nicht mehr gebraucht, und der Kampf beginnt ohne die
-     * Ladepause davor. */
-    const kackPfade = b.kacke.arten.map((a) => a.bild);
-    const wurfPfade = Array.from(
-      { length: 12 },
-      (_, i) => `/textures/wurf/move_${String(i).padStart(2, '0')}.webp`,
+  /* =============================================================== Chili */
+
+  /**
+   * Chili gegessen: Feuer aus dem Hintern, alles weg, ab ins nächste Gebiet.
+   *
+   * FÜNF SEKUNDEN, IN DENEN NICHTS PASSIEREN KANN. Alle fallenden Objekte
+   * verschwinden, es kommt nichts nach, und die Wand rast vorbei. Das ist
+   * ausdrücklich eine Pause vom Spiel und kein Teil davon — deshalb darf
+   * sie auch selten sein (jedes dritte bis vierte Gebiet).
+   *
+   * WIE DAS GEBIET ÜBERSPRUNGEN WIRD
+   * Die Wandstufe hängt an der Spielzeit (difficulty.elapsed), nicht an
+   * gefahrenen Metern. Der Durchflug schiebt deshalb die UHR vor — dadurch
+   * stimmen Wand, Schwierigkeit und Punktestand hinterher wieder zusammen,
+   * ohne dass irgendwo ein Sonderfall stehen muss.
+   */
+  _chiliStarten() {
+    if (this._chiliFlug !== null) return;
+    const c = this.cfg.chili;
+
+    /* Wie viel Spielzeit bis zum nächsten Gebiet noch fehlt. Genau die wird
+     * in `sekunden` echten Sekunden abgearbeitet. */
+    const dauerGebiet = this.cfg.difficulty.sekundenProWand;
+    const imGebiet = this.difficulty.elapsed % dauerGebiet;
+    const rest = dauerGebiet - imGebiet;
+
+    this._chiliFlug = { rest: c.sekunden, phase: 0, uhrRest: rest };
+    this.spawner.rocks.releaseAll((r) => r.despawn());
+    this.spawner.bananas.releaseAll((b) => b.despawn());
+    this.sturzflug?.abbrechen();
+
+    this.ui.toast('Feuer frei!', 'banana');
+    this.klang.effekt('chili');
+
+    // Bildfolge beim ersten Mal nachladen.
+    if (!this._chiliFrames) this._chiliFramesLaden();
+    else this.player.fellWechseln?.(this._chiliFrames);
+  }
+
+  /** Lädt die Flugbilder des gewählten Affen. */
+  _chiliFramesLaden() {
+    const c = this.cfg.chili;
+    const muster = c.frames[this.character?.id ?? 'braun'] ?? c.frames.braun;
+    const pfade = Array.from({ length: c.frameAnzahl }, (_, i) =>
+      muster.replace('{n}', String(i).padStart(2, '0')),
     );
-
-    const texturen = await this._loader.loadTexturesParallel(
-      [...kackPfade, ...wurfPfade, b.belohnung.bild, this.cfg.banana.bild],
-      'Adler…',
-    );
-
-    // Wurfbilder gehören dem Affen, nicht dem Kampf — er behält sie.
-    this.player.setzeWurfFrames?.(
-      wurfPfade.map((p) => texturen.get(p)),
-      b.wurf,
-    );
-
-    const kackBilder = new Map();
-    for (const p of kackPfade) kackBilder.set(p, texturen.get(p));
-
-    return new BossKampf(
-      this.scene,
-      b,
-      {
-        kacke: kackBilder,
-        // Dieselbe Banane wie zum Einsammeln, nur halb so gross geworfen.
-        banane: texturen.get(this.cfg.banana.bild) ?? null,
-        goldBanane: texturen.get(b.belohnung.bild) ?? null,
-      },
-      {
-        klang: this.klang,
-        ui: this.ui,
-        spawner: this.spawner,
-        // Ein Kacketreffer wirkt GENAU wie ein Stein — Wiederbelebung, Tod
-        // und Verzögerung bis zum Game Over gehören dem Spiel, nicht dem
-        // Kampf. Sonst gäbe es zwei Stellen, die über den Tod entscheiden.
-        onTreffer: () => this._onRockHit(null),
-        onBelohnung: () => this._goldmodusStarten(),
-        onEnde: () => {
-          // Nach dem Kampf wieder die normale Gebietsmusik, im Tempo des
-          // erreichten Gebiets.
-          this.klang.tempo?.(this._musikTempo());
-        },
-      },
-    );
+    this._loader
+      .loadTexturesParallel(pfade, 'Chili…')
+      .then((t) => {
+        this._chiliFrames = pfade.map((p) => t.get(p)).filter(Boolean);
+        if (this._chiliFlug) this.player.fellWechseln?.(this._chiliFrames);
+      })
+      .catch((f) => console.warn('[Chili] Flugbilder fehlen:', f));
   }
 
   /**
-   * Goldene Banane eingesammelt: 30 Sekunden goldener Affe, dreifache Münzen.
+   * Der Durchflug, ein Frame.
+   *
+   * @returns {number} zusätzliche Spielzeit für diesen Frame (Sekunden)
+   */
+  _chiliSchritt(dt) {
+    const f = this._chiliFlug;
+    if (!f) return 0;
+
+    f.rest -= dt;
+    f.phase += dt;
+
+    /* Die restliche Gebietszeit gleichmässig über die Flugdauer verteilen.
+     * `uhrRest` wird dabei aufgebraucht — läuft der Flug aus, ist genau ein
+     * Gebietswechsel passiert, nicht mehr und nicht weniger. */
+    const anteil = Math.min(1, dt / Math.max(0.001, this.cfg.chili.sekunden));
+    const schub = f.uhrRest * anteil;
+
+    if (f.rest <= 0) {
+      this._chiliFlug = null;
+      this.player.fellWechseln?.(this._goldRest > 0 ? this._goldFrames : null);
+      return 0;
+    }
+    return schub;
+  }
+
+  /* ========================================================= Bahnwechsel */
+
+  /**
+   * Ein Wisch nach links oder rechts.
+   *
+   * DREI AFFEN, DREI ARTEN ZU LAUFEN — und beide Sonderfälle stehen hier,
+   * damit man sie nebeneinander sieht:
+   *
+   *   braun    ein Wisch = eine Bahn, sofort. Der Massstab.
+   *   orange   ein Wisch = eine Bahn, aber erst nach einer halben Sekunde.
+   *            Sein Nachteil: er prallt an kleinen Steinen ab, dafür muss
+   *            er früher entscheiden.
+   *   weiss    ein Wisch = eine Bahn; zwei Wische kurz hintereinander =
+   *            ZWEI Bahnen. Sein Vorteil: er kommt quer durchs Feld,
+   *            während die anderen noch nachrücken.
+   *
+   * @param {number} richtung -1 oder +1
+   */
+  _wischen(richtung, world) {
+    const char = this.character ?? {};
+    const anzahl = world.bahnX?.length ?? 3;
+
+    /* Doppelwisch (weisser Affe): kam der letzte Wisch in dieselbe Richtung
+     * und innerhalb des Fensters, wird daraus ein Sprung über zwei Bahnen.
+     * Gemessen wird gegen die Spielzeit, nicht gegen die Wanduhr — sie
+     * steht in der Pause still, und das ist hier richtig. */
+    let weite = 1;
+    const fenster = char.doppelwischFenster ?? 0;
+    if (
+      fenster > 0 &&
+      richtung === this._letzterWischRichtung &&
+      this.difficulty.elapsed - this._letzterWischZeit <= fenster
+    ) {
+      weite = 2;
+      // Verbraucht: drei Wische ergeben nicht 2 + 2 Bahnen.
+      this._letzterWischZeit = -Infinity;
+    } else {
+      this._letzterWischZeit = this.difficulty.elapsed;
+    }
+    this._letzterWischRichtung = richtung;
+
+    const ziel = Math.max(0, Math.min(anzahl - 1, this.player.zielBahn + richtung * weite));
+
+    /* Verzögerung (oranger Affe): der Wunsch wird gemerkt und erst später
+     * ausgeführt. Ein zweiter Wisch in der Wartezeit ÜBERSCHREIBT den
+     * ersten — sonst staute sich eine Warteschlange, und er liefe noch
+     * Sekunden später los. */
+    const verzug = char.wischVerzoegerung ?? 0;
+    if (verzug > 0) {
+      this._wischZiel = ziel;
+      this._wischUhr = verzug;
+      return;
+    }
+    this.player.zielBahn = ziel;
+  }
+
+  /** Lässt die Verzögerung des orangen Affen ablaufen. */
+  _wischUhrLaufen(dt, world) {
+    if (this._wischUhr <= 0) return;
+    this._wischUhr -= dt;
+    if (this._wischUhr > 0) return;
+    this._wischUhr = 0;
+    if (this._wischZiel === null) return;
+    const anzahl = world.bahnX?.length ?? 3;
+    this.player.zielBahn = Math.max(0, Math.min(anzahl - 1, this._wischZiel));
+    this._wischZiel = null;
+  }
+
+  /* =========================================================== Goldmodus */
+
+  /**
+   * Goldene Banane eingesammelt: der Affe wird SOFORT golden.
+   *
+   * Der Goldmodus hing früher am Bosskampf — er war dessen Belohnung. Der
+   * Kampf ist weg, der Goldmodus bleibt: die goldene Banane fällt jetzt
+   * einfach ab und zu vom Himmel (siehe CONFIG.goldbanane).
+   *
+   * SOFORT heisst sofort. Sind die Goldbilder noch nicht geladen, läuft der
+   * Modus trotzdem an und das Fell kommt nach — die dreifachen Münzen sind
+   * die Belohnung, nicht das Fell, und auf ein Nachladen zu warten hiesse,
+   * dem Spieler Sekunden seiner 30 zu stehlen.
    */
   _goldmodusStarten() {
-    const b = this.cfg.boss.belohnung;
-    this._goldRest = b.goldSekunden;
-    this.ui.toast(`Goldmodus! ${b.muenzFaktor}× Münzen`, 'banana');
+    const b = this.cfg.goldbanane;
+    this._goldRest = b.sekunden;
+    this.ui.toast(`Goldrausch! ${b.muenzFaktor}× Münzen`, 'banana');
     this.klang.effekt('banane');
 
-    // Das goldene Fell beim ersten Mal nachladen und dann behalten.
     if (this._goldFrames) {
       this.player.fellWechseln?.(this._goldFrames);
       return;
@@ -691,7 +808,7 @@ export class Game {
         // Nur anziehen, wenn der Goldmodus dann noch läuft.
         if (this._goldRest > 0) this.player.fellWechseln?.(this._goldFrames);
       })
-      .catch((f) => console.warn('[Boss] Goldfell fehlt:', f));
+      .catch((f) => console.warn('[Gold] Goldfell fehlt:', f));
   }
 
   /** Zählt den Goldmodus herunter und zieht dem Affen das Fell wieder aus. */
@@ -701,7 +818,7 @@ export class Game {
     if (this._goldRest <= 0) {
       this._goldRest = 0;
       this.player.fellWechseln?.(null);
-      this.ui.toast('Goldmodus vorbei', 'revive');
+      this.ui.toast('Goldrausch vorbei', 'revive');
     }
   }
 
@@ -709,19 +826,18 @@ export class Game {
    * Goldmodus beenden — Fell UND Restzeit.
    *
    * Beide gehören zusammen, und genau daran hing ein Fehler: `player.reset()`
-   * bzw. `_resetAnimation()` zog dem Affen das Goldfell aus, `_goldRest` lief
-   * aber weiter. Nach dem Weiterspielen per Werbung gab es dann dreifache
-   * Münzen ohne goldenen Affen — ein Vorteil, den man weder sieht noch
-   * erklären kann. Deshalb hier eine Stelle für beides.
+   * zog dem Affen das Goldfell aus, `_goldRest` lief aber weiter. Nach dem
+   * Weiterspielen per Werbung gab es dann dreifache Münzen ohne goldenen
+   * Affen — ein Vorteil, den man weder sieht noch erklären kann.
    */
   _goldmodusAus() {
     this._goldRest = 0;
     this.player?.fellWechseln?.(null);
   }
 
-  /** Münzfaktor dieses Augenblicks — 1 normal, 3 im Goldmodus. */
+  /** Münzfaktor dieses Augenblicks — 1 normal, 3 im Goldrausch. */
   get _muenzFaktor() {
-    return this._goldRest > 0 ? this.cfg.boss.belohnung.muenzFaktor : 1;
+    return this._goldRest > 0 ? this.cfg.goldbanane.muenzFaktor : 1;
   }
 
   /* =========================================================== Sturzflug */
@@ -733,9 +849,15 @@ export class Game {
    */
   _sturzProGebiet() {
     const s = this.cfg.sturzflug;
-    if (this._gebietWechsel + 1 < s.abGebiet) return 0;
-    const stufen = Math.floor((this._gebietWechsel + 1 - s.abGebiet) / s.proGebiet.alleXGebiete);
-    return Math.min(s.proGebiet.max, s.proGebiet.start + stufen);
+    const gebiet = this._gebietWechsel + 1;
+    if (gebiet < s.abGebiet) return 0;
+    /* Eine Tabelle statt einer Formel: der Nutzer wollte ausdrueckliche
+     * Zahlen je Gebietsbereich (2-4 drei Angriffe, 5-8 fuenf bis sechs, ab 9
+     * sieben). Eine Formel haette das nur ungefaehr getroffen. Der letzte
+     * Eintrag gilt fuer alles danach. */
+    const st = s.proGebiet.stufen;
+    const i = Math.min(st.length - 1, gebiet - s.abGebiet);
+    return Math.min(s.proGebiet.max, st[i]);
   }
 
   /**
@@ -769,10 +891,8 @@ export class Game {
   /** Zählt die Uhr herunter und löst aus, wenn nichts anderes läuft. */
   _sturzflugSchritt(dt) {
     if (this._sturzUhr <= 0) return;
-    /* Während eines Bosskampfes ruht der Zähler. Zwei angekündigte
-     * Ereignisse gleichzeitig sind nicht mehr lesbar — und der Bosskampf
-     * räumt den Bildschirm ohnehin schon frei. */
-    if (this.boss?.aktiv || this.sturzflug?.aktiv) return;
+    // Ein laufender Sturzflug oder Chili-Flug darf keinen zweiten anstossen.
+    if (this.sturzflug?.aktiv || this._chiliFlug !== null) return;
     this._sturzUhr -= dt;
     if (this._sturzUhr > 0) return;
     this._sturzUhr = 0;
@@ -833,9 +953,9 @@ export class Game {
    * Musiktempo für das aktuelle Gebiet.
    *
    * Steht hier und nicht im Loop, weil es an ZWEI Stellen gebraucht wird:
-   * beim Gebietswechsel und nach dem Bosskampf, wenn von der Bossmusik
-   * zurückgeblendet wird. Zwei Kopien derselben Formel wären genau die Art
-   * Fehler, die man erst hört und dann sucht.
+   * beim Gebietswechsel und nach dem Chili-Durchflug, der ein Gebiet
+   * überspringt. Zwei Kopien derselben Formel wären genau die Art Fehler,
+   * die man erst hört und dann sucht.
    */
   _musikTempo() {
     const m = this.cfg.klang.musik;
@@ -1221,13 +1341,10 @@ export class Game {
 
     /* Ein noch offener Adler darf nicht in den neuen Lauf hineinragen.
      * Und: die Gebietszählung fängt bei 0 an, also muss auch die Liste der
-     * schon bekämpften Gebiete leer sein — sonst bliebe der erste Boss der
-     * zweiten Runde aus. */
-    this.boss?.abbrechen(this.player);
+     * Sturzflug-Zaehler leer sein. */
     this.sturzflug?.abbrechen();
     this._sturzUhr = 0;
     this._sturzImGebiet = 0;
-    this._bossGehabt.clear();
     this._goldmodusAus();
 
     /* Runde bei der Weltliste anmelden. Der Server stempelt den Start mit
@@ -1399,8 +1516,7 @@ export class Game {
     if (this.states.is(GameState.PLAYING)) this.states.transitionTo(GameState.PAUSED);
     this.spawner.reset();
     this.player.reset(this.worldView.bahnX);
-    // Adler und Sturzflug gehören zum Lauf, nicht zum Menü.
-    this.boss?.abbrechen(this.player);
+    // Der Sturzflug gehört zum Lauf, nicht zum Menü.
     this.sturzflug?.abbrechen();
     this._goldmodusAus();
     this.states.transitionTo(GameState.MENU);
@@ -1578,11 +1694,6 @@ export class Game {
     // will ihn sofort weghaben, nicht nach zwei Klicks.
     if (this.input.consumeMute?.()) this._tonUmschalten();
 
-    // F2: Bossvorschau an/aus — nur im laufenden Spiel sinnvoll.
-    if (this.input.consumeBoss?.() && this.states.is(GameState.PLAYING)) {
-      this.bossStarten();
-    }
-
     if (this.input.consumeDebug()) {
       const on = this.debug.toggle();
       this.cfg.debug.showStats = on;
@@ -1628,7 +1739,12 @@ export class Game {
 
   _updatePlaying(dt) {
     const world = this.worldView; // seitengrössenabhängig, siehe _onResize
-    this.difficulty.update(dt);
+
+    /* Der Chili-Durchflug schiebt die SPIELUHR vor — daran hängen Wandstufe,
+     * Schwierigkeit und Musiktempo. Er muss deshalb VOR difficulty.update
+     * laufen, sonst zählt der Schub einen Frame zu spät. */
+    const chiliSchub = this._chiliSchritt(dt);
+    this.difficulty.update(dt + chiliSchub);
 
     /* ---- Kletterstrecke dieses Frames -------------------------------- */
     /* DIE WAND SCROLLT MIT FESTEM TEMPO.
@@ -1674,20 +1790,9 @@ export class Game {
       this._sturzImGebiet = 0;
       this._sturzUhrStellen();
 
-      /* Bosskampf? Beim Betreten eines Gebiets entschieden, nicht mitten
-       * darin: so weiss man immer, woran man ist, und die Warnung fällt mit
-       * dem Wandwechsel zusammen.
-       *
-       * `_bossGehabt` verhindert einen zweiten Kampf im selben Gebiet, falls
-       * die Wand über die Zeitschwelle hin- und herwackelt. */
-      if (
-        !this.boss?.aktiv &&
-        this._bossFaellig(this._gebietWechsel) &&
-        !this._bossGehabt.has(this._gebietWechsel)
-      ) {
-        this._bossGehabt.add(this._gebietWechsel);
-        this.bossStarten(); // ohne await, siehe dort
-      }
+      // Goldene Banane bzw. Chili fuer dieses Gebiet.
+      this._belohnungenPruefen();
+
     }
     /* Kümmert sich um den Schleifenpunkt der Musik. Hier stand vorher ein
      * Zufallstakt für einzelne Vogelrufe — die gehörten zu den prozeduralen
@@ -1718,24 +1823,17 @@ export class Game {
     if (this.player.alive) {
       const richtung = axis.x < -0.5 ? -1 : axis.x > 0.5 ? 1 : 0;
       if (richtung !== 0 && richtung !== this._letzteRichtung) {
-        const anzahl = world.bahnX?.length ?? 3;
-        this.player.zielBahn = Math.max(
-          0,
-          Math.min(anzahl - 1, this.player.zielBahn + richtung),
-        );
+        this._wischen(richtung, world);
       }
       this._letzteRichtung = richtung;
+      this._wischUhrLaufen(dt, world);
     }
 
-    /* ---- Bosskampf ----------------------------------------------------- *
-     * Der Wurf wird VOR dem Spieler-Update angefordert, damit die Animation
-     * noch in diesem Frame anläuft; die Banane selbst entsteht erst, wenn
-     * player.update() das Ereignis 'wurf' meldet — also wenn der Arm
-     * gestreckt ist, nicht beim Tippen. */
-    const tipp = this.input.consumeTipp?.();
-    if (tipp && this.boss?.kaempft && this.player.alive) {
-      this.boss.wurfAnfordern(this.player);
-    }
+    /* ---- Chili: Tipp/Klick wird nicht mehr gebraucht -------------------- *
+     * Der Bananenwurf gehoerte zum geloeschten Bosskampf. Der Tipp
+     * wird trotzdem abgeholt, damit er sich nicht aufstaut und im Menü
+     * plötzlich zündet. */
+    this.input.consumeTipp?.();
 
     /* ---- Entities ----------------------------------------------------- */
     const spielerEreignis = this.player.update(
@@ -1744,25 +1842,23 @@ export class Game {
       world.bounds,
       world.bahnX,
     );
-    if (spielerEreignis === 'wurf') this.boss?.bananeLoslassen(this.player);
 
     this.spawner.update(dt, this.player.revives > 0, base);
     // Kampf und Sturzflug NACH dem Spieler: beide prüfen gegen dessen
     // frische Position.
-    this.boss?.update(dt, this.player, world, this.difficulty.rockFallSpeed + base);
     this._sturzflugSchritt(dt);
     this.sturzflug?.update(dt, this.player, world);
 
     /* NACHSCHUB: EINE Stelle entscheidet.
      *
-     * Bosskampf und Sturzflug räumen beide den Bildschirm frei. Setzte jedes
-     * den Schalter selbst, schaltete das eine ihn beim Aufräumen wieder ein,
-     * während das andere noch läuft — und mitten im Sturzflug fielen wieder
-     * Steine. Deshalb wird er hier jeden Frame aus beiden Zuständen
-     * gebildet. */
-    this.spawner.nachschubAus = (this.boss?.aktiv ?? false) || (this.sturzflug?.aktiv ?? false);
+     * Sturzflug und Chili-Durchflug raeumen beide den Bildschirm frei.
+     * Setzte jedes den Schalter selbst, schaltete das eine ihn beim
+     * Aufraeumen wieder ein, waehrend das andere noch laeuft. Deshalb wird
+     * er hier jeden Frame aus beiden Zustaenden gebildet. */
+    this.spawner.nachschubAus = (this.sturzflug?.aktiv ?? false) || this._chiliFlug !== null;
 
     this._goldmodusSchritt(dt);
+    this.spawner.goldrauschSetzen(this._goldRest > 0);
 
     if (this.player.alive) {
       CollisionSystem.check(this.player, this.spawner, this._collisionHandlers);
@@ -1779,9 +1875,7 @@ export class Game {
     if (!this.player.alive) {
       this._deathTimer -= dt;
       if (this._deathTimer <= 0) {
-        // Sonst bliebe der Adler stehen und die Bossmusik liefe über den
-        // Game-Over-Screen weiter.
-        this.boss?.abbrechen(this.player);
+        // Sonst liefe der Sturzflug über den Game-Over-Screen weiter.
         this.sturzflug?.abbrechen();
         this.states.transitionTo(GameState.GAME_OVER);
       }
@@ -2030,11 +2124,6 @@ export class Game {
           if (o._mitteX !== undefined) o._mitteX *= streckung;
           o.mesh.position.x = o.x;
         }
-      }
-      for (const k of this.boss?.kacke.active ?? []) {
-        if (!k.active) continue;
-        k.x *= streckung;
-        k.mesh.position.x = k.x;
       }
     }
 

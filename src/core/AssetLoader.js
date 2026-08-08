@@ -89,7 +89,24 @@ export class AssetLoader {
 
     await Promise.all(
       unique.map(async (path) => {
-        const tex = await this.textureLoader.loadAsync(assetUrl(path));
+        let tex;
+        try {
+          tex = await this.textureLoader.loadAsync(assetUrl(path));
+        } catch (fehler) {
+          /* EIN FEHLENDES BILD MUSS DEN PFAD NENNEN.
+           *
+           * Der Entwicklungsserver liefert für eine unbekannte Datei nicht
+           * 404, sondern die index.html mit Status 200. Der TextureLoader
+           * lehnt sie ab, sein Fehler ist aber ein blosses Event ohne Text —
+           * wer ihn abfängt, liest nur "[object Event]" und weiss nicht
+           * einmal, welche Datei gemeint war.
+           *
+           * Genau daran ist die goldene Banane gescheitert: sie lag unter
+           * public/boss/, das mit dem Bosskampf gelöscht wurde. Im Spiel sah
+           * man davon nichts ausser einer Belohnung, die nie fiel. */
+          const grund = fehler?.message || fehler?.type || 'unbekannt';
+          throw new Error(`Bild nicht ladbar: ${path} (${grund}) — liegt es unter public/?`);
+        }
         tex.colorSpace = SRGBColorSpace;
         tex.wrapS = ClampToEdgeWrapping;
         tex.wrapT = ClampToEdgeWrapping;

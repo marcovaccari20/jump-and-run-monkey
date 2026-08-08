@@ -94,7 +94,17 @@ export const CONFIG = {
      * allein zwischen zwei sehr weit entfernten Aussenbahnen; im Querformat
      * wären das 5 Einheiten Sprung. Vier Bahnen halbieren den Abstand auf
      * zwei Drittel der Halbbreite. */
-    bahnen: [-1, -1 / 3, 1 / 3, 1],
+    /* DREI BAHNEN. Waren kurzzeitig vier — das war zu viel.
+     *
+     * Mit vier Spuren liegt keine in der Mitte: der Affe startet neben der
+     * Bildachse, und jeder Wechsel ist nur ein Drittel der Breite. Das
+     * Ausweichen wurde dadurch kleinteilig statt entschieden. Mit drei
+     * Spuren gibt es wieder eine Mitte, und ein Wechsel ist eine halbe
+     * Feldbreite — man sieht, dass man sich bewegt hat.
+     *
+     * Die Werte sind ANTEILE der nutzbaren Halbbreite, keine
+     * Weltkoordinaten. ±1.0 heisst: bis in die Ecke. */
+    bahnen: [-1, 0, 1],
     // Höhe, auf der Steine/Bananen erzeugt werden.
     // MUSS über der sichtbaren Oberkante liegen, und zwar mindestens um den
     // grössten Steinradius (0.62): sonst ploppt der Stein sichtbar ins Bild,
@@ -162,7 +172,22 @@ export const CONFIG = {
      *
      * Wer diesen Wert ändert, muss difficulty.tempo.max nachziehen —
      * die beiden hängen über die Vorwarnzeit zusammen. */
-    startPosition: [0, -0.1, 0],
+    /* DER AFFE SITZT TIEFER — eine ganze Körperlänge.
+     *
+     * Er stand auf -0.1, also fast in der Bildmitte. Von dort aus sieht man
+     * zwar viel, aber die Objekte kommen einem entgegen wie eine Wand: die
+     * Vorwarnstrecke ist die Strecke von der Bildoberkante bis zu ihm, und
+     * die war kurz.
+     *
+     * Jetzt -2.6: das ist genau seine Bildhöhe (2.5) tiefer, wie gewünscht
+     * — die Kopfspitze steht dort, wo vorher die Schwanzspitze war. Er ist
+     * damit im unteren Drittel, aber nicht am Rand: das Spielfeld reicht
+     * bis -2.9, und sein Bild geht noch tiefer.
+     *
+     * Diese Zahl gehört zu difficulty.tempo.max — wer eine ändert, muss die
+     * andere nachrechnen. Die längere Vorwarnstrecke ist der Grund, warum
+     * das Tempo überhaupt steigen durfte. */
+    startPosition: [0, -2.6, 0],
 
     /* Wie lange ein Bahnwechsel dauert (Sekunden bis praktisch angekommen).
      *
@@ -367,12 +392,33 @@ export const CONFIG = {
         blurb: 'Halb so gross und flinker. Keine Bananen, keine zweite Chance.',
         preview: '/characters/white.webp',
         framePath: '/textures/weiss/move_{n}.webp',
-        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], // 10 verschiedene Bilder im Zyklus
+        /* ZWÖLF BILDER, NICHT ZEHN — es ist jetzt der eingefärbte BRAUNE.
+         *
+         * Der gelieferte weisse Affe hatte einen sichtbaren Fehler im
+         * Bewegungsablauf: sein Video gab nur zehn wirklich verschiedene
+         * Bilder her, und an einer Stelle sprang er. Statt daran
+         * herumzuflicken ist er jetzt der braune Affe in Weiss
+         * (scripts/prepare-weiss.mjs) — gleiche saubere Bewegung, gleiche
+         * zwölf Bilder, nur anderes Fell. */
+        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
         // Muss gesetzt werden: die Bildrate wird auf moveSpeed NORMIERT
         // (SpritePlayer: speedRatio = animSpeed / cfg.moveSpeed), ein
         // höheres moveSpeed allein macht den Zyklus also NICHT schneller.
         cycleSpeed: 1.9, // x1.36
         artScale: 0.5,
+
+        /* ZWEI BAHNEN AUF EINMAL.
+         *
+         * Sein Vorteil ist nicht mehr nur "schneller", sondern eine andere
+         * Bewegungsart: wer zweimal kurz hintereinander wischt, springt
+         * gleich zwei Spuren weit. Beim braunen und beim orangen Affen ist
+         * ein Wisch immer genau eine Bahn.
+         *
+         * Der zweite Wisch muss innerhalb dieses Fensters kommen. 0.35 s ist
+         * knapp genug, dass es eine Absicht bleibt, und weit genug, dass man
+         * es mit dem Daumen schafft. */
+        doppelwischFenster: 0.35,
+
         bananas: false,
         maxStored: 0, // zweiter Riegel gegen die Wiederbelebung
         ignoreRockRadius: 0,
@@ -407,6 +453,18 @@ export const CONFIG = {
         // Beim Median 0.46 wäre er gegen die HÄLFTE aller Steine immun —
         // das wäre kein Vorteil mehr, sondern ein anderes Spiel.
         ignoreRockRadius: 0.38,
+        /* EINE HALBE SEKUNDE VERZÖGERUNG.
+         *
+         * Sein Nachteil. Er prallt an kleinen Steinen ab — das ist die
+         * stärkste Fähigkeit im Spiel, und sie braucht ein Gegengewicht,
+         * das man SPÜRT. Langsamer laufen reicht dafür nicht: man merkt es
+         * kaum, weil der Bahnwechsel ohnehin kurz ist.
+         *
+         * Deshalb setzt sein Bahnwechsel erst nach dieser Zeit ein. Man
+         * wischt, und er geht los, wenn die halbe Sekunde um ist. Wer mit
+         * ihm spielt, muss früher entscheiden — genau das ist der Handel. */
+        wischVerzoegerung: 0.5,
+
         player: {
           spriteHeight: 2.5, // 1.00  (Breite folgt dem Seitenverhältnis)
           modelHeight: 1.5,
@@ -475,7 +533,9 @@ export const CONFIG = {
      * wieviel davon übrig ist.
      */
     tempo: {
-      start: 3.8, // der Anfang soll wirklich langsam sein
+      /* 4.18 statt 3.8 — der Anfang war zu zäh (+10 %).
+       * Der Rest der Kurve zieht mit +5 % nach, siehe max. */
+      start: 4.18,
       /* 16.0 -> 13.6, WEIL DER AFFE HÖHER SITZT.
        *
        * Seit er senkrecht festgenagelt ist, steht er auf y = -0.1 statt -1.4,
@@ -491,7 +551,11 @@ export const CONFIG = {
        *
        * Diese Zahl gehört zu player.startPosition[1]. Wer eine ändert, muss
        * die andere nachrechnen. */
-      max: 13.6,
+      /* 14.3 statt 13.6 (+5 %). Zusammen mit dem höheren Startwert läuft
+       * das ganze Spiel spürbar flotter, ohne die Vorwarnzeit zu sprengen:
+       * bei der neuen Affenhöhe (siehe player.startPosition) ist die
+       * Vorwarnstrecke wieder länger, das gleicht das Tempo aus. */
+      max: 14.3,
       // Anteil, der als Wandscrollen sichtbar wird. Der Rest ist
       // Eigengeschwindigkeit der Objekte. Ein fester Anteil statt zweier
       // Kurven: sonst zieht sich die Wand unter den Objekten weg.
@@ -771,7 +835,13 @@ export const CONFIG = {
         // Stock, Baumscheibe, Stamm. Der Stamm ist beim Aufbereiten um 90°
         // gedreht worden und fällt mit der Schnittfläche voran.
         bilder: ['holz_klein', 'holz_mittel', 'holz_gross'],
-        bildScale: 1.05,
+        /* 2.1 statt 1.05 — DOPPELT SO GROSS.
+         *
+         * Der Stock ist lang und dünn; bei 1.05 war er vor der
+         * Blumenwand kaum vom Gestrüpp zu unterscheiden. Was man nicht
+         * sieht, kann man nicht ausweichen — und dann ist es kein
+         * Hindernis, sondern eine Falle. */
+        bildScale: 2.1,
         // Weniger Taumeln als beim Stein: Holz ist länglich, und was sich
         // schnell dreht, liest sich schlechter in seiner Fallrichtung.
         taumeln: 10,
@@ -859,6 +929,55 @@ export const CONFIG = {
         leuchten: 0.5,
         glanz: 0.9,
       },
+
+      /* --- Die vier späten Wände ---------------------------------------- */
+
+      metall: {
+        // Schraube, Wellblech, Zahnrad.
+        bilder: ['metall_klein', 'metall_mittel', 'metall_gross'],
+        bildScale: 1.05,
+        // Schrott dreht sich beim Fallen kräftig — es ist kantig und leicht.
+        taumeln: 22,
+        form: 'dodekaeder',
+        farben: [0x8a6a52, 0x7f8a90, 0x5f4a3c],
+        leuchten: 0,
+        glanz: 0.45,
+      },
+
+      bonbon: {
+        // Bonbon, Keks, Lutscher.
+        bilder: ['bonbon_klein', 'bonbon_mittel', 'bonbon_gross'],
+        bildScale: 1.0,
+        taumeln: 14,
+        form: 'kugel',
+        farben: [0xf2a0c0, 0xd8a05a, 0xef6f9e],
+        leuchten: 0,
+        glanz: 0.5,
+      },
+
+      kaktus: {
+        // Stück, Ohr, Säulenkaktus. Der grosse ist gedreht und fällt mit
+        // der Krone voran.
+        bilder: ['kaktus_klein', 'kaktus_mittel', 'kaktus_gross'],
+        bildScale: 1.1,
+        // Wenig Taumeln: ein Kaktus ist schwer und länglich.
+        taumeln: 8,
+        form: 'zylinder',
+        farben: [0x6f9e52, 0x84ac5e, 0x5c8a46],
+        leuchten: 0,
+        glanz: 0.1,
+      },
+
+      ruine: {
+        // Ziegel, Schriftplatte, Steinkopf.
+        bilder: ['ruine_klein', 'ruine_mittel', 'ruine_gross'],
+        bildScale: 1.05,
+        taumeln: 11,
+        form: 'dodekaeder',
+        farben: [0xb06a4a, 0xa89880, 0x8a8c8e],
+        leuchten: 0,
+        glanz: 0.05,
+      },
       feuer: {
         // Der Glutschweif reicht über den Ball hinaus — das Bild darf
         // deshalb grösser sein, ohne dass der Kern unfair wirkt.
@@ -908,16 +1027,27 @@ export const CONFIG = {
      */
     // Gezählt wird in WÄNDEN, nicht in Sekunden — dieselbe Achse wie die
     // Schwierigkeit (CONFIG.difficulty). Wand 0 ist die grüne.
+    /* GROSSE OBJEKTE KOMMEN VIEL FRÜHER UND VIEL ÖFTER.
+     *
+     * Vorher tauchten sie erst ab Wand 1.5 überhaupt auf und blieben lange
+     * die Ausnahme (10 %, 25 %, 35 %). Im Spiel sah man fast nur Kiesel.
+     * Dabei sind die Brocken das, was man am besten LIEST — sie sind gross,
+     * sie kündigen sich an, und ihnen auszuweichen fühlt sich nach einer
+     * Entscheidung an.
+     *
+     * Jetzt sind die drei Grössen von Anfang an fast gleich verteilt und
+     * bleiben es. Die Lückengarantie hängt nicht an der Grössenmischung,
+     * sondern am Korridor — geprüft mit npm run test:fair. */
     mix: [
-      { abWand: 0, weights: [70, 30, 0] },
-      { abWand: 1.5, weights: [45, 45, 10] },
-      { abWand: 3.5, weights: [30, 45, 25] },
-      { abWand: 6, weights: [22, 43, 35] },
+      { abWand: 0, weights: [40, 35, 25] },
+      { abWand: 1.5, weights: [35, 35, 30] },
+      { abWand: 3.5, weights: [32, 34, 34] },
+      { abWand: 6, weights: [30, 35, 35] },
       // Ganz spät verschiebt sich der Druck von der Menge auf das Gewicht:
       // mehr Brocken statt noch mehr Objekte. Ein Brocken sperrt mehr Breite
       // und zwingt zu früherem Ausweichen, ohne den Bildschirm zuzustellen.
-      { abWand: 9, weights: [18, 40, 42] },
-      { abWand: 12, weights: [14, 36, 50] },
+      { abWand: 9, weights: [26, 35, 39] },
+      { abWand: 12, weights: [22, 35, 43] },
     ],
   },
 
@@ -1045,31 +1175,6 @@ export const CONFIG = {
        * Der Deckel ist Pflicht, nicht Vorsicht: die Wände laufen zyklisch
        * endlos weiter. Ohne ihn wäre die Musik nach einer halben Stunde
        * unhörbar schnell. */
-      /* ------------------------------------------------- BOSSMUSIK ------ *
-       * Eigenes Stück für den Adlerkampf. Setzt mit der Vorwarnung ein und
-       * läuft, bis der Adler erledigt ist; danach kommt die Gebietsmusik
-       * zurück.
-       *
-       * EIGENE SCHLEIFENPUNKTE, nicht das ganze Stück.
-       * Das Lied ist 97.5 s lang, ein Bosskampf dauert eine knappe Minute —
-       * ohne Schleife hörte man nie mehr als den Anfang, mit ganzer Schleife
-       * käme das ruhige Intro mitten im Kampf wieder.
-       *
-       *   0 s ──────────────► 45 s     Intro, einmalig
-       *        10.5 s ◄────── 45 s     danach diese 34.5 s in Schleife
-       *
-       * Die Werte sind Sekunden IM STÜCK. Wird die Musik schneller gespielt,
-       * bleiben sie gültig — Musik.js rechnet die Restzeit in echte Sekunden
-       * um. */
-      boss: {
-        datei: 'boss', // public/musik/boss.mp3 bzw. .ogg
-        pegel: 0.62, // etwas lauter als die Gebietsmusik (0.55)
-        schleifeVon: 10.5,
-        schleifeBis: 45.0,
-        // Ein- und Ausblenden beim Wechsel von und zur Gebietsmusik.
-        fade: 1.2,
-      },
-
       tempoProGebiet: 0.032,
       tempoMax: 1.35,
       /* Wie lange das neue Tempo braucht (Sekunden). Ein Sprung mitten im
@@ -1129,24 +1234,31 @@ export const CONFIG = {
         ],
       },
 
-      /* --- Bosskampf ---------------------------------------------------- *
-       * Beides bewusst KURZ und leise. Im Kampf sind bis zu sechs Bananen und
-       * ein Dutzend Haufen gleichzeitig unterwegs; jeder Klang, der länger
-       * als ein Achtel dauert, wird zu Brei.
-       *
-       * Der Adler selbst bleibt STUMM. Dafür gibt es keine Aufnahme, und ein
-       * erfundener Schrei aus dem Oszillator klingt nach Modem, nicht nach
-       * Greifvogel. */
-      wurf: {
-        mindestAbstand: 0.08,
-        // Kurzes Aufwärtsgleiten: "raus aus der Hand".
-        toene: [{ von: 420, bis: 900, dauer: 0.12, gain: 0.16, form: 'triangle' }],
+      /* --- Chili und Goldrausch ------------------------------------------ *
+       * Beide bewusst KURZ. Sie kommen mitten im Spiel, und ein langer
+       * Klang legt sich über die Geräusche, an denen man sich orientiert. */
+      chili: {
+        mindestAbstand: 0.2,
+        // Aufsteigendes Zischen: der Schub.
+        toene: [
+          { von: 180, bis: 1400, dauer: 0.55, gain: 0.2, rauschen: true, guete: 0.6 },
+          { von: 330, bis: 990, dauer: 0.4, gain: 0.14, form: 'sawtooth' },
+        ],
       },
 
-      kacke: {
-        mindestAbstand: 0.1,
-        // Tiefes Rauschen, das nach unten wegsackt.
-        toene: [{ von: 700, bis: 130, dauer: 0.2, gain: 0.14, rauschen: true, guete: 0.9 }],
+      warnung: {
+        mindestAbstand: 0.3,
+        // Zwei harte Stösse — das liest man als "Achtung", nicht als Melodie.
+        toene: [
+          { von: 740, bis: 700, dauer: 0.1, gain: 0.18, form: 'square' },
+          { von: 740, bis: 700, dauer: 0.1, gain: 0.18, form: 'square', verzoegerung: 0.16 },
+        ],
+      },
+
+      sturz: {
+        mindestAbstand: 0.15,
+        // Abwärtsrauschen: etwas kommt herunter.
+        toene: [{ von: 2200, bis: 300, dauer: 0.35, gain: 0.16, rauschen: true, guete: 0.8 }],
       },
 
       /* Game Over: drei absteigende Töne, der letzte Schritt fällt weiter als
@@ -1324,156 +1436,90 @@ export const CONFIG = {
   },
 
   /* ================================================================== *
-   *  BOSSKAMPF — der Adler
+   *  GOLDENE BANANE — der Goldrausch
    *
-   *  Ablauf, in dieser Reihenfolge:
+   *  Sie fällt ab und zu ganz normal vom Himmel, wie eine Münze. Wer sie
+   *  einsammelt, wird SOFORT golden, und für 30 Sekunden regnet es Münzen.
    *
-   *    warnung   Das Schild blinkt, der Ton kommt, die Musik setzt ein.
-   *              Bereits fallende Objekte dürfen auslaufen, neue kommen
-   *              keine mehr.
-   *    einflug   Der Adler kommt von oben ins Bild, der Affe sinkt nach
-   *              unten. Noch kein Beschuss von beiden Seiten.
-   *    kampf     Der Adler wandert unvorhersehbar und kackt; der Affe
-   *              weicht aus und wirft Bananen. Drei Treffer.
-   *    ende      Der Adler verschwindet, die goldene Banane fliegt zum
-   *              Affen, die normale Runde geht weiter.
-   *
-   *  WARUM DER AFFE NACH UNTEN GEHT
-   *  Der Adler sitzt selbst im Bild und verkürzt damit den Fallweg seiner
-   *  Kacke erheblich. Bliebe der Affe auf Normalhöhe, hätte er kaum noch
-   *  Reaktionszeit. Weiter unten gewinnt er sie zurück, ohne dass der Kampf
-   *  langsamer wirkt — der Gegner ist ja sichtbar näher.
+   *  WARUM DAS DEN BOSSKAMPF ERSETZT
+   *  Sie war früher die Belohnung dafür, einen Adler dreimal zu treffen.
+   *  Der Kampf ist raus — die Belohnung war aber das Beste daran, und sie
+   *  funktioniert allein besser: kein Bruch im Spielfluss, kein
+   *  Sonderzustand, nur ein Ding, das man haben will.
    * ================================================================== */
-  boss: {
-    /* WANN. Nicht in den ersten Gebieten — dort lernt man das Spiel noch.
-     * Danach alle paar Gebiete einer. Gezählt werden Gebietswechsel seit
-     * Rundenbeginn, dieselbe Zählung wie beim Musiktempo. */
-    abGebiet: 5,
-    jedesXteGebiet: 4,
+  goldbanane: {
+    bild: '/hazards/banane_gold.webp',
+    radius: 0.4,
+    hitRadiusFactor: 1.3,
+    fallSpeedFactor: 0.6,
+    spriteScale: 1.7,
+    poolSize: 2,
 
-    /* Vorwarnung. Lang genug zum Lesen und um sich zu sortieren, kurz genug,
-     * dass es nicht wie ein Ladebildschirm wirkt. */
-    warnungSekunden: 2.2,
-    /* Einflug: währenddessen sinkt der Affe auf seine Kampfhöhe und der
-     * Adler kommt von oben herein. */
-    einflugSekunden: 1.6,
+    /* AB GEBIET 2, dann jede zweite bis dritte Welt. Im ersten Gebiet
+     * lernt man das Spiel; ein Sonderobjekt, dessen Wirkung man noch nicht
+     * einordnen kann, ist dort verschenkt. */
+    abGebiet: 2,
+    jedesXteGebiet: { min: 2, max: 3 },
 
-    /* Kampfhöhe des Affen (World-Units). Normal steht er auf -0.1; hier
-     * geht er deutlich tiefer, um Reaktionsweg zurückzugewinnen.
-     * Die Untergrenze des Spielfelds liegt bei -2.9 — mit -2.1 bleibt Luft,
-     * damit ihn eine tief einschlagende Kacke nicht am Bildrand einklemmt. */
-    affeY: -2.1,
-    /* Höhe des Adlers. Weit oben, aber sichtbar im Bild. */
-    adlerY: 3.2,
-    adlerHoehe: 2.4, // World-Units, Bildhöhe des Adlers
+    /* Der Goldrausch. 30 Sekunden, dreifacher Münzwert — und vor allem
+     * VIEL MEHR Münzen: normal kommen rund drei je Gebiet (alle 40 s), im
+     * Goldrausch mindestens fünf in 30 Sekunden. */
+    sekunden: 30,
+    muenzFaktor: 3,
+    /* Münztakt während des Goldrauschs, in Sekunden. 4.5 s ergibt bei 30 s
+     * sechs bis sieben Münzen — sicher über den geforderten fünf, auch
+     * wenn eine am Rand verlorengeht. */
+    muenzTakt: 4.5,
+  },
 
-    /* BEWEGUNG DES ADLERS.
-     * Er zielt auf wechselnde Punkte und fährt sie mit Trägheit an — nicht
-     * geradlinig hin und her, das wäre nach zwei Zyklen durchschaut. */
-    adler: {
-      tempo: 3.4, // Units/s, Höchstgeschwindigkeit seitlich
-      beschleunigung: 3.0, // Glättung wie beim Affen (1/s)
-      // Wie lange er ein Ziel anfährt, bevor er ein neues wählt.
-      zielWechsel: { min: 0.7, max: 1.6 },
-      // Wie weit ein neues Ziel vom alten mindestens weg sein muss, damit
-      // er nicht auf der Stelle zittert (Anteil der Feldbreite).
-      minSprung: 0.28,
-      // Flügelschläge pro Sekunde.
-      flugZyklus: 1.6,
+  /* ================================================================== *
+   *  CHILI — der Durchflug
+   *
+   *  Ab und zu fällt eine Chilischote. Wer sie einsammelt, bekommt Feuer
+   *  aus dem Hintern, alle Objekte verschwinden, und er schiesst in fünf
+   *  Sekunden durch das restliche Gebiet ins nächste.
+   *
+   *  ES IST EINE BELOHNUNG, KEIN HINDERNIS: während des Durchflugs kann
+   *  nichts passieren. Genau das ist der Reiz — einmal alles egal.
+   * ================================================================== */
+  chili: {
+    bild: '/hazards/chili.webp',
+    radius: 0.34,
+    hitRadiusFactor: 1.3,
+    fallSpeedFactor: 0.6,
+    spriteScale: 1.6,
+    poolSize: 2,
 
-      /* --- Der Schlag selbst (Adler3D) --------------------------------- *
-       * Er ist keine Bildfolge mehr, sondern eine gebaute Figur — diese
-       * drei Zahlen sind seine ganze Bewegung.
-       *
-       * schlagAuf/schlagAb sind BEWUSST UNGLEICH. Ein Vogel zieht die
-       * Flügel weiter über den Rücken, als er sie unter den Bauch drückt;
-       * mit gleichen Werten sieht der Schlag aus wie ein Scheibenwischer.
-       *
-       * nachlauf ist die Verzögerung des Aussenflügels gegenüber dem
-       * Innenflügel, in Radiant der Schlagphase. Ohne sie bleibt der Flügel
-       * ein starres Brett. 0.55 entspricht knapp einem Zehntel Schlag —
-       * genug, dass man die Welle vom Körper zur Flügelspitze laufen sieht,
-       * zu wenig, um wie ein Wackelkontakt zu wirken. */
-      schlagAuf: 1.15, // Radiant, Aufschlag über den Rücken
-      schlagAb: 0.62, // Radiant, Abschlag unter den Bauch
-      nachlauf: 0.55, // Radiant Phasenversatz des Aussenflügels
+    /* Alle drei bis vier Gebiete. Seltener als die goldene Banane: der
+     * Durchflug überspringt Spielzeit, und was Spielzeit überspringt, darf
+     * nicht ständig kommen. */
+    abGebiet: 2,
+    jedesXteGebiet: { min: 3, max: 4 },
+
+    /* Wie lange der Schub dauert. Fünf Sekunden, wie gewünscht: lang genug,
+     * dass man es geniesst, kurz genug, dass es nicht zur Pause wird. */
+    sekunden: 5.0,
+
+    /* Wie schnell er dabei steigt, als Vielfaches der normalen
+     * Scrollgeschwindigkeit. Das Gebiet ist 132 s lang; in 5 s muss der
+     * Rest davon durchflogen sein, deshalb wird der Faktor zur Laufzeit
+     * aus der Reststrecke berechnet — dieser Wert ist nur die Untergrenze,
+     * damit es auch am Anfang eines Gebiets nach Schub aussieht. */
+    tempoMin: 6.0,
+
+    /* Bildfolgen des Fluges, je Charakter. Fehlt einer, klettert er eben
+     * weiter — der Schub wirkt trotzdem. */
+    frames: {
+      braun: '/textures/chili/move_{n}.webp',
+      weiss: '/textures/chili_weiss/move_{n}.webp',
+      orange: '/textures/chili_orange/move_{n}.webp',
     },
-
-    /* KACKEN. Die Animation dauert ihre Zeit; losgelassen wird genau dann,
-     * wenn sich die Krallen wieder öffnen. */
-    kacke: {
-      // Abstand zwischen zwei Angriffen.
-      abstand: { min: 1.1, max: 2.2 },
-      // Anteil der Kack-Animation, ab dem der Haufen erscheint (0..1).
-      // Bei 14 Bildern ist Bild 10 der Moment des Öffnens.
-      loslassenBei: 10 / 14,
-      // Dauer der ganzen Kack-Animation.
-      dauer: 1.0,
-      /* Drei Grössen. Radius ist zugleich Kollisionsradius mal Faktor;
-       * grössere fallen langsamer, das macht sie lesbar statt bloss fies. */
-      arten: [
-        { id: 'klein', bild: '/boss/kacke_klein.webp', radius: 0.30, tempo: 1.15 },
-        { id: 'mittel', bild: '/boss/kacke_mittel.webp', radius: 0.44, tempo: 1.0 },
-        { id: 'gross', bild: '/boss/kacke_gross.webp', radius: 0.62, tempo: 0.85 },
-      ],
-      hitRadiusFactor: 0.82, // wohlwollend, wie bei den Steinen
-      poolSize: 12,
-    },
-
-    /* BANANENWURF DES AFFEN.
-     * Geworfen wird auf Klick/Tipp. Die Banane verlässt die Hand NICHT
-     * sofort, sondern wenn der Arm gestreckt ist — sonst sieht es aus, als
-     * fiele sie aus dem Ärmel. */
-    wurf: {
-      // Anteil der Wurfanimation, bei dem die Banane die Hand verlässt.
-      // Gemessen an den 12 Bildern: ab Bild 8 ist der Arm gestreckt.
-      loslassenBei: 8 / 12,
-      dauer: 0.55, // ganze Wurfanimation
-      // Erst danach kann erneut geworfen werden.
-      nachladen: 0.18,
-      tempo: 11.0, // Units/s, fliegt gerade nach oben
-      radius: 0.20, // halb so gross wie die Sammelbanane
-      /* 0.24 statt der ursprünglichen 0.34.
-       *
-       * Gemessen im Hochformat: mit 0.34 plus dem damaligen Adlerradius von
-       * 0.72 lag das Trefferfenster bei ±1.06 Einheiten — bei einer
-       * Feldbreite von ±1.58 traf man also fast immer, egal wo man stand.
-       * Der Kampf war nach drei Würfen in gut zwei Sekunden vorbei.
-       *
-       * Zusammen mit `adlerTrefferAnteil` unten ergibt sich jetzt ein
-       * Fenster von rund ±0.8 — knapp unter dem Bahnabstand. Man muss auf
-       * die Bahn unter ihm, aber nicht auf den Zentimeter genau. */
-      hitRadius: 0.24,
-      poolSize: 6,
-    },
-
-    /* Drei Treffer. Nach jedem blinkt er kurz und ist dabei unverwundbar,
-     * sonst zählen bei zwei Bananen dicht hintereinander beide. */
-    treffer: 3,
-    trefferPause: 0.45,
-    /* Trefferkreis des Adlers als Anteil seiner Bildhöhe.
-     * Deutlich kleiner als er aussieht: die Flügel spannen weit, getroffen
-     * wird aber der Körper. Ein Trefferkreis über die volle Spannweite
-     * hiesse, dass Federn zählen. */
-    adlerTrefferAnteil: 0.24,
-
-    /* BELOHNUNG. Die goldene Banane erscheint dort, wo der Adler war, und
-     * fliegt zum Affen. Eingesammelt wird sie NICHT sofort benutzt —
-     * sie liegt im Vorrat und wirkt in der nächsten normalen Runde. */
-    belohnung: {
-      bild: '/boss/banane_gold.webp',
-      hoehe: 0.9,
-      flugSekunden: 1.1,
-      /* Goldmodus: der Affe wird golden und es fallen mehr Münzen. */
-      goldSekunden: 30,
-      muenzFaktor: 3,
-    },
-
-    /* Vorwarnschild. */
-    warnung: {
-      bild: '/boss/warnung.webp',
-      blinkProSekunde: 3.2,
-    },
+    frameAnzahl: 14,
+    /* Bilder je Sekunde. Die Vorlage ist ein 5-Sekunden-Video mit 14
+     * verschiedenen Bildern — knapp drei je Sekunde wirkt zu langsam,
+     * deshalb läuft die Folge einmal an und bleibt dann auf dem letzten
+     * Bild (dem vollen Schub) stehen. */
+    frameTakt: 9,
   },
 
   /* ================================================================== *
@@ -1506,7 +1552,19 @@ export const CONFIG = {
     /* Wie oft je Gebiet. Wächst mit der Zahl der Gebietswechsel — pro drei
      * Gebiete einer mehr, gedeckelt bei `max`. Der Nutzer wollte "ein bis
      * dreimal, und immer öfter, je höher man kommt". */
-    proGebiet: { start: 1, max: 3, alleXGebiete: 3 },
+    /* WIE OFT JE GEBIET.
+     *
+     * Vorher: einer ab Gebiet 2, alle drei Gebiete einer mehr, Deckel bei
+     * drei. Das war deutlich zu wenig — über 25 Minuten kamen 22 Angriffe.
+     * Jetzt gestaffelt, wie gewünscht:
+     *
+     *     Gebiet 2-4    3 Angriffe
+     *     Gebiet 5-8    5-6 Angriffe
+     *     ab Gebiet 9   7 Angriffe
+     *
+     * Bedroht sind dabei ein bis zwei Bahnen — bei drei Spuren bleibt so
+     * immer mindestens eine frei. */
+    proGebiet: { stufen: [3, 3, 3, 5, 5, 6, 6, 7], max: 7 },
 
     /* Vorwarnung. 1.15 s ist knapp und soll es sein: genug für einen
      * Bahnwechsel (im Hochformat 0.13 s, im Querformat 0.65 s), zu wenig
@@ -1523,7 +1581,10 @@ export const CONFIG = {
 
     /* Höchstens so viele Bahnen gleichzeitig — UND nie alle. Der kleinere
      * der beiden Werte gewinnt (siehe Sturzflug._bahnenWaehlen). */
-    maxBahnen: 3,
+    /* Höchstens zwei Bahnen gleichzeitig — bei drei Spuren bleibt damit
+     * immer eine frei. Der Wert wird zusätzlich gegen (Bahnzahl - 1)
+     * gedeckelt, siehe Sturzflug._bahnenWaehlen. */
+    maxBahnen: 2,
 
     /* Die Vögel. Bilder aus der Vorlage des Nutzers, von oben im Sturz. */
     bilder: ['/hazards/vogel_1.webp', '/hazards/vogel_2.webp', '/hazards/vogel_3.webp'],
@@ -2070,11 +2131,50 @@ export const CONFIG = {
         near: '/textures/stage9_ash.webp',
         far: '/textures/stage9_ash_far.webp',
       },
+      {
+        name: 'schrott',
+        hazard: 'metall',
+        afterSeconds: 1584,
+        near: '/textures/stage_schrott.webp',
+        far: '/textures/stage_schrott_far.webp',
+        /* Die Wand ist selbst rostbraun und voller Kanten. Ohne Dämpfung
+         * verschwindet ein rostiges Zahnrad darin — dieselbe Regel wie bei
+         * der Lavawand. */
+        tint: 0xa79a92,
+      },
+      {
+        name: 'bonbon',
+        hazard: 'bonbon',
+        afterSeconds: 1716,
+        near: '/textures/stage_bonbon.webp',
+        far: '/textures/stage_bonbon_far.webp',
+        // Sehr helle, bunte Wand — sonst geht ein rosa Bonbon darin unter.
+        tint: 0xbdb0b4,
+      },
+      {
+        name: 'kakteen',
+        hazard: 'kaktus',
+        afterSeconds: 1848,
+        near: '/textures/stage_kakteen.webp',
+        far: '/textures/stage_kakteen_far.webp',
+      },
+      {
+        name: 'ruine',
+        hazard: 'ruine',
+        afterSeconds: 1980,
+        near: '/textures/stage_ruine.webp',
+        far: '/textures/stage_ruine_far.webp',
+        /* Die Ruinenwand ist die dunkelste im Spiel. Hier wird AUFGEHELLT,
+         * nicht gedämpft: ein grauer Steinkopf vor fast schwarzem Mauerwerk
+         * ist sonst nur ein Schatten. */
+        tint: 0xd8dee6,
+      },
     ],
-    /* Reihenfolge der zwölf Gebiete, wie sie oben steht:
-     *   1 gruen   2 blumen   3 aeste     4 pilzwald  5 gift     6 halloween
-     *   7 wasser  8 wolken   9 eiszeit  10 kristall 11 lava    12 asche
-     * Die Nummern zählen für CONFIG.boss.abGebiet / jedesXteGebiet. */
+    /* Reihenfolge der sechzehn Gebiete, wie sie oben steht:
+     *   1 gruen    2 blumen   3 aeste     4 pilzwald  5 gift     6 halloween
+     *   7 wasser   8 wolken   9 eiszeit  10 kristall 11 lava    12 asche
+     *  13 schrott 14 bonbon  15 kakteen  16 ruine
+     * Die Nummern zählen für goldbanane/chili/sturzflug (abGebiet). */
 
     // Nach der letzten Stufe alle X Sekunden zur nächsten (zyklisch von vorne).
     stageLoopSeconds: 132,
@@ -2144,10 +2244,6 @@ export const CONFIG = {
       pause: ['Escape', 'KeyP'],
       confirm: ['Enter', 'Space'],
       debug: ['F1'],
-      /* F2 startet den Bosskampf sofort (Entwicklung/Test) — siehe
-       * Game.bossStarten(). Im normalen Spiel kommt er ab Gebiet 5, das
-       * dauert gut elf Minuten; zum Anschauen ist das keine Option. */
-      boss: ['F2'],
       // Ton an/aus. Eine Taste, kein Menü: wer den Ton weghaben will, will
       // ihn sofort weghaben.
       mute: ['KeyM'],

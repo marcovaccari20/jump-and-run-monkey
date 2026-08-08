@@ -52,6 +52,12 @@ const BACKGROUNDS = [
   'wall_mushroom',
   'wall_water',
   'wall_crystal',
+  // Vier spaeter dazugekommene Waende — Schrottplatz, Bonbonland, Kakteen,
+  // Ruine. Auch hier gilt: die Reihenfolge im Spiel steht in CONFIG.wall.stages.
+  'stage_schrott',
+  'stage_bonbon',
+  'stage_kakteen',
+  'stage_ruine',
 ].map((name) => ({ src: `${name}.png`, out: `${name}.webp` }));
 
 /* Kletter-Frames: bereits freigestellte Einzelbilder aus den Bewegungsvideos.

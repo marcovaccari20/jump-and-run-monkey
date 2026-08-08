@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <title>Adler-Pose-Probe</title>
+    <style>
+      body { margin: 0; background: #0a1a0d; color: #eee; font: 13px monospace; }
+      #hud { position: fixed; top: 6px; left: 8px; z-index: 5; background: #000a; padding: 6px 10px; }
+    </style>
+  </head>
+  <body>
+    <div id="hud"></div>
+    <script type="module">
+      import {
+        Scene, PerspectiveCamera, WebGLRenderer, AmbientLight, DirectionalLight,
+      } from 'three';
+      import { Adler3D } from './src/entities/Adler3D.js';
+      import { CONFIG } from './src/config.js';
+
+      const p = new URLSearchParams(location.search);
+      const phi = Number(p.get('phi') ?? 270);
+      const kack = Number(p.get('kack') ?? 1);
+      const zoom = Number(p.get('zoom') ?? 1);
+      const neig = Number(p.get('neig') ?? 0);
+
+      const W = 900, H = 1600;
+      const r = CONFIG.render;
+      const scene = new Scene();
+      const cam = new PerspectiveCamera(r.camera.fov, W / H, r.camera.near, r.camera.far);
+      cam.position.set(...r.camera.position);
+      cam.lookAt(...r.camera.lookAt);
+      cam.updateMatrixWorld(true);
+
+      scene.add(new AmbientLight(r.lights.ambient.color, r.lights.ambient.intensity));
+      const key = new DirectionalLight(r.lights.key.color, r.lights.key.intensity);
+      key.position.set(...r.lights.key.position);
+      scene.add(key);
+      const fill = new DirectionalLight(r.lights.fill.color, r.lights.fill.intensity);
+      fill.position.set(...r.lights.fill.position);
+      scene.add(fill);
+
+      const adler = new Adler3D(CONFIG.boss);
+      scene.add(adler.object3D);
+      adler.object3D.position.set(0, CONFIG.boss.adlerY, 0);
+      adler._schlag = (phi * Math.PI) / 180;
+      adler._animieren(0, kack);
+      adler.figur.rotation.z = neig;
+      adler.figur.rotation.y = neig * 0.55;
+
+      /* Zoom auf den Schwanzbereich: Kamera behaelt Lage und Blickrichtung,
+       * nur das Sichtfeld wird verengt -> exakt dieselbe Perspektive. */
+      if (zoom !== 1) {
+        cam.fov = 2 * (Math.atan(Math.tan(((r.camera.fov / 2) * Math.PI) / 180) / zoom) * 180) / Math.PI;
+        // Blick auf den Schwanzansatz statt auf die Wandmitte
+        cam.lookAt(0, CONFIG.boss.adlerY - CONFIG.boss.adlerHoehe * 0.22, 0);
+      }
+      cam.updateProjectionMatrix();
+      cam.updateMatrixWorld(true);
+
+      const ren = new WebGLRenderer({ antialias: true });
+      ren.setPixelRatio(1);
+      ren.setSize(W, H);
+      ren.setClearColor(0x101014, 1);
+      document.body.appendChild(ren.domElement);
+      ren.domElement.style.width = W / 2 + 'px';
+      ren.domElement.style.height = H / 2 + 'px';
+      ren.render(scene, cam);
+
+      document.getElementById('hud').textContent =
+        `phi=${phi}  kackPose=${kack}  neigung=${neig}  zoom=${zoom}  hoehe=${adler.hoehe}`;
+      window.__fertig = true;
+    </script>
+  </body>
+</html>

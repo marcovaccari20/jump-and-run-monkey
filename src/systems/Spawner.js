@@ -9,6 +9,7 @@ import { Pool } from '../entities/Pool.js';
 import { Rock, spriteHoehe } from '../entities/Rock.js';
 import { Banana } from '../entities/Banana.js';
 import { Coin } from '../entities/Coin.js';
+import { Powerup } from '../entities/Powerup.js';
 import { Korridor } from './Korridor.js';
 
 export class Spawner {
@@ -41,6 +42,18 @@ export class Spawner {
       (i) => new Banana(i, cfg.banana, bananenTextur),
     );
     this.coins = new Pool(cfg.coin.poolSize, (i) => new Coin(i, cfg.coin, coinTextur));
+
+    /* Goldene Banane und Chili teilen sich einen Pool.
+     *
+     * Es gibt nie beide gleichzeitig und nie mehr als eine — zwei
+     * Belohnungen nebeneinander wären keine Belohnung mehr, sondern eine
+     * Auswahl, und dafür ist im Bild kein Platz.
+     *
+     * Die Bilder kommen erst mit `setzePowerupBilder` — sie werden nachge-
+     * laden, damit der Spielstart nicht darauf wartet. Bis dahin bleibt der
+     * Pool leer und `_powerupWerfen` tut nichts. */
+    this.powerups = null;
+    this._powerupScene = scene;
 
     for (const rock of this.rocks.all) scene.add(rock.mesh);
     for (const banana of this.bananas.all) scene.add(banana.mesh);
@@ -101,6 +114,11 @@ export class Spawner {
      */
     this.nachschubAus = false;
 
+    /* GOLDRAUSCH. Setzt Game über `goldrauschSetzen`, solange die goldene
+     * Banane wirkt — dann fallen Münzen im 4.5-Sekunden-Takt statt alle 44
+     * Sekunden (siehe muenzTakt). */
+    this.goldrausch = false;
+
     /* Die garantierte freie Bahn. Siehe Korridor.js — sie ist der Grund,
      * warum die Objekte nicht mehr zufällig verteilt werden. */
     this.korridor = new Korridor(cfg.rock.korridor);
@@ -132,6 +150,7 @@ export class Spawner {
     this.rocks.releaseAll((r) => r.despawn());
     this.bananas.releaseAll((b) => b.despawn());
     this.coins.releaseAll((c) => c.despawn());
+    this.powerups?.releaseAll((p) => p.despawn());
     // Erste Münze nicht sofort: der Anfang gehört dem Klettern.
     this.coinTimer = this.muenzTakt * 0.6;
     // Die Bahn startet dort, wo der Affe steht — der erste Schritt soll kein
@@ -300,6 +319,20 @@ export class Spawner {
       if (coin.y < world.despawnY) {
         coin.despawn();
         this.coins.release(coin);
+      }
+    }
+
+    /* ---------------------------------------------- Goldbanane und Chili */
+    if (this.powerups) {
+      const basis = this.difficulty.rockFallSpeed + scroll;
+      for (let i = this.powerups.active.length - 1; i >= 0; i--) {
+        const p = this.powerups.active[i];
+        if (!p.active) continue;
+        p.update(dt, basis);
+        if (p.y < world.despawnY) {
+          p.despawn();
+          this.powerups.release(p);
+        }
       }
     }
 
@@ -829,7 +862,88 @@ export class Spawner {
    * Zwei getrennte Zahlen würden beim nächsten Verlängern auseinanderlaufen.
    */
   get muenzTakt() {
+    /* IM GOLDRAUSCH REGNET ES MÜNZEN.
+     *
+     * Normal kommen drei je Gebiet, also alle 44 Sekunden eine. Der
+     * Goldrausch dauert 30 Sekunden — mit dem normalen Takt käme in der
+     * ganzen Zeit vielleicht eine einzige, und die dreifache Gutschrift
+     * wäre eine Zahl ohne Erlebnis.
+     *
+     * Mit 4.5 s sind es sechs bis sieben Stück hintereinander. Das ist der
+     * Unterschied zwischen "du bekommst mehr" und "sieh dir das an". */
+    if (this.goldrausch) return this.cfg.goldbanane.muenzTakt;
     return this.cfg.difficulty.sekundenProWand / Math.max(1, this.cfg.coin.proGebiet);
+  }
+
+  /**
+   * Bilder für Goldbanane und Chili nachreichen und den Pool anlegen.
+   *
+   * Wird von Game gerufen, sobald die zwei Bilder geladen sind. Vorher gibt
+   * es den Pool nicht — `powerupWerfen` prüft das.
+   *
+   * @param {Map<string, import('three').Texture>} texturen nach Bildpfad
+   */
+  setzePowerupBilder(texturen) {
+    if (this.powerups) return;
+    const cfgs = { gold: this.cfg.goldbanane, chili: this.cfg.chili };
+    this.powerups = new Pool(2, (i) => {
+      const p = new Powerup(i, cfgs, texturen);
+      this._powerupScene.add(p.mesh);
+      return p;
+    });
+  }
+
+  /**
+   * Eine Belohnung abwerfen — auf der garantiert freien Bahn.
+   *
+   * SIE MUSS ERREICHBAR SEIN. Eine goldene Banane, die man sieht und nicht
+   * bekommt, ist ärgerlicher als gar keine. Deshalb dieselbe Stelle wie bei
+   * Münze und Banane: die Bahn, die dem Korridor am nächsten liegt — dort
+   * fällt garantiert kein Stein.
+   *
+   * @param {'gold'|'chili'} art
+   * @returns {boolean} false, wenn gerade schon eine unterwegs ist
+   */
+  powerupWerfen(art) {
+    if (!this.powerups) return false;
+    if (this.powerups.activeCount > 0) return false;
+    const p = this.powerups.acquire();
+    if (!p) return false;
+
+    const cfg = art === 'chili' ? this.cfg.chili : this.cfg.goldbanane;
+    const v = Math.max(
+      0.5,
+      this.difficulty.rockFallSpeed * cfg.fallSpeedFactor + this.difficulty.scrollSpeed,
+    );
+    const t = this.korridor.jetzt + (this.world.spawnY - this.cfg.player.startPosition[1]) / v;
+    p.spawn(art, this._naechsteBahn(this.korridor.bei(t)), this.world.spawnY, Math.random());
+    return true;
+  }
+
+  /**
+   * Goldrausch an- oder abschalten.
+   *
+   * DIE UHR MUSS MIT UMGESTELLT WERDEN, nicht nur der Takt. `coinTimer`
+   * zählt zum Zeitpunkt des Umschaltens schon auf die nächste normale Münze
+   * herunter — im ungünstigsten Fall stehen dort noch 40 Sekunden, und der
+   * Goldrausch wäre vorbei, bevor die erste Münze fällt. Gemessen kamen so
+   * zwei statt der versprochenen fünf.
+   *
+   * Beim Einschalten wird deshalb auf einen kurzen Rest gekürzt, beim
+   * Ausschalten auf den normalen Takt zurückgesetzt.
+   *
+   * @param {boolean} an
+   */
+  goldrauschSetzen(an) {
+    if (an === this.goldrausch) return;
+    this.goldrausch = an;
+    this.coinTimer = an ? 0.35 : this.muenzTakt * 0.5;
+  }
+
+  /** Belohnung eingesammelt -> zurück in den Pool. */
+  collectPowerup(p) {
+    p.despawn();
+    this.powerups.release(p);
   }
 
   /** Münze einsammeln -> zurück in den Pool. */

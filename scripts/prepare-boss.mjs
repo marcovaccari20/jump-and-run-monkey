@@ -238,6 +238,11 @@ const FOLGEN = [
   // der Namensgebung der übrigen Kletter-Sätze.
   { quelle: 'affe_gold', ziel: 'public/textures/gold', hoehe: 720, name: 'move' },
   { quelle: 'affe_wurf', ziel: 'public/textures/wurf', hoehe: 720, name: 'move' },
+  /* Chili-Flug: der Affe mit Feuer aus dem Hintern. Zwei Faelle, weil sich
+   * brauner und oranger Affe sichtbar unterscheiden; der weisse entsteht
+   * daraus per prepare-weiss.mjs. */
+  { quelle: 'chili_braun', ziel: 'public/textures/chili', hoehe: 900, name: 'move' },
+  { quelle: 'chili_orange', ziel: 'public/textures/chili_orange', hoehe: 900, name: 'move' },
 ];
 
 console.log('\nBildfolgen:');

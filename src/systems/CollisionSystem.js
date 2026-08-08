@@ -61,6 +61,20 @@ export class CollisionSystem {
       }
     }
 
+    /* Belohnungen zuerst, aus demselben Grund wie die Münzen: wer im selben
+     * Frame eine goldene Banane berührt UND stirbt, soll sie noch bekommen.
+     * Der Pool entsteht erst beim Nachladen — bis dahin gibt es ihn nicht. */
+    const powerups = spawner.powerups?.active;
+    if (powerups) {
+      for (let i = powerups.length - 1; i >= 0; i--) {
+        const p = powerups[i];
+        if (!p.active) continue;
+        if (circleOverlap(px, py, pr, p.x, p.y, p.hitRadius)) {
+          handlers.onPowerup?.(p);
+        }
+      }
+    }
+
     // Bananen: wenn Stein und Banane im selben Frame treffen, soll die
     // Wiederbelebung noch gutgeschrieben werden, bevor der Treffer zählt.
     const bananas = spawner.bananas.active;

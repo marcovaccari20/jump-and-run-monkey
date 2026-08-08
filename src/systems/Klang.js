@@ -56,7 +56,6 @@ export class Klang {
     /** Dasselbe für das Abspieltempo (steigt mit jedem Gebiet). */
     this._tempoWunsch = 1;
     /** Und für die Bossmusik. */
-    this._bossWunsch = false;
 
     /* ABSICHTLICH STILL — Pause, Werbespot, versteckter Tab.
      *
@@ -212,6 +211,11 @@ export class Klang {
    * seine Musik nicht verlieren.
    */
   boss(an) {
+    // Der Bosskampf ist raus — die Methode bleibt als No-op stehen, damit
+    // ein vergessener Aufruf nicht abstürzt.
+    void an;
+    return;
+    /* eslint-disable no-unreachable */
     this._bossWunsch = an === true;
     if (!this.bereit || !this.musik) return;
     if (an) this.musik.bossAn();

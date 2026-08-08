@@ -46,8 +46,6 @@ export class UI {
       hudRevive: $('hud-revive'),
       hudToast: $('hud-toast'),
       hudStats: $('hud-stats'),
-      bosswarnung: $('bosswarnung'),
-      bosswarnungBild: $('bosswarnung-bild'),
 
       btnResume: $('btn-resume'),
       btnPauseMenu: $('btn-pause-menu'),
@@ -588,23 +586,12 @@ export class UI {
   }
 
   /**
-   * Warnschild vor dem Adler ein- und ausblenden.
+   * Warnschild — vom gelöschten Bosskampf übrig.
    *
-   * Das Bild wird erst beim ersten Anzeigen gesetzt, nicht beim Start: in den
-   * meisten Runden kommt es nie vor (frühestens ab Gebiet 5), und ein
-   * ungenutzter Download vor dem Spielstart ist reine Wartezeit.
-   *
-   * @param {boolean} an
+   * Bleibt als No-op stehen, weil der Aufruf an mehreren Stellen im
+   * Zustandswechsel hängt und ein Absturz dort das Spiel anhalten würde.
    */
-  zeigeWarnung(an) {
-    const box = this.el.bosswarnung;
-    if (!box) return;
-    if (an && !box.dataset.geladen) {
-      this.el.bosswarnungBild.src = assetUrl(this.cfg.boss.warnung.bild);
-      box.dataset.geladen = '1';
-    }
-    box.classList.toggle('is-visible', an === true);
-  }
+  zeigeWarnung() {}
 
   setStats(text) {
     if (text === null) {

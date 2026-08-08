@@ -34,8 +34,7 @@ export class InputHandler {
     this._pausePressed = false;
     this._confirmPressed = false;
     this._debugPressed = false;
-    this._bossPressed = false;
-    /* Kurzer Tipp bzw. Mausklick — im Bosskampf der Wurf. Auch die
+    /* Kurzer Tipp bzw. Mausklick — ein Tipp aufs Bild. Auch die
      * Leertaste setzt ihn, damit sich der Kampf am Rechner testen laesst. */
     this._tippPressed = false;
     this._mutePressed = false;
@@ -76,7 +75,7 @@ export class InputHandler {
    *
    * Es hängt bewusst NICHTS anderes an der Maus: gesteuert wird weiterhin
    * mit A/D bzw. den Pfeiltasten. Der Klick ist ausschliesslich der Wurf im
-   * Bosskampf, und `onControl` schützt dabei dieselben Bedienelemente wie
+   * Spiel, und `onControl` schützt dabei dieselben Bedienelemente wie
    * beim Touch — ein Klick auf "Pause" darf keine Banane werfen.
    */
   _bindMaus() {
@@ -138,7 +137,6 @@ export class InputHandler {
          * der bequemere Weg. */
         this._tippPressed = true;
       } else if (action === 'debug') this._debugPressed = true;
-      else if (action === 'boss') this._bossPressed = true;
       else if (action === 'mute') this._mutePressed = true;
 
       this._down.add(action);
@@ -257,7 +255,7 @@ export class InputHandler {
          * Beides läuft über denselben Finger — es gibt keinen zweiten Ort auf
          * dem Bildschirm, an dem man tippen könnte, seit die Steuerung
          * überall greift. Unterschieden wird deshalb erst beim Loslassen:
-         * kaum bewegt und kurz gehalten = Tipp (im Bosskampf ein Wurf),
+         * kaum bewegt und kurz gehalten = Tipp,
          * alles andere war Steuern.
          *
          * Die Wegschwelle ist bewusst grosszügig: beim Tippen auf ein Handy
@@ -380,11 +378,6 @@ export class InputHandler {
     return v;
   }
 
-  consumeBoss() {
-    const v = this._bossPressed;
-    this._bossPressed = false;
-    return v;
-  }
 
   consumeDebug() {
     const v = this._debugPressed;
