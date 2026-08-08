@@ -88,6 +88,19 @@ export class Spawner {
      */
     this.bananasEnabled = true;
 
+    /* NACHSCHUB AUS — für den Bosskampf.
+     *
+     * Solange dieser Schalter steht, kommt oben nichts Neues mehr herein;
+     * was bereits fällt, fällt zu Ende und verlässt das Bild von selbst.
+     * Genau so ist es gemeint: der Kampf soll den Bildschirm freiräumen,
+     * ohne dass Objekte mitten in der Luft verschwinden.
+     *
+     * Der Korridor läuft dabei WEITER. Er ist die Garantie, dass es nach dem
+     * Kampf sofort wieder eine erreichbare Bahn gibt; würde er stehenbleiben,
+     * stünde er beim ersten Objekt danach an einer veralteten Stelle.
+     */
+    this.nachschubAus = false;
+
     /* Die garantierte freie Bahn. Siehe Korridor.js — sie ist der Grund,
      * warum die Objekte nicht mehr zufällig verteilt werden. */
     this.korridor = new Korridor(cfg.rock.korridor);
@@ -126,6 +139,9 @@ export class Spawner {
     this.korridor.reset(this.cfg.player.startPosition[0]);
     // Kurze Schonfrist zu Spielbeginn, damit man nicht sofort getroffen wird.
     this.timer = this.difficulty.spawnDelay * 1.4;
+    // Ein neuer Lauf fängt immer mit Nachschub an, auch wenn der letzte
+    // mitten im Bosskampf zu Ende ging.
+    this.nachschubAus = false;
 
     // Taktgeber für den Einzelstrom (siehe _einzelnesObjekt).
     this._salveRest = 0;
@@ -217,8 +233,10 @@ export class Spawner {
     );
 
     /* ------------------------------------------------------------- Spawn */
-    this.timer -= dt;
-    if (this.timer <= 0) {
+    // Im Bosskampf steht der Takt STILL, statt weiterzulaufen: liefe er
+    // weiter, käme direkt nach dem Kampf alles Aufgestaute auf einmal.
+    if (!this.nachschubAus) this.timer -= dt;
+    if (this.timer <= 0 && !this.nachschubAus) {
       const bananaAllowed =
         this.bananasEnabled &&
         !(bananaCfg.suppressWhenStocked && playerHasRevive) &&
@@ -236,8 +254,9 @@ export class Spawner {
     }
 
     /* ------------------------------------------------------------- Münzen */
-    this.coinTimer -= dt;
-    if (this.coinTimer <= 0) {
+    // Auch die Münzen stehen still: der Kampf soll den Bildschirm freihaben.
+    if (!this.nachschubAus) this.coinTimer -= dt;
+    if (this.coinTimer <= 0 && !this.nachschubAus) {
       this.coinTimer += this.muenzTakt;
       if (this.coinTimer < 0) this.coinTimer = this.muenzTakt;
       this._spawnCoin();

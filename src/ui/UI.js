@@ -46,6 +46,8 @@ export class UI {
       hudRevive: $('hud-revive'),
       hudToast: $('hud-toast'),
       hudStats: $('hud-stats'),
+      bosswarnung: $('bosswarnung'),
+      bosswarnungBild: $('bosswarnung-bild'),
 
       btnResume: $('btn-resume'),
       btnPauseMenu: $('btn-pause-menu'),
@@ -583,6 +585,25 @@ export class UI {
    */
   setReviveVisible(sichtbar) {
     this.el.hudRevive.classList.toggle('is-hidden', !sichtbar);
+  }
+
+  /**
+   * Warnschild vor dem Adler ein- und ausblenden.
+   *
+   * Das Bild wird erst beim ersten Anzeigen gesetzt, nicht beim Start: in den
+   * meisten Runden kommt es nie vor (frühestens ab Gebiet 5), und ein
+   * ungenutzter Download vor dem Spielstart ist reine Wartezeit.
+   *
+   * @param {boolean} an
+   */
+  zeigeWarnung(an) {
+    const box = this.el.bosswarnung;
+    if (!box) return;
+    if (an && !box.dataset.geladen) {
+      this.el.bosswarnungBild.src = assetUrl(this.cfg.boss.warnung.bild);
+      box.dataset.geladen = '1';
+    }
+    box.classList.toggle('is-visible', an === true);
   }
 
   setStats(text) {

@@ -34,6 +34,10 @@ export class InputHandler {
     this._pausePressed = false;
     this._confirmPressed = false;
     this._debugPressed = false;
+    this._bossPressed = false;
+    /* Kurzer Tipp bzw. Mausklick — im Bosskampf der Wurf. Auch die
+     * Leertaste setzt ihn, damit sich der Kampf am Rechner testen laesst. */
+    this._tippPressed = false;
     this._mutePressed = false;
     this._anyPressed = false;
 
@@ -52,6 +56,8 @@ export class InputHandler {
       originY: 0,
       x: 0,
       active: false,
+      // Zeitpunkt des Aufsetzens — trennt Tippen vom Ziehen (siehe _onTouchEnd).
+      zeit: 0,
     };
 
     // Der Joystick greift nur im laufenden Spiel. In Menüs würde er sonst
@@ -59,7 +65,36 @@ export class InputHandler {
     this._captureEnabled = false;
 
     this._bindKeyboard();
+    this._bindMaus();
     if (cfg.touch.enabled) this._bindTouch(touchHost);
+  }
+
+  /* ----------------------------------------------------------------- Maus */
+
+  /**
+   * Am Rechner gibt es keinen Finger — geworfen wird mit der Maus.
+   *
+   * Es hängt bewusst NICHTS anderes an der Maus: gesteuert wird weiterhin
+   * mit A/D bzw. den Pfeiltasten. Der Klick ist ausschliesslich der Wurf im
+   * Bosskampf, und `onControl` schützt dabei dieselben Bedienelemente wie
+   * beim Touch — ein Klick auf "Pause" darf keine Banane werfen.
+   */
+  _bindMaus() {
+    this._onMouseDown = (e) => {
+      if (!this._captureEnabled) return;
+      if (e.button !== 0) return;
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (
+        ziel?.closest(
+          'button, input, a, select, textarea, label, summary, details, [role="button"]',
+        )
+      ) {
+        return;
+      }
+      this._tippPressed = true;
+      this._anyPressed = true;
+    };
+    window.addEventListener('mousedown', this._onMouseDown);
   }
 
   /* ------------------------------------------------------------- Tastatur */
@@ -95,8 +130,15 @@ export class InputHandler {
       this._anyPressed = true;
 
       if (action === 'pause') this._pausePressed = true;
-      else if (action === 'confirm') this._confirmPressed = true;
-      else if (action === 'debug') this._debugPressed = true;
+      else if (action === 'confirm') {
+        this._confirmPressed = true;
+        /* Die Leertaste ist im laufenden Spiel bisher unbenutzt — dort
+         * wertet Game nur MENU/GAME_OVER/PAUSED aus. Sie darf deshalb
+         * zusätzlich der Wurf sein; am Rechner ist sie neben dem Mausklick
+         * der bequemere Weg. */
+        this._tippPressed = true;
+      } else if (action === 'debug') this._debugPressed = true;
+      else if (action === 'boss') this._bossPressed = true;
       else if (action === 'mute') this._mutePressed = true;
 
       this._down.add(action);
@@ -172,6 +214,8 @@ export class InputHandler {
         this._touch.originX = t.clientX;
         this._touch.originY = t.clientY;
         this._touch.x = 0;
+        // Für die Tipp-Erkennung beim Loslassen, siehe _onTouchEnd.
+        this._touch.zeit = performance.now();
 
         this._touch.active = true;
         this._anyPressed = true;
@@ -207,6 +251,21 @@ export class InputHandler {
     this._onTouchEnd = (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier !== this._touch.id) continue;
+
+        /* TIPPEN ODER ZIEHEN?
+         *
+         * Beides läuft über denselben Finger — es gibt keinen zweiten Ort auf
+         * dem Bildschirm, an dem man tippen könnte, seit die Steuerung
+         * überall greift. Unterschieden wird deshalb erst beim Loslassen:
+         * kaum bewegt und kurz gehalten = Tipp (im Bosskampf ein Wurf),
+         * alles andere war Steuern.
+         *
+         * Die Wegschwelle ist bewusst grosszügig: beim Tippen auf ein Handy
+         * rutscht der Finger fast immer ein paar Pixel mit. */
+        const weg = Math.abs(t.clientX - this._touch.originX);
+        const dauer = performance.now() - this._touch.zeit;
+        if (weg < radius * 0.35 && dauer < 350) this._tippPressed = true;
+
         this._touch.id = null;
         this._touch.active = false;
         this._touch.x = 0;
@@ -236,6 +295,8 @@ export class InputHandler {
   }
 
   _releaseTouch() {
+    // Ein halb ausgefuehrter Tipp darf nicht spaeter im Menue zuenden.
+    this._tippPressed = false;
     this._touch.id = null;
     this._touch.active = false;
     this._touch.x = 0;
@@ -312,6 +373,19 @@ export class InputHandler {
     return v;
   }
 
+  /** Kurzer Tipp/Klick — true genau einmal. */
+  consumeTipp() {
+    const v = this._tippPressed;
+    this._tippPressed = false;
+    return v;
+  }
+
+  consumeBoss() {
+    const v = this._bossPressed;
+    this._bossPressed = false;
+    return v;
+  }
+
   consumeDebug() {
     const v = this._debugPressed;
     this._debugPressed = false;
@@ -334,6 +408,7 @@ export class InputHandler {
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
     window.removeEventListener('blur', this._onBlur);
+    window.removeEventListener('mousedown', this._onMouseDown);
     if (this._onTouchStart) {
       window.removeEventListener('touchstart', this._onTouchStart);
       window.removeEventListener('touchmove', this._onTouchMove);

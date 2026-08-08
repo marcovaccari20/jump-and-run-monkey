@@ -22,6 +22,7 @@ import { AnimationController } from '../animation/AnimationController.js';
 import { Player } from '../entities/Player.js';
 import { SpritePlayer } from '../entities/SpritePlayer.js';
 import { hazardSpriteUrls } from '../entities/Rock.js';
+import { BossKampf } from '../systems/BossKampf.js';
 import { PlantWall } from '../world/PlantWall.js';
 import { DifficultyCurve } from '../systems/DifficultyCurve.js';
 import { Spawner } from '../systems/Spawner.js';
@@ -112,6 +113,18 @@ export class Game {
     this.character = null;
     // Laufende Nummer gegen verschränkte Charakterwechsel (siehe _pickCharacter).
     this._wechselNummer = 0;
+
+    // Bosskampf. Beides bleibt null, bis der Adler zum ersten Mal gebraucht
+    // wird — seine 26 Einzelbilder werden nicht auf Vorrat geladen.
+    /** @type {import('../systems/BossKampf.js').BossKampf|null} */
+    this.boss = null;
+    this._bossLaedt = false;
+    // In welchen Gebieten schon gekaempft wurde — jedes nur einmal.
+    this._bossGehabt = new Set();
+    /** Restsekunden Goldmodus (0 = aus). */
+    this._goldRest = 0;
+    /** @type {import('three').Texture[]|null} goldenes Fell, erst bei Bedarf geladen */
+    this._goldFrames = null;
 
     // Wirksame Spielfeldmasse. Start = Config, die seitlichen Grenzen werden
     // aber bei jedem Resize an das tatsächlich Sichtbare angepasst (siehe
@@ -514,6 +527,175 @@ export class Game {
     };
   }
 
+  /* ============================================================ Bosskampf */
+
+  /**
+   * Ist in diesem Gebiet ein Bosskampf fällig?
+   *
+   * Gezählt werden Gebietswechsel seit Rundenbeginn — dieselbe Zählung, die
+   * auch das Musiktempo steuert. Ab `abGebiet` der erste, danach alle
+   * `jedesXteGebiet`.
+   *
+   * @param {number} gebiet 0-basierte Nummer des gerade erreichten Gebiets
+   */
+  _bossFaellig(gebiet) {
+    const b = this.cfg.boss;
+    if (gebiet + 1 < b.abGebiet) return false;
+    return (gebiet + 1 - b.abGebiet) % b.jedesXteGebiet === 0;
+  }
+
+  /**
+   * Kampf starten. Lädt beim ersten Mal die Bilder nach.
+   *
+   * BEWUSST OHNE await AUFGERUFEN: der Lauf soll nicht stehenbleiben,
+   * während 26 Adlerbilder über die Leitung kommen. Kommen sie zu spät,
+   * beginnt der Kampf eben eine halbe Sekunde später — die Warnung steht ja
+   * ohnehin davor.
+   */
+  async bossStarten() {
+    if (this.boss?.aktiv) return false;
+    if (this._bossLaedt) return false;
+    if (!this.states.is(GameState.PLAYING)) return false;
+
+    if (!this.boss) {
+      this._bossLaedt = true;
+      try {
+        this.boss = await this._bossBauen();
+      } catch (fehler) {
+        console.error('[Boss] konnte nicht geladen werden:', fehler);
+        return false;
+      } finally {
+        this._bossLaedt = false;
+      }
+      // Während des Ladens kann der Lauf zu Ende sein.
+      if (!this.states.is(GameState.PLAYING) || !this.player.alive) return false;
+    }
+
+    return this.boss.starten(this.player);
+  }
+
+  /**
+   * Baut den Kampf samt aller Bilder auf. Läuft höchstens einmal je Sitzung —
+   * danach bleibt `this.boss` bestehen und wird wiederverwendet.
+   */
+  async _bossBauen() {
+    const b = this.cfg.boss;
+
+    const adlerPfade = [];
+    for (const [satz, n] of [
+      ['flug', 12],
+      ['kacken', 14],
+    ]) {
+      for (let i = 0; i < n; i++) {
+        adlerPfade.push(`/boss/adler_${satz}/f_${String(i).padStart(2, '0')}.webp`);
+      }
+    }
+    const kackPfade = b.kacke.arten.map((a) => a.bild);
+    const wurfPfade = Array.from(
+      { length: 12 },
+      (_, i) => `/textures/wurf/move_${String(i).padStart(2, '0')}.webp`,
+    );
+
+    const texturen = await this._loader.loadTexturesParallel(
+      [...adlerPfade, ...kackPfade, ...wurfPfade, b.belohnung.bild, this.cfg.banana.bild],
+      'Adler…',
+    );
+
+    // Wurfbilder gehören dem Affen, nicht dem Kampf — er behält sie.
+    this.player.setzeWurfFrames?.(
+      wurfPfade.map((p) => texturen.get(p)),
+      b.wurf,
+    );
+
+    const kackBilder = new Map();
+    for (const p of kackPfade) kackBilder.set(p, texturen.get(p));
+
+    return new BossKampf(
+      this.scene,
+      b,
+      {
+        flug: adlerPfade.slice(0, 12).map((p) => texturen.get(p)),
+        kacken: adlerPfade.slice(12).map((p) => texturen.get(p)),
+        kacke: kackBilder,
+        // Dieselbe Banane wie zum Einsammeln, nur halb so gross geworfen.
+        banane: texturen.get(this.cfg.banana.bild) ?? null,
+        goldBanane: texturen.get(b.belohnung.bild) ?? null,
+      },
+      {
+        klang: this.klang,
+        ui: this.ui,
+        spawner: this.spawner,
+        // Ein Kacketreffer wirkt GENAU wie ein Stein — Wiederbelebung, Tod
+        // und Verzögerung bis zum Game Over gehören dem Spiel, nicht dem
+        // Kampf. Sonst gäbe es zwei Stellen, die über den Tod entscheiden.
+        onTreffer: () => this._onRockHit(null),
+        onBelohnung: () => this._goldmodusStarten(),
+        onEnde: () => {
+          // Nach dem Kampf wieder die normale Gebietsmusik, im Tempo des
+          // erreichten Gebiets.
+          this.klang.tempo?.(this._musikTempo());
+        },
+      },
+    );
+  }
+
+  /**
+   * Goldene Banane eingesammelt: 30 Sekunden goldener Affe, dreifache Münzen.
+   */
+  _goldmodusStarten() {
+    const b = this.cfg.boss.belohnung;
+    this._goldRest = b.goldSekunden;
+    this.ui.toast(`Goldmodus! ${b.muenzFaktor}× Münzen`, 'banana');
+    this.klang.effekt('banane');
+
+    // Das goldene Fell beim ersten Mal nachladen und dann behalten.
+    if (this._goldFrames) {
+      this.player.fellWechseln?.(this._goldFrames);
+      return;
+    }
+    const pfade = Array.from(
+      { length: 12 },
+      (_, i) => `/textures/gold/move_${String(i).padStart(2, '0')}.webp`,
+    );
+    this._loader
+      .loadTexturesParallel(pfade, 'Goldaffe…')
+      .then((t) => {
+        this._goldFrames = pfade.map((p) => t.get(p)).filter(Boolean);
+        // Nur anziehen, wenn der Goldmodus dann noch läuft.
+        if (this._goldRest > 0) this.player.fellWechseln?.(this._goldFrames);
+      })
+      .catch((f) => console.warn('[Boss] Goldfell fehlt:', f));
+  }
+
+  /** Zählt den Goldmodus herunter und zieht dem Affen das Fell wieder aus. */
+  _goldmodusSchritt(dt) {
+    if (this._goldRest <= 0) return;
+    this._goldRest -= dt;
+    if (this._goldRest <= 0) {
+      this._goldRest = 0;
+      this.player.fellWechseln?.(null);
+      this.ui.toast('Goldmodus vorbei', 'revive');
+    }
+  }
+
+  /** Münzfaktor dieses Augenblicks — 1 normal, 3 im Goldmodus. */
+  get _muenzFaktor() {
+    return this._goldRest > 0 ? this.cfg.boss.belohnung.muenzFaktor : 1;
+  }
+
+  /**
+   * Musiktempo für das aktuelle Gebiet.
+   *
+   * Steht hier und nicht im Loop, weil es an ZWEI Stellen gebraucht wird:
+   * beim Gebietswechsel und nach dem Bosskampf, wenn von der Bossmusik
+   * zurückgeblendet wird. Zwei Kopien derselben Formel wären genau die Art
+   * Fehler, die man erst hört und dann sucht.
+   */
+  _musikTempo() {
+    const m = this.cfg.klang.musik;
+    return Math.min(m.tempoMax, 1 + this._gebietWechsel * m.tempoProGebiet);
+  }
+
   /* ========================================================== Charaktere */
 
   /**
@@ -891,6 +1073,16 @@ export class Game {
     this._letztesGebiet = null;
     this.klang.tempoZuruecksetzen();
 
+    /* Ein noch offener Adler darf nicht in den neuen Lauf hineinragen.
+     * Und: die Gebietszählung fängt bei 0 an, also muss auch die Liste der
+     * schon bekämpften Gebiete leer sein — sonst bliebe der erste Boss der
+     * zweiten Runde aus. */
+    this.boss?.abbrechen(this.player);
+    this._bossGehabt.clear();
+    this._goldRest = 0;
+    // player.reset() oben hat das Fell schon zurückgesetzt; hier steht nur,
+    // dass der Goldmodus wirklich zu Ende ist.
+
     /* Runde bei der Weltliste anmelden. Der Server stempelt den Start mit
      * seiner Uhr und misst die Spielzeit später selbst — nur deshalb lässt
      * sie sich nicht erfinden.
@@ -1050,6 +1242,8 @@ export class Game {
     if (this.states.is(GameState.PLAYING)) this.states.transitionTo(GameState.PAUSED);
     this.spawner.reset();
     this.player.reset();
+    // Der Adler gehört zum Lauf, nicht zum Menü — samt Bossmusik.
+    this.boss?.abbrechen(this.player);
     this.states.transitionTo(GameState.MENU);
   }
 
@@ -1225,6 +1419,11 @@ export class Game {
     // will ihn sofort weghaben, nicht nach zwei Klicks.
     if (this.input.consumeMute?.()) this._tonUmschalten();
 
+    // F2: Bossvorschau an/aus — nur im laufenden Spiel sinnvoll.
+    if (this.input.consumeBoss?.() && this.states.is(GameState.PLAYING)) {
+      this.bossStarten();
+    }
+
     if (this.input.consumeDebug()) {
       const on = this.debug.toggle();
       this.cfg.debug.showStats = on;
@@ -1310,10 +1509,22 @@ export class Game {
     if (this.wall.stageName !== this._letztesGebiet) {
       if (this._letztesGebiet !== null) this._gebietWechsel++;
       this._letztesGebiet = this.wall.stageName;
-      const m = this.cfg.klang.musik;
-      this.klang.tempo(
-        Math.min(m.tempoMax, 1 + this._gebietWechsel * m.tempoProGebiet),
-      );
+      this.klang.tempo(this._musikTempo());
+
+      /* Bosskampf? Beim Betreten eines Gebiets entschieden, nicht mitten
+       * darin: so weiss man immer, woran man ist, und die Warnung fällt mit
+       * dem Wandwechsel zusammen.
+       *
+       * `_bossGehabt` verhindert einen zweiten Kampf im selben Gebiet, falls
+       * die Wand über die Zeitschwelle hin- und herwackelt. */
+      if (
+        !this.boss?.aktiv &&
+        this._bossFaellig(this._gebietWechsel) &&
+        !this._bossGehabt.has(this._gebietWechsel)
+      ) {
+        this._bossGehabt.add(this._gebietWechsel);
+        this.bossStarten(); // ohne await, siehe dort
+      }
     }
     /* Kümmert sich um den Schleifenpunkt der Musik. Hier stand vorher ein
      * Zufallstakt für einzelne Vogelrufe — die gehörten zu den prozeduralen
@@ -1353,9 +1564,29 @@ export class Game {
       this._letzteRichtung = richtung;
     }
 
+    /* ---- Bosskampf ----------------------------------------------------- *
+     * Der Wurf wird VOR dem Spieler-Update angefordert, damit die Animation
+     * noch in diesem Frame anläuft; die Banane selbst entsteht erst, wenn
+     * player.update() das Ereignis 'wurf' meldet — also wenn der Arm
+     * gestreckt ist, nicht beim Tippen. */
+    const tipp = this.input.consumeTipp?.();
+    if (tipp && this.boss?.kaempft && this.player.alive) {
+      this.boss.wurfAnfordern(this.player);
+    }
+
     /* ---- Entities ----------------------------------------------------- */
-    this.player.update(dt, this.player.alive ? axis : ZERO_AXIS, world.bounds, world.bahnX);
+    const spielerEreignis = this.player.update(
+      dt,
+      this.player.alive ? axis : ZERO_AXIS,
+      world.bounds,
+      world.bahnX,
+    );
+    if (spielerEreignis === 'wurf') this.boss?.bananeLoslassen(this.player);
+
     this.spawner.update(dt, this.player.revives > 0, base);
+    // Der Kampf NACH dem Spieler: er prüft gegen dessen frische Position.
+    this.boss?.update(dt, this.player, world, this.difficulty.rockFallSpeed + base);
+    this._goldmodusSchritt(dt);
 
     if (this.player.alive) {
       CollisionSystem.check(this.player, this.spawner, this._collisionHandlers);
@@ -1372,6 +1603,9 @@ export class Game {
     if (!this.player.alive) {
       this._deathTimer -= dt;
       if (this._deathTimer <= 0) {
+        // Sonst bliebe der Adler stehen und die Bossmusik liefe über den
+        // Game-Over-Screen weiter.
+        this.boss?.abbrechen(this.player);
         this.states.transitionTo(GameState.GAME_OVER);
       }
     }
@@ -1437,8 +1671,15 @@ export class Game {
     this.spawner.collectCoin(coin);
     this.klang.effekt('muenze');
     this._affeFreutSich(this.cfg.klang.affenRuf?.beiMuenze ?? 0);
-    this._muenzenImLauf++;
-    this.fortschritt.gutschreiben(1);
+    /* Im Goldmodus zählt jede Münze dreifach.
+     *
+     * Der Faktor greift auf die GUTSCHRIFT, nicht auf die Fallrate: es
+     * fallen genauso viele Münzen wie sonst, sie sind nur mehr wert. Mehr
+     * Münzen fallen zu lassen hiesse, mitten in den Korridor zu greifen —
+     * und dessen Garantie hängt an der Zahl der Objekte. */
+    const wert = this._muenzFaktor;
+    this._muenzenImLauf += wert;
+    this.fortschritt.gutschreiben(wert);
     this.ui.setMuenzenLauf(this._muenzenImLauf);
   }
 

@@ -113,6 +113,12 @@ export class SpritePlayer {
      * Gesetzt wird das von aussen (Game), siehe update(). */
     this.zielBahn = 1;
 
+    /* Zielhöhe. Im normalen Lauf immer die Starthöhe — der Affe steht fest.
+     * Der Bosskampf zieht ihn nach unten (CONFIG.boss.affeY) und danach
+     * wieder herauf; deshalb ist die Höhe ein Ziel und keine Konstante.
+     * Siehe hoeheAnsteuern(). */
+    this.zielY = this.y;
+
     this._inputX = 0;
     this._phase = 0;
     this._lean = 0;
@@ -120,6 +126,23 @@ export class SpritePlayer {
     this._dieTimer = 0;
     // true, solange der Zyklus im Menü läuft (siehe updateAmbient)
     this._ambient = false;
+
+    /* --- Bosskampf ----------------------------------------------------- */
+    /** @type {import('three').Texture[]} Bildfolge des Wurfs (siehe setzeWurfFrames) */
+    this.wurfFrames = [];
+    /** Breitenkorrektur, weil die Wurfbilder breiter sind als die Kletterbilder. */
+    this._wurfBreite = 1;
+    /** CONFIG.boss.wurf — kommt mit setzeWurfFrames herein. */
+    this._wurfCfg = null;
+    /** null = wirft nicht, sonst 0..1 Fortschritt der Wurfanimation. */
+    this._wurf = null;
+    this._hatGeworfen = false;
+    /** true genau in dem Frame, in dem die Banane die Hand verlässt. */
+    this._wurfEreignis = false;
+    /** Welcher Bildsatz zuletzt gesetzt wurde — siehe _setFrame. */
+    this._frameSatz = null;
+    /** Ursprüngliches Fell, solange der Goldmodus läuft. */
+    this._fellOriginal = null;
 
     this.root.position.set(this.x, this.y, 0);
 
@@ -178,10 +201,18 @@ export class SpritePlayer {
    * Tauscht das angezeigte Kletter-Frame.
    * Der Umriss bekommt dieselbe Textur, sonst passt die Silhouette nicht mehr.
    */
-  _setFrame(i) {
-    if (i === this._frameIndex) return;
+  /**
+   * @param {number} i
+   * @param {import('three').Texture[]|null} satz  Bildfolge; null = Klettern
+   */
+  _setFrame(i, satz = null) {
+    const bilder = satz ?? this.frames;
+    // Der Index allein genügt nicht mehr als Vergleich, seit es zwei Sätze
+    // gibt: Bild 3 des Wurfs ist nicht Bild 3 des Kletterns.
+    if (i === this._frameIndex && bilder === this._frameSatz) return;
     this._frameIndex = i;
-    const texture = this.frames[i];
+    this._frameSatz = bilder;
+    const texture = bilder[Math.max(0, Math.min(bilder.length - 1, i))];
     this.material.map = texture;
     this.material.needsUpdate = true;
     if (this.outlineMaterial) {
@@ -190,12 +221,84 @@ export class SpritePlayer {
     }
   }
 
+  /* ============================================================= Bosskampf */
+
+  /**
+   * Bildfolge für den Wurf hinterlegen.
+   *
+   * Die Wurfbilder sind BREITER als die Kletterbilder (der Arm geht zur
+   * Seite). Läge dieselbe Ebene darunter, würde der Affe während des Wurfs
+   * zusammengequetscht. Deshalb wird das Seitenverhältnis gemerkt und die
+   * Ebene für die Dauer des Wurfs in der Breite nachgezogen.
+   *
+   * @param {import('three').Texture[]} frames
+   * @param {typeof import('../config.js').CONFIG.boss.wurf} wurfCfg
+   */
+  setzeWurfFrames(frames, wurfCfg) {
+    this.wurfFrames = (frames ?? []).filter(Boolean);
+    this._wurfCfg = wurfCfg ?? this._wurfCfg;
+    if (this.wurfFrames.length === 0) return;
+    const bild = this.wurfFrames[0].image;
+    const wurfAspect = bild && bild.height ? bild.width / bild.height : null;
+    const kletterBild = this.frames[0].image;
+    const kletterAspect =
+      kletterBild && kletterBild.height ? kletterBild.width / kletterBild.height : null;
+    this._wurfBreite = wurfAspect && kletterAspect ? wurfAspect / kletterAspect : 1;
+  }
+
+  /**
+   * Wurf auslösen.
+   *
+   * @returns {boolean} false, wenn gerade schon geworfen wird oder keine
+   *   Wurfbilder da sind — der Aufrufer soll dann NICHT nachladen.
+   */
+  werfen() {
+    if (!this.alive) return false;
+    if (!this.wurfFrames?.length) return false;
+    if (this._wurf !== null) return false;
+    this._wurf = 0;
+    this._hatGeworfen = false;
+    return true;
+  }
+
+  /** true, solange die Wurfanimation läuft. */
+  get wirftGerade() {
+    return this._wurf !== null;
+  }
+
+  /**
+   * Fell tauschen (Goldmodus) bzw. zurück auf das normale.
+   *
+   * @param {import('three').Texture[]|null} frames null = zurück zum Original
+   */
+  fellWechseln(frames) {
+    if (frames?.length) {
+      if (!this._fellOriginal) this._fellOriginal = this.frames;
+      this.frames = frames.filter(Boolean);
+    } else if (this._fellOriginal) {
+      this.frames = this._fellOriginal;
+      this._fellOriginal = null;
+    }
+    // Erzwingt im nächsten _animate einen echten Bildwechsel.
+    this._frameIndex = -1;
+    this._frameSatz = null;
+  }
+
   _resetAnimation() {
     this._frameIndex = -1;
+    this._frameSatz = null;
     this._phase = 0;
     // Ohne das startet ein neuer Lauf mit der Schräglage des letzten.
     this._lean = 0;
     this._dieTimer = 0;
+    // Ein abgebrochener Wurf würde sonst die Breitenkorrektur stehen lassen
+    // und den Affen den ganzen nächsten Lauf lang breit ziehen.
+    this._wurf = null;
+    this._hatGeworfen = false;
+    this._wurfEreignis = false;
+    this.art.scale.x = 1;
+    // Goldmodus endet mit dem Lauf.
+    this.fellWechseln(null);
     this.material.opacity = 1;
     this.pivot.position.set(0, 0, 0);
     this.pivot.rotation.set(0, 0, 0);
@@ -209,6 +312,7 @@ export class SpritePlayer {
     this.x = this.cfg.startPosition[0];
     this.zielBahn = 1;
     this.y = this.cfg.startPosition[1];
+    this.zielY = this.y;
     this.vx = 0;
     this.vy = 0;
     this.speed = 0;
@@ -304,10 +408,39 @@ export class SpritePlayer {
     }
 
     this.root.position.x = this.x;
+
+    /* HÖHE. Im normalen Lauf ist zielY gleich der Starthöhe, der Ausdruck
+     * unten also ein Nullschritt — der Affe steht so fest wie vorher. Nur
+     * der Bosskampf setzt ein anderes Ziel; dann sinkt er weich dorthin,
+     * statt zu springen. */
+    if (Math.abs(this.zielY - this.y) > 0.001) {
+      this.y += (this.zielY - this.y) * (1 - Math.exp(-4.5 * dt));
+      if (Math.abs(this.zielY - this.y) <= 0.001) this.y = this.zielY;
+      this.root.position.y = this.y;
+    }
+
     this.speed = Math.abs(this.vx);
 
     this._animate(dt);
     this._updateInvulnerability(dt);
+
+    /* Genau ein Frame lang 'wurf' — der Aufrufer erzeugt daraufhin die
+     * Banane. Das Ereignis kommt aus _animate, weil dort der Fortschritt der
+     * Bildfolge liegt; hier wird es nur abgeholt und gelöscht. */
+    if (this._wurfEreignis) {
+      this._wurfEreignis = false;
+      return 'wurf';
+    }
+    return null;
+  }
+
+  /**
+   * Zielhöhe setzen (Bosskampf).
+   *
+   * @param {number} y  World-Units; `null` heisst zurück auf die Starthöhe.
+   */
+  hoeheAnsteuern(y) {
+    this.zielY = y === null ? this.cfg.startPosition[1] : y;
   }
 
   /**
@@ -348,6 +481,33 @@ export class SpritePlayer {
       const t = this._dieTimer / sc.death.duration;
       this.pivot.position.set(0, -sc.death.drop * t * t, 0);
       return;
+    }
+
+    /* --- Wurf: hat Vorrang vor dem Kletterzyklus ---------------------- */
+    if (this._wurf !== null) {
+      const w = this._wurfCfg ?? { dauer: 0.55, loslassenBei: 8 / 12 };
+      this._wurf += dt / w.dauer;
+
+      if (!this._hatGeworfen && this._wurf >= w.loslassenBei) {
+        this._hatGeworfen = true;
+        this._wurfEreignis = true;
+      }
+
+      if (this._wurf >= 1) {
+        // Fertig: zurück auf die normale Breite und in den Kletterzyklus.
+        this._wurf = null;
+        this._hatGeworfen = false;
+        this.art.scale.x = 1;
+      } else {
+        const n = this.wurfFrames.length;
+        this._setFrame(Math.min(n - 1, Math.floor(this._wurf * n)), this.wurfFrames);
+        this.art.scale.x = this._wurfBreite;
+        // Der Kletterzyklus läuft im Hintergrund weiter, damit der Affe nach
+        // dem Wurf nicht auf einem beliebigen Bild wieder einsteigt.
+        this._phase += sc.idleCycleSpeed * TAU * dt;
+        if (this._phase > TAU) this._phase -= TAU;
+        return;
+      }
     }
 
     /* --- Kletterzyklus ------------------------------------------------- */

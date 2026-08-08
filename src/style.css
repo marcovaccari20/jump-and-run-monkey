@@ -833,6 +833,57 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
   border-color: rgba(255, 243, 196, 0.55);
 }
 
+/* -------------------------------------------------------- Bosswarnung --- *
+ * Das Schild liegt frei über dem Bild, nicht im Fluss des HUD: es soll den
+ * Blick holen und danach spurlos verschwinden, ohne dass irgendetwas
+ * verrutscht. Deshalb `position: absolute` und `pointer-events: none` — man
+ * spielt weiter, während es blinkt.                                        */
+.bosswarnung {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.bosswarnung img {
+  display: block;
+  /* Am Handy hochkant ist die Breite knapp — deshalb beides begrenzen. */
+  width: min(46vw, 240px);
+  height: auto;
+  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.55));
+}
+
+.bosswarnung.is-visible {
+  opacity: 1;
+  /* Blinkt dreimal pro Sekunde, wie in CONFIG.boss.warnung.blinkProSekunde
+   * beschrieben. Der Wert steht hier fest, weil eine CSS-Animation nichts
+   * aus der Config lesen kann; ändert sich der Wert dort, gehört er hier
+   * mit geändert. */
+  animation: bosswarnung-blink 0.3125s steps(1, end) infinite;
+}
+
+@keyframes bosswarnung-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0.15;
+  }
+}
+
+/* Wer reduzierte Bewegung eingestellt hat, bekommt das Schild ruhig — die
+ * Warnung geht dadurch nicht verloren, sie flackert nur nicht. */
+@media (prefers-reduced-motion: reduce) {
+  .bosswarnung.is-visible {
+    animation: none;
+  }
+}
+
 .hud__stats {
   position: absolute;
   left: 14px;

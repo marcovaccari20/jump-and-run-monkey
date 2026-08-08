@@ -1076,6 +1076,26 @@ export const CONFIG = {
         ],
       },
 
+      /* --- Bosskampf ---------------------------------------------------- *
+       * Beides bewusst KURZ und leise. Im Kampf sind bis zu sechs Bananen und
+       * ein Dutzend Haufen gleichzeitig unterwegs; jeder Klang, der länger
+       * als ein Achtel dauert, wird zu Brei.
+       *
+       * Der Adler selbst bleibt STUMM. Dafür gibt es keine Aufnahme, und ein
+       * erfundener Schrei aus dem Oszillator klingt nach Modem, nicht nach
+       * Greifvogel. */
+      wurf: {
+        mindestAbstand: 0.08,
+        // Kurzes Aufwärtsgleiten: "raus aus der Hand".
+        toene: [{ von: 420, bis: 900, dauer: 0.12, gain: 0.16, form: 'triangle' }],
+      },
+
+      kacke: {
+        mindestAbstand: 0.1,
+        // Tiefes Rauschen, das nach unten wegsackt.
+        toene: [{ von: 700, bis: 130, dauer: 0.2, gain: 0.14, rauschen: true, guete: 0.9 }],
+      },
+
       /* Game Over: drei absteigende Töne, der letzte Schritt fällt weiter als
        * die davor — das hört sich an wie "aus". */
       gameover: {
@@ -1335,7 +1355,17 @@ export const CONFIG = {
       nachladen: 0.18,
       tempo: 11.0, // Units/s, fliegt gerade nach oben
       radius: 0.20, // halb so gross wie die Sammelbanane
-      hitRadius: 0.34, // grosszügig — Treffen soll sich gut anfühlen
+      /* 0.24 statt der ursprünglichen 0.34.
+       *
+       * Gemessen im Hochformat: mit 0.34 plus dem damaligen Adlerradius von
+       * 0.72 lag das Trefferfenster bei ±1.06 Einheiten — bei einer
+       * Feldbreite von ±1.58 traf man also fast immer, egal wo man stand.
+       * Der Kampf war nach drei Würfen in gut zwei Sekunden vorbei.
+       *
+       * Zusammen mit `adlerTrefferAnteil` unten ergibt sich jetzt ein
+       * Fenster von rund ±0.8 — knapp unter dem Bahnabstand. Man muss auf
+       * die Bahn unter ihm, aber nicht auf den Zentimeter genau. */
+      hitRadius: 0.24,
       poolSize: 6,
     },
 
@@ -1343,6 +1373,11 @@ export const CONFIG = {
      * sonst zählen bei zwei Bananen dicht hintereinander beide. */
     treffer: 3,
     trefferPause: 0.45,
+    /* Trefferkreis des Adlers als Anteil seiner Bildhöhe.
+     * Deutlich kleiner als er aussieht: die Flügel spannen weit, getroffen
+     * wird aber der Körper. Ein Trefferkreis über die volle Spannweite
+     * hiesse, dass Federn zählen. */
+    adlerTrefferAnteil: 0.24,
 
     /* BELOHNUNG. Die goldene Banane erscheint dort, wo der Adler war, und
      * fliegt zum Affen. Eingesammelt wird sie NICHT sofort benutzt —
@@ -1966,6 +2001,10 @@ export const CONFIG = {
       pause: ['Escape', 'KeyP'],
       confirm: ['Enter', 'Space'],
       debug: ['F1'],
+      /* F2 startet den Bosskampf sofort (Entwicklung/Test) — siehe
+       * Game.bossStarten(). Im normalen Spiel kommt er ab Gebiet 5, das
+       * dauert gut elf Minuten; zum Anschauen ist das keine Option. */
+      boss: ['F2'],
       // Ton an/aus. Eine Taste, kein Menü: wer den Ton weghaben will, will
       // ihn sofort weghaben.
       mute: ['KeyM'],

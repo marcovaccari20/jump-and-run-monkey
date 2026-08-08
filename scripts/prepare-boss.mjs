@@ -181,7 +181,11 @@ if (existsSync(kacke)) {
   }
 
   const namen = ['kacke_klein', 'kacke_mittel', 'kacke_gross'];
-  const hoehen = [110, 150, 200];
+  /* Volle Auflösung der Quelle (132/251/397 px) statt der früheren
+   * 110/150/200. Im Spiel sind die Haufen 0.6 / 0.88 / 1.24 Welteinheiten
+   * hoch — bei rund 330 px je Einheit also 200 / 290 / 410 Bildpunkte.
+   * Kleiner zu exportieren hiess, sie hinterher wieder aufzublasen. */
+  const hoehen = [132, 251, 397];
   if (gruppen.length !== 3) {
     console.warn(`  ACHTUNG: ${gruppen.length} Haufen gefunden statt 3 — Schwellwert prüfen`);
   }
@@ -213,8 +217,18 @@ if (existsSync(kacke)) {
  * aufgelöst ist; die tatsächliche Grösse steht in CONFIG.
  */
 const FOLGEN = [
-  { quelle: 'adler_flug', ziel: 'public/boss/adler_flug', hoehe: 420 },
-  { quelle: 'adler_kacken', ziel: 'public/boss/adler_kacken', hoehe: 420 },
+  /* 800 statt der früheren 420.
+   *
+   * 420 war zu klein und im Spiel als Klötzchen zu sehen: der Adler ist
+   * 2.4 Welteinheiten hoch, der Affe 2.5 — der Affe kam mit 720 px herein,
+   * der Adler mit 420. Auf einem hohen Bildschirm war das mehr als doppelte
+   * Vergrösserung.
+   *
+   * 800 ist praktisch die volle Auflösung der Rohbilder (972x806); höher zu
+   * gehen brächte nichts ausser Dateigrösse. Die 26 Bilder werden ohnehin
+   * erst geladen, wenn der erste Bosskampf ansteht. */
+  { quelle: 'adler_flug', ziel: 'public/boss/adler_flug', hoehe: 800 },
+  { quelle: 'adler_kacken', ziel: 'public/boss/adler_kacken', hoehe: 800 },
   // Der goldene Affe ist ein Fellwechsel der Spielfigur und folgt deshalb
   // der Namensgebung der übrigen Kletter-Sätze.
   { quelle: 'affe_gold', ziel: 'public/textures/gold', hoehe: 720, name: 'move' },
