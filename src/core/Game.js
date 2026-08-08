@@ -571,7 +571,7 @@ export class Game {
       if (!this.states.is(GameState.PLAYING) || !this.player.alive) return false;
     }
 
-    return this.boss.starten(this.player);
+    return this.boss.starten(this.player, this.worldView);
   }
 
   /**
@@ -1776,18 +1776,29 @@ export class Game {
     const half = halfWidthAt(this.camera, 0, affenHoehe);
     if (!Number.isFinite(half)) return;
 
-    // Etwas Rand lassen, damit der Affe nicht halb im Bildrand klebt.
-    // Radius vom Spieler, nicht aus CONFIG: der weisse Affe hat die halbe
-    // Hitbox und bekommt dadurch ein etwas breiteres Band.
-    const hitRadius = this.player?.hitRadius ?? this.cfg.player.hitRadius;
-    const limit = Math.max(0.9, half - hitRadius * 1.6);
+    /* DER RAND IST DIE HALBE BILDBREITE DES AFFEN, NICHT SEIN TREFFERRADIUS.
+     *
+     * Hier stand `hitRadius * 1.6`. Das war eine Faustzahl für "etwas Rand
+     * lassen" und hat nichts damit zu tun, wann der Affe wirklich beschnitten
+     * wird — beschnitten wird er, wenn sein BILD über den Rand ragt, und das
+     * Bild ist 1.40 Einheiten breit, während hitRadius·1.6 nur 0.67 ergab.
+     *
+     * Der Unterschied ist gering (0.03 Einheiten), aber die Bedeutung nicht:
+     * jetzt ist `limit` genau die Stelle, an der der Affe bündig mit dem
+     * Bildrand steht. Deshalb darf die äusserste Bahn auch bei 1.0 liegen —
+     * ganz in der Ecke, wie es sein soll.
+     *
+     * Vom SPIELER genommen, nicht aus CONFIG: der weisse Affe ist halb so
+     * gross und bekommt dadurch ein breiteres Feld. */
+    const halbeBreite = (this.player?.spriteWidth ?? 1.4) / 2;
+    const limit = Math.max(0.9, half - halbeBreite);
 
     view.bounds.minX = Math.max(base.bounds.minX, -limit);
     view.bounds.maxX = Math.min(base.bounds.maxX, limit);
     view.bounds.minY = base.bounds.minY;
     view.bounds.maxY = base.bounds.maxY;
 
-    /* Die drei Bahnen aus den Anteilen. Hängen am tatsächlichen Feld, nicht
+    /* Die vier Bahnen aus den Anteilen. Hängen am tatsächlichen Feld, nicht
      * an festen Weltkoordinaten — im Hochformat ist es weniger als halb so
      * breit wie im Querformat. */
     const halbFeld = view.bounds.maxX;

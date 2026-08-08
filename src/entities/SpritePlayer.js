@@ -391,7 +391,25 @@ export class SpritePlayer {
       // Zeitkonstante aus der gewünschten Wechselzeit: nach etwa
       // `bahnWechselZeit` ist der Weg zu ~95 % zurückgelegt.
       const rate = 3 / Math.max(0.02, cfg.bahnWechselZeit ?? 0.16);
-      const schritt = rest * (1 - Math.exp(-rate * dt));
+      let schritt = rest * (1 - Math.exp(-rate * dt));
+
+      /* GEDECKELT AUF DIE LAUFGESCHWINDIGKEIT.
+       *
+       * Die Zeitkonstante oben ist wegunabhängig: der Affe legt JEDEN
+       * Abstand in etwa `bahnWechselZeit` zurück. Solange die Bahnen bei
+       * ±0.66 eines schmalen Feldes lagen, war das unauffällig. Über die
+       * volle Breite sind es im Querformat 3.3 Einheiten je Bahnwechsel —
+       * in 0.16 s wären das 20 Einheiten/s bei einer Laufgeschwindigkeit
+       * von 8.4. Er würde nicht laufen, sondern springen.
+       *
+       * Schlimmer: der Fairness-Beweis rechnet mit `moveSpeed`. Eine Figur,
+       * die schneller ist als das Modell, macht den Beweis nicht falsch
+       * (mehr Tempo heisst mehr Ausweichmöglichkeiten) — eine, die durchs
+       * Bild teleportiert, aber unlesbar. */
+      const maxSchritt = cfg.moveSpeed * dt;
+      if (schritt > maxSchritt) schritt = maxSchritt;
+      else if (schritt < -maxSchritt) schritt = -maxSchritt;
+
       this.x += schritt;
       this.vx = dt > 0 ? schritt / dt : 0;
 

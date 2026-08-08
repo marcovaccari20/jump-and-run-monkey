@@ -54,6 +54,8 @@ export class Banana {
   spawn(x, y, rand01) {
     this.x = x;
     this.y = y;
+    // Bahn, auf der sie geworfen wurde — um die wird gependelt, siehe update().
+    this._mitteX = x;
     this._bobPhase = rand01 * 6.283;
 
     /* Fläche = (2*radius)^2, aber im Seitenverhältnis des Bildes. Die
@@ -70,8 +72,20 @@ export class Banana {
   update(dt, fallSpeed) {
     this.y -= fallSpeed * dt;
     this._bobPhase += dt * 2.4;
-    // leichtes Pendeln, damit die Banane zwischen den Steinen auffällt
-    this.x += Math.cos(this._bobPhase) * 0.55 * dt;
+
+    /* Pendeln UM DIE BAHN, nicht aufsummieren.
+     *
+     * Hier stand `this.x += Math.cos(phase) * 0.55 * dt` — eine aufaddierte
+     * Bewegung. Über eine ganze Schwingung hebt sich das auf, die Auslenkung
+     * bleibt also beschränkt (rechnerisch ±0.55/2.4 = ±0.23). Verlassen kann
+     * man sich darauf trotzdem nicht: es ist eine Summe über wechselnde
+     * Zeitschritte, und bei Rucklern bleibt ein Rest stehen.
+     *
+     * Seit die Banane auf einer der vier Bahnen abgeworfen wird, muss sie
+     * dort auch ankommen. Deshalb jetzt eine echte Schwingung um die
+     * Abwurfstelle — gleiche Weite, gleicher Eindruck, aber garantiert
+     * kein Weglaufen. */
+    this.x = this._mitteX + Math.sin(this._bobPhase) * 0.23;
 
     this.mesh.position.x = this.x;
     this.mesh.position.y = this.y;

@@ -129,12 +129,33 @@ export class BossKampf {
    * Kampf beginnen.
    *
    * @param {object} player wird auf Kampfhöhe geschickt
+   * @param {{bounds:{minX:number,maxX:number}}} [world] Feld, an das der
+   *   Adler in der Grösse angepasst wird
    */
-  starten(player) {
+  starten(player, world) {
     if (this.aktiv) return false;
 
     this.phase = BossPhase.WARNUNG;
     this._uhr = 0;
+
+    /* GRÖSSE ANS FELD ANPASSEN.
+     *
+     * Der Adler ist 2.4 Einheiten hoch und damit 2.9 breit. Im Querformat
+     * ist das Feld 9.9 breit — kein Problem. Im Hochformat sind es 3.2, und
+     * sobald er die äussere Bahn anfliegt, hängen die Flügelspitzen 0.75
+     * Einheiten über dem sichtbaren Rand.
+     *
+     * Ganz vermeiden lässt sich das nicht: er müsste dafür so schmal werden
+     * wie der Affe, dann wäre er kein Boss mehr. Höchstens 62 % der
+     * Feldbreite ist der Kompromiss — im Hochformat bleibt ein Überstand
+     * von rund 0.28 Einheiten, was als "grosser Vogel" liest und nicht als
+     * "abgeschnittenes Bild". */
+    if (world) {
+      const feldBreite = world.bounds.maxX - world.bounds.minX;
+      const seite = this.adler.breiteJeHoehe ?? 1.2;
+      const maxHoehe = (feldBreite * 0.62) / seite;
+      this.adler.groesseSetzen(Math.min(this.cfg.adlerHoehe, maxHoehe));
+    }
 
     this.adler.reset();
     // Über dem Bildrand parken; der Einflug holt ihn herunter.
@@ -236,7 +257,7 @@ export class BossKampf {
         const oben = this.cfg.adlerY + this.cfg.adlerHoehe * 2.2;
         this.adler.y = oben + (this.cfg.adlerY - oben) * weich;
         this.adler.object3D.position.y = this.adler.y;
-        this.adler.update(dt, minX, maxX);
+        this.adler.update(dt, minX, maxX, world.bahnX);
         if (t >= 1) {
           this.phase = BossPhase.KAMPF;
           this._uhr = 0;
@@ -246,11 +267,25 @@ export class BossKampf {
       }
 
       case BossPhase.KAMPF: {
-        const ereignis = this.adler.update(dt, minX, maxX);
-        if (ereignis === 'kacke') this._kackeAbwerfen();
+        const ereignis = this.adler.update(dt, minX, maxX, world.bahnX);
+        if (ereignis === 'kacke') this._kackeAbwerfen(world.bahnX);
 
+        /* ER GREIFT AN, WENN ER ANGEKOMMEN IST — nicht unterwegs.
+         *
+         * Vorher lief nur eine Uhr, und wenn sie ablief, kackte er sofort,
+         * auch mitten im Anflug. Weil der Haufen auf die nächstgelegene Bahn
+         * gelegt wird, landete er dann auf einer Bahn, die er gerade nur
+         * überquerte — gemessen kam die Kacke zu 63 % auf den beiden inneren
+         * Bahnen herunter, obwohl er alle vier gleich oft ansteuert.
+         *
+         * Mit dieser Bedingung fällt sie dort, wo er hinwollte. Nebenbei
+         * wird der Kampf lesbar: er fliegt sichtbar hin und lässt dann los,
+         * statt im Vorbeiflug zu streuen.
+         *
+         * Kein Deadlock möglich: die Uhr bleibt abgelaufen und der Angriff
+         * kommt im ersten Frame, in dem er nah genug ist. */
         this._angriffUhr -= dt;
-        if (this._angriffUhr <= 0) {
+        if (this._angriffUhr <= 0 && this.adler.beiZiel(this._zielToleranz(world))) {
           const a = this.cfg.kacke.abstand;
           this._angriffUhr = a.min + Math.random() * (a.max - a.min);
           this.adler.angreifen();
@@ -269,14 +304,42 @@ export class BossKampf {
 
   /* --------------------------------------------------------------- Details */
 
-  _kackeAbwerfen() {
+  /**
+   * @param {number[]} bahnen x-Positionen der Bahnen
+   */
+  _kackeAbwerfen(bahnen) {
     const k = this.kacke.acquire();
     if (!k) return;
     const arten = this.cfg.kacke.arten;
     const art = arten[Math.floor(Math.random() * arten.length)];
-    // Unter dem Körper, nicht am unteren Bildrand des Sprites: sonst
-    // erschiene sie sichtbar neben ihm statt aus ihm.
-    k.spawn(art, this.adler.x, this.adler.y - this.adler.hoehe * 0.28);
+
+    /* AUF DIE NÄCHSTE BAHN, wie alles andere, was herunterkommt.
+     *
+     * Sonst fiele sie an einer stufenlosen Stelle — zwischen zwei Bahnen
+     * kann der Affe nicht stehen, und dort ist sie entweder harmlos oder
+     * (wenn sie eine Bahn streift) unfair, je nachdem wie der Adler gerade
+     * schwebt. Beides ist Zufall statt Spiel. */
+    const x = this._naechsteBahn(this.adler.x, bahnen);
+    k.spawn(art, x, this.adler.y - this.adler.hoehe * 0.28);
+  }
+
+  _naechsteBahn(x, bahnen) {
+    if (!bahnen?.length) return x;
+    let beste = bahnen[0];
+    for (const b of bahnen) if (Math.abs(b - x) < Math.abs(beste - x)) beste = b;
+    return beste;
+  }
+
+  /**
+   * Wie nah "angekommen" heisst: ein Drittel des Bahnabstands.
+   *
+   * Als Anteil und nicht als feste Zahl, weil der Abstand vom Format abhängt
+   * — im Hochformat gut eine Einheit, im Querformat mehr als drei.
+   */
+  _zielToleranz(world) {
+    const b = world.bahnX;
+    if (!b || b.length < 2) return 0.3;
+    return Math.abs(b[1] - b[0]) / 3;
   }
 
   _kackeSchritt(dt, player, world, fallTempo) {

@@ -58,26 +58,43 @@ export const CONFIG = {
      * das tut, schiebt `sichtbarBis` von -4.5 auf -1.7, während Objekte bis
      * despawnY (-5.6) sichtbar bleiben — gemessen kippt der Anteil der Frames
      * mit überlappenden Objektbildern dadurch von 0.000 % auf 0.278 %. */
-    bounds: { minX: -4.6, maxX: 4.6, minY: -2.9, maxY: 2.7 },
-
-    /* DREI BAHNEN — links, Mitte, rechts.
+    /* minX/maxX sind nur noch eine SICHERUNG NACH OBEN, keine Spielfeldbreite.
      *
-     * Der Affe bewegt sich nicht mehr stufenlos, sondern springt zwischen
-     * drei festen Spuren. Das ist keine Vereinfachung aus Bequemlichkeit,
-     * sondern räumt ein echtes Ärgernis ab: bei freier Bewegung fielen
-     * Objekte auch dort, wo der Affe im Hochformat gar nicht hinkam — das
-     * Feld ist dort schmaler als die Abwurfbreite. Mit Bahnen fällt alles
-     * genau dort, wo man auch hin kann.
+     * Bis hierher stand da ±4.6, und das war die eigentliche Fessel: im
+     * Querformat sind auf Affenhöhe ±5.66 Einheiten zu sehen, gespielt wurde
+     * aber nur bis ±4.6 — und die äusserste Bahn lag bei 0.66 davon, also
+     * bei ±3.04. Gemessen: der Affe erreichte 53.6 % der sichtbaren Breite,
+     * die Ecken links und rechts waren totes Bild.
+     *
+     * Jetzt bestimmt allein die Kamera die Breite (Game._updateWorldBounds);
+     * ±9 fängt nur noch absurde Seitenverhältnisse ab. */
+    bounds: { minX: -9, maxX: 9, minY: -2.9, maxY: 2.7 },
+
+    /* VIER BAHNEN — bis in beide Ecken.
+     *
+     * Der Affe springt zwischen festen Spuren statt sich stufenlos zu
+     * bewegen. Das ist kein Vereinfachen: bei freier Bewegung fielen Objekte
+     * auch dort, wo er im Hochformat gar nicht hinkam. Mit Bahnen fällt alles
+     * genau dort, wo man auch hin kann — und ALLES heisst alles, Steine,
+     * Münzen, Bananen und die Kacke des Adlers.
      *
      * Die Werte sind ANTEILE der nutzbaren Halbbreite, keine Weltkoordinaten:
-     * das Feld ist im Hochformat viel schmaler als im Querformat, feste
-     * Zahlen lägen dort ausserhalb. Game._updateWorldBounds rechnet daraus
-     * die tatsächlichen x-Positionen (worldView.bahnX).
+     * das Feld ist im Hochformat weniger als halb so breit wie im Querformat,
+     * feste Zahlen lägen dort ausserhalb. Game._updateWorldBounds rechnet
+     * daraus die tatsächlichen x-Positionen (worldView.bahnX).
      *
-     * 0.66 statt 1.0: ganz am Rand klebte der Affe halb im Bildrand, und die
-     * äusseren Bahnen lägen so weit auseinander, dass der Wechsel von links
-     * nach rechts länger dauert als die Vorwarnzeit. */
-    bahnen: [-0.66, 0, 0.66],
+     * ±1.0 UND NICHT MEHR ±0.66. Der alte Wert stand da, weil der Affe "ganz
+     * am Rand halb im Bildrand klebte" — das lag aber nicht am Rand, sondern
+     * daran, dass der Rand mit seinem TREFFERRADIUS berechnet wurde
+     * (hitRadius·1.6 = 0.67) statt mit seiner halben BILDBREITE (0.70). Jetzt
+     * wird mit der Bildbreite gerechnet, und dann steht er auf der äussersten
+     * Bahn exakt bündig mit dem Bildrand, ohne Beschnitt.
+     *
+     * VIER statt drei: mit drei Bahnen über die volle Breite läge die Mitte
+     * allein zwischen zwei sehr weit entfernten Aussenbahnen; im Querformat
+     * wären das 5 Einheiten Sprung. Vier Bahnen halbieren den Abstand auf
+     * zwei Drittel der Halbbreite. */
+    bahnen: [-1, -1 / 3, 1 / 3, 1],
     // Höhe, auf der Steine/Bananen erzeugt werden.
     // MUSS über der sichtbaren Oberkante liegen, und zwar mindestens um den
     // grössten Steinradius (0.62): sonst ploppt der Stein sichtbar ins Bild,
@@ -602,7 +619,24 @@ export const CONFIG = {
       maxSprung: 3.4,
       /* Zug der freien Bahn zum Rand (0 = keiner, 1 = nur noch Rand).
        * Damit die Objekte in der MITTE ankommen — die Begründung steht in
-       * Korridor._naechsterAbschnitt und ist gegen die Anschauung. */
+       * Korridor._naechsterAbschnitt und ist gegen die Anschauung.
+       *
+       * SEIT DER BAHN-SPERRE (Spawner._noetigeBahnen) MACHT DER WERT KAUM
+       * NOCH EINEN UNTERSCHIED. Gemessen über je 500 s im Hochformat, Anteil
+       * der Objekte je Bahn:
+       *
+       *     0.00   29.3 / 20.6 / 21.2 / 28.9
+       *     0.32   28.2 / 22.6 / 22.2 / 27.1
+       *     0.65   27.4 / 23.5 / 23.7 / 25.4
+       *     1.00   27.3 / 22.9 / 22.2 / 27.7
+       *
+       * Die Unterschiede liegen im Rauschen einzelner Läufe. Der Rest —
+       * aussen rund 28 %, innen rund 22 % statt je 25 % — ist keine
+       * Einstellungssache, sondern Geometrie: eine innere Bahn hat zwei
+       * Nachbarn, eine äussere nur einen, also wird sie öfter mitgesperrt.
+       * Vor der Umstellung waren es 35 / 16 / 14 / 35 — DAS war eine
+       * Schlagseite, das hier ist eine Nuance. Bleibt bei 0.32; ein anderer
+       * Wert würde nur Rauschen nachfahren. */
       randSog: 0.32,
       haltMin: 0.14,
       haltMax: 0.55,
@@ -1161,8 +1195,16 @@ export const CONFIG = {
     // Langsamer als die Hindernisse. Eine Münze im Steintempo wäre kein
     // Bonus, sondern ein zweiter Reflextest.
     fallSpeedFactor: 0.55,
-    // Pendeln um die Abwurfstelle — fällt im Bild auf, ohne davonzudriften.
-    pendelWeite: 0.55,
+    /* Pendeln um die Abwurfstelle — fällt im Bild auf, ohne davonzudriften.
+     *
+     * 0.28 STATT 0.55. Die Münze wird jetzt auf einer Bahn abgeworfen, und
+     * dort muss sie auch bleiben. Nachgerechnet für den weissen Affen, der
+     * die kleinste Hitbox hat: sein Radius 0.21 plus der Münzradius
+     * 0.34·1.35 = 0.46 ergibt 0.67 Einsammelreichweite. Bei ±0.55 Ausschlag
+     * blieben davon 0.12 übrig — man musste die Münze im richtigen Moment
+     * des Pendelns erwischen. Mit 0.28 ist sie über den ganzen Ausschlag
+     * erreichbar, und man sieht das Schwingen immer noch. */
+    pendelWeite: 0.28,
     pendelTempo: 2.2,
 
     /* Wie viele Münzen ein Gebiet hergibt. Bei 132 s je Wand sind 3 Stück

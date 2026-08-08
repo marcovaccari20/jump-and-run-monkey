@@ -52,12 +52,34 @@ export class Adler {
 
     this.breite = h * aspect;
     this.hoehe = h;
+    // Ungeskalierte Masse — groesseSetzen() rechnet daraus zurück.
+    this._breiteVoll = this.breite;
+    /** Seitenverhältnis der Bilder: Breite je Einheit Höhe. */
+    this.breiteJeHoehe = aspect;
 
     this.reset();
   }
 
   get object3D() {
     return this.root;
+  }
+
+  /**
+   * Bildhöhe nachträglich ändern.
+   *
+   * Nötig, weil die Feldbreite erst zur Laufzeit feststeht: im Hochformat
+   * ist das Spielfeld weniger als halb so breit wie im Querformat, und ein
+   * Adler in voller Grösse ragt dort mit den Flügeln weit über den Rand,
+   * sobald er die äussere Bahn anfliegt. Die Geometrie wird nicht neu
+   * gebaut, nur skaliert — im Kampf soll nichts allokiert werden.
+   *
+   * @param {number} hoehe World-Units
+   */
+  groesseSetzen(hoehe) {
+    const f = hoehe / this.cfg.adlerHoehe;
+    this.mesh.scale.set(f, f, 1);
+    this.breite = this._breiteVoll * f;
+    this.hoehe = hoehe;
   }
 
   reset() {
@@ -75,7 +97,9 @@ export class Adler {
     this._kackFortschritt = null;
     this._hatGekackt = false;
     this._zielX = 0;
-    this._zielUhr = 0;
+    // Verweiluhr laeuft erst nach dem Ankommen, siehe update().
+    this._verweil = 0;
+    this._zielFrist = 0;
 
     this.root.position.set(this.x, this.y, 0);
     this.root.visible = true;
@@ -99,34 +123,78 @@ export class Adler {
    * genug ist — mit Abbruch, damit ein schmales Feld die Schleife nicht
    * ewig laufen lässt.
    */
-  _neuesZiel(minX, maxX) {
+  _neuesZiel(minX, maxX, bahnen) {
     const a = this.cfg.adler;
     const spanne = maxX - minX;
     let ziel = this._zielX;
-    for (let i = 0; i < 8; i++) {
-      const kandidat = minX + Math.random() * spanne;
-      if (Math.abs(kandidat - this._zielX) >= spanne * a.minSprung) {
+
+    if (bahnen?.length > 1) {
+      /* ER FLIEGT BAHNEN AN, NICHT ZUFALLSPUNKTE.
+       *
+       * Vorher zog er einen stufenlosen x-Wert und blieb dabei mit Trägheit
+       * bevorzugt in der Mitte hängen. Weil seine Kacke auf die nächste Bahn
+       * gelegt wird, kam sie dadurch fast nur innen herunter — gemessen über
+       * 90 s: 8 / 26 / 16 / 4 Abwürfe auf die vier Bahnen. Die äusseren
+       * Bahnen waren praktisch sicher.
+       *
+       * Jetzt wählt er eine Bahn und fliegt sie an. Das verteilt nicht nur
+       * gleichmässig, es ist auch LESBAR: man sieht, wo er hinwill, und kann
+       * vorher weg. Ein Gegner, dessen Absicht man erkennt, ist schwerer,
+       * aber fair; einer, der zufällig zuckt, ist nur unangenehm.
+       *
+       * Dieselbe Bahn zweimal hintereinander wird vermieden — sonst bleibt
+       * er stehen und wirkt kaputt. */
+      let kandidaten = bahnen.filter((x) => Math.abs(x - this._zielX) > 0.01);
+      if (kandidaten.length === 0) kandidaten = bahnen;
+      ziel = kandidaten[Math.floor(Math.random() * kandidaten.length)];
+    } else {
+      for (let i = 0; i < 8; i++) {
+        const kandidat = minX + Math.random() * spanne;
+        if (Math.abs(kandidat - this._zielX) >= spanne * a.minSprung) {
+          ziel = kandidat;
+          break;
+        }
         ziel = kandidat;
-        break;
       }
-      ziel = kandidat;
     }
+
     this._zielX = ziel;
-    this._zielUhr = a.zielWechsel.min + Math.random() * (a.zielWechsel.max - a.zielWechsel.min);
+    /* Verweildauer NACH dem Ankommen, nicht ab jetzt. Siehe update(). */
+    this._verweil = a.zielWechsel.min + Math.random() * (a.zielWechsel.max - a.zielWechsel.min);
+    /* Notbremse: käme er nie an (eingeklemmt, Feld geändert), stünde er
+     * sonst für immer auf demselben Ziel. */
+    this._zielFrist = 3.5;
   }
 
   /**
    * @param {number} dt
    * @param {number} minX linke Grenze seiner Bahn
    * @param {number} maxX rechte Grenze
+   * @param {number[]} [bahnen] Bahnen, die er anfliegt (siehe _neuesZiel)
    * @returns {'kacke'|null} 'kacke' genau in dem Frame, in dem losgelassen wird
    */
-  update(dt, minX, maxX) {
+  update(dt, minX, maxX, bahnen) {
     const a = this.cfg.adler;
 
-    /* --- Seitliche Bewegung ------------------------------------------- */
-    this._zielUhr -= dt;
-    if (this._zielUhr <= 0) this._neuesZiel(minX, maxX);
+    /* --- Seitliche Bewegung ------------------------------------------- *
+     *
+     * ERST ANKOMMEN, DANN DAS NÄCHSTE ZIEL.
+     *
+     * Hier lief nur eine Uhr: alle 0.7 bis 1.6 s ein neues Ziel, egal wo er
+     * gerade war. Bei einem Tempo von 3.4 und bis zu 3.1 Einheiten Weg kam
+     * er auf die andere Feldseite gar nicht an, bevor die Uhr ihn schon
+     * woanders hinschickte — er pendelte um die Mitte. Zusammen mit der
+     * Regel "gekackt wird am Ziel" landete die Kacke zu 71 % auf den beiden
+     * inneren Bahnen.
+     *
+     * Jetzt läuft die Verweiluhr erst, WENN er da ist. Die Frist darüber
+     * ist nur die Notbremse. */
+    const da = Math.abs(this._zielX - this.x) <= 0.12;
+    if (da) this._verweil -= dt;
+    this._zielFrist -= dt;
+    if ((da && this._verweil <= 0) || this._zielFrist <= 0) {
+      this._neuesZiel(minX, maxX, bahnen);
+    }
 
     const zielV = Math.max(-a.tempo, Math.min(a.tempo, (this._zielX - this.x) * 2.4));
     this.vx += (zielV - this.vx) * (1 - Math.exp(-a.beschleunigung * dt));
@@ -171,6 +239,15 @@ export class Adler {
     this._setFrame(this.flug, Math.floor(this._phase * this.flug.length));
 
     return ereignis;
+  }
+
+  /**
+   * Ist er nah genug an der Bahn, die er anfliegt?
+   *
+   * @param {number} toleranz World-Units
+   */
+  beiZiel(toleranz) {
+    return Math.abs(this.x - this._zielX) <= toleranz;
   }
 
   /** Startet einen Angriff, sofern er nicht schon einen ausführt. */

@@ -209,7 +209,7 @@ const breiteste = (mengen) => mengen.reduce((m, [a, b]) => Math.max(m, b - a), 0
  * inklusive der Verengung im Hochformat, wo nur noch ca. ±2 Einheiten
  * Spielfeld bleiben. Genau dort ist die Lücke am schwersten unterzubringen.
  */
-function spielfeld(aspect, hitRadius) {
+function spielfeld(aspect, halbeAffenBreite, pCfg) {
   const cam = CONFIG.render.camera;
   const camera = new PerspectiveCamera(cam.fov, aspect, cam.near, cam.far);
   camera.position.set(...cam.position);
@@ -219,8 +219,23 @@ function spielfeld(aspect, hitRadius) {
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
 
   const base = CONFIG.world;
-  const half = halfWidthAt(camera, 0, base.bounds.maxY);
-  const limit = Math.max(0.9, half - hitRadius * 1.6);
+
+  /* GENAU WIE Game._updateWorldBounds — und das war es lange NICHT.
+   *
+   * Hier stand `halfWidthAt(camera, 0, base.bounds.maxY)` und
+   * `half - hitRadius * 1.6`. Das Spiel misst auf der HÖHE DES AFFEN und
+   * zieht seine halbe BILDBREITE ab. Ein Prüfer, der ein anderes Spielfeld
+   * annimmt als das Spiel, prüft das falsche Spiel.
+   *
+   * VIEL SCHLIMMER WAR DAS FEHLENDE `bahnX`. Seit die Objekte auf Bahnen
+   * fallen, liest Spawner._freieStelle `world.bahnX`; stand das nicht drin,
+   * fand es keine freie Bahn und warf GAR NICHTS ab. Nachgemessen: null
+   * Steine gleichzeitig im Bild über 120 s. Der Beweis lief auf einem leeren
+   * Feld und meldete brav "BESTANDEN" — genau die Sorte Test, vor der weiter
+   * oben in dieser Datei gewarnt wird, nur diesmal in ihr selbst. */
+  const affenHoehe = (pCfg.startPosition ?? CONFIG.player.startPosition)[1];
+  const half = halfWidthAt(camera, 0, affenHoehe);
+  const limit = Math.max(0.9, half - halbeAffenBreite);
 
   return {
     ...base,
@@ -230,8 +245,23 @@ function spielfeld(aspect, hitRadius) {
       minY: base.bounds.minY,
       maxY: base.bounds.maxY,
     },
-    spawnHalfWidth: Math.min(base.spawnHalfWidth, limit + 0.4),
+    // Die Bahnen, auf die alles fällt. OHNE DIESE ZEILE FÄLLT NICHTS.
+    bahnX: base.bahnen.map((anteil) => anteil * limit),
+    spawnHalfWidth: Math.min(base.spawnHalfWidth, limit + 0.8),
   };
+}
+
+/**
+ * Halbe Bildbreite des Affen — dieselbe Zahl, die SpritePlayer aus
+ * spriteHeight und dem Seitenverhältnis der Textur bildet.
+ *
+ * Das Seitenverhältnis steht nicht in CONFIG (es kommt aus der Bilddatei),
+ * deshalb hier als gemessene Konstante: die Kletterbilder aller drei Affen
+ * sind 377x720, also 0.5236 breit je Einheit Höhe.
+ */
+const BILD_SEITE = 377 / 720;
+function halbeAffenBreite(pCfg) {
+  return (pCfg.spriteHeight * BILD_SEITE) / 2;
 }
 
 /** Wand-Stufe zur Spielzeit (Spiegel von PlantWall.stageIndexAt). */
@@ -259,7 +289,7 @@ function lauf({ seed, affe, aspect, steigt, hoehe }) {
     const hitRadius = pCfg.hitRadius;
     const ignoreR = charCfg.ignoreRockRadius ?? 0;
 
-    const world = spielfeld(aspect, hitRadius);
+    const world = spielfeld(aspect, halbeAffenBreite(pCfg), pCfg);
     const difficulty = new DifficultyCurve(CONFIG.difficulty);
     difficulty.setRockMix(CONFIG.rock.mix);
 

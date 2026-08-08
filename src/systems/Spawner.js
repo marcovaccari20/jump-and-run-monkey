@@ -143,6 +143,10 @@ export class Spawner {
     // mitten im Bosskampf zu Ende ging.
     this.nachschubAus = false;
 
+    // Bahnzähler für den Ausgleich (siehe _bahnWaehlen) — ein neuer Lauf
+    // fängt ohne Schuldenstand an.
+    this._bahnZaehler = null;
+
     // Taktgeber für den Einzelstrom (siehe _einzelnesObjekt).
     this._salveRest = 0;
     this._gruppeGroesse = 1;
@@ -521,53 +525,149 @@ export class Spawner {
     }
     const s = this.korridor.spanne(jetzt + tEin, jetzt + tAus, this._spanne);
 
-    const abstand = k.halbbreite + rand + k.reserve;
-    const sperreVon = s.min - abstand;
-    const sperreBis = s.max + abstand;
+    /* WELCHE BAHNEN DER AFFE BRAUCHT.
+     *
+     * Bis hierher wurde ein BAND um die garantierte Bahn gesperrt:
+     * `halbbreite + rand + reserve`, im Hochformat 1.38 Einheiten zu jeder
+     * Seite. Das stammt aus der Zeit der stufenlosen Bewegung, wo der Affe
+     * überall dazwischen stehen konnte und deshalb überall Platz brauchte.
+     *
+     * Mit Bahnen ist es zu grob und richtet Schaden an: der Bahnabstand
+     * beträgt im Hochformat 1.035 — das Band verschluckt also immer die
+     * NACHBARBAHNEN mit. Und weil die inneren Bahnen zwei Nachbarn haben und
+     * die äusseren nur einen, traf es die Mitte doppelt. Gemessen über 600 s:
+     *
+     *     aussen 34.6 %   innen 16.1 %   innen 14.5 %   aussen 34.8 %
+     *
+     * Die beiden mittleren Bahnen waren halb so gefährlich wie die äusseren —
+     * man spielte an den Rändern.
+     *
+     * Richtig ist die Frage: auf welchen Bahnen KANN der Affe im gefährlichen
+     * Fenster stehen? Er steht immer auf der Bahn, die der garantierten
+     * Kurve am nächsten liegt. Gesperrt gehört also genau die Menge der
+     * Bahnen, die für irgendeinen Punkt der Kurvenspanne die nächste sind —
+     * plus alles, was einer davon physisch zu nah kommt (`rand` = sein
+     * Trefferradius plus der des Objekts).
+     *
+     * Damit bleibt die Garantie wörtlich dieselbe: auf der Bahn, auf der er
+     * steht, liegt nichts, und nichts auf einer Nachbarbahn reicht bis zu
+     * ihm hinüber. */
+    const noetig = this._noetigeBahnen(world.bahnX ?? [], s.min, s.max);
+    const mindestAbstand = rand + k.reserve;
 
-    /* NUR IN DIE DREI BAHNEN.
+    /* NUR IN DIE BAHNEN — und nur in die, die er nicht braucht.
      *
      * Vorher wurde irgendein freier x-Wert gezogen. Das hatte einen echten
      * Nachteil, den man im Spiel sofort sah: die Abwurfbreite ist breiter
-     * als das Feld, in dem der Affe sich bewegen darf (spawnHalfWidth =
-     * limit + 0.8). Objekte fielen also regelmässig dort, wo man gar nicht
-     * hinkommt — sie sahen aus wie eine Bedrohung, waren aber keine, und im
-     * Hochformat war das der Grossteil.
+     * als das Feld, in dem der Affe sich bewegen darf. Objekte fielen also
+     * regelmässig dort, wo man gar nicht hinkommt — sie sahen aus wie eine
+     * Bedrohung, waren aber keine, und im Hochformat war das der Grossteil.
      *
-     * Jetzt kommt jedes Objekt auf eine der drei Bahnen. Die Garantie
-     * darüber bleibt unverändert: gewählt wird nur unter den Bahnen, die
-     * im gefährlichen Zeitfenster AUSSERHALB der gesperrten Spanne liegen.
-     * Ist keine frei, fällt nichts — lieber ein Objekt weniger als eine
-     * dichte Wand. */
+     * Frei ist eine Bahn, wenn sie NICHT zu den nötigen gehört und von jeder
+     * nötigen weit genug weg ist. Ist keine frei, fällt nichts — lieber ein
+     * Objekt weniger als eine dichte Wand. */
     const bahnen = world.bahnX ?? [];
-    let frei = bahnen.filter((x) => x < sperreVon || x > sperreBis);
-
-    /* MINDESTENS EINE BAHN BLEIBT IMMER FREI.
-     *
-     * Die gesperrte Spanne liegt um die garantierte Bahn herum — die ist
-     * aber ein stufenloser x-Wert und kann ZWISCHEN zwei Spuren liegen.
-     * Trifft sie dabei keine einzige, wären plötzlich alle drei bespielbar,
-     * und ein Burst von bis zu sechs Objekten könnte alle drei zumauern.
-     * Der Affe hätte dann nachweislich keinen Ausweg — genau das, was die
-     * Garantie ausschliessen soll.
-     *
-     * Bei stufenloser Bewegung konnte das nicht passieren: dort blieb immer
-     * der Streifen neben der Sperre übrig. Mit drei Spuren gibt es diesen
-     * Zwischenraum nicht mehr.
-     *
-     * Deshalb: ist nichts gesperrt, wird die Spur am dichtesten an der Bahn
-     * selbst zur Sperre erklärt. */
-    if (frei.length === bahnen.length && bahnen.length > 1) {
-      const mitte = (sperreVon + sperreBis) / 2;
-      let naechste = bahnen[0];
-      for (const x of bahnen) {
-        if (Math.abs(x - mitte) < Math.abs(naechste - mitte)) naechste = x;
-      }
-      frei = frei.filter((x) => x !== naechste);
-    }
+    const frei = bahnen.filter((x) => {
+      if (noetig.includes(x)) return false;
+      for (const n of noetig) if (Math.abs(x - n) < mindestAbstand) return false;
+      return true;
+    });
 
     if (frei.length === 0) return null;
-    return frei[Math.floor(Math.random() * frei.length)];
+    return this._bahnWaehlen(frei, bahnen);
+  }
+
+  /**
+   * Die Bahnen, auf denen der Affe im Zeitfenster stehen können muss.
+   *
+   * Die garantierte Kurve ist ein stufenloser x-Wert; der Affe steht immer
+   * auf der Bahn, die ihr am nächsten liegt. Wandert die Kurve im Fenster
+   * von `von` nach `bis`, kann das nacheinander mehr als eine Bahn sein —
+   * und jede davon muss frei bleiben, sonst läuft er beim Nachrücken in
+   * etwas hinein.
+   *
+   * Gefragt ist also: welche Bahnen sind für IRGENDEINEN Punkt aus
+   * [von, bis] die nächste? Das ist genau die Menge der Bahnen, deren
+   * Zuständigkeitsbereich — die Hälfte des Wegs zum jeweiligen Nachbarn —
+   * die Spanne schneidet.
+   *
+   * Der Rückgabewert ist NIE leer: liegt die Spanne ganz ausserhalb, bleibt
+   * die äusserste Bahn zuständig.
+   *
+   * @param {number[]} bahnen aufsteigend sortiert
+   * @param {number} von
+   * @param {number} bis
+   * @returns {number[]}
+   */
+  _noetigeBahnen(bahnen, von, bis) {
+    if (bahnen.length === 0) return [];
+    const raus = [];
+    for (let i = 0; i < bahnen.length; i++) {
+      const links = i === 0 ? -Infinity : (bahnen[i - 1] + bahnen[i]) / 2;
+      const rechts = i === bahnen.length - 1 ? Infinity : (bahnen[i] + bahnen[i + 1]) / 2;
+      // Überschneidet sich der Zuständigkeitsbereich mit der Spanne?
+      if (rechts >= von && links <= bis) raus.push(bahnen[i]);
+    }
+    return raus;
+  }
+
+  /**
+   * Unter den freien Bahnen die aussuchen, die bisher zu kurz kam.
+   *
+   * WARUM NICHT EINFACH GLEICHVERTEILT WÜRFELN
+   * Weil "gleich oft gewürfelt" nicht "gleich oft gefallen" heisst. Welche
+   * Bahnen frei sind, hängt davon ab, wo die garantierte Bahn gerade liegt,
+   * und die Sperrzone trifft die INNEREN Bahnen viel öfter: bei ihnen liegt
+   * die ganze Sperrbreite im Feld, bei den äusseren hängt die Hälfte davon
+   * im Nichts. Gemessen über 300 s mit gleichverteilter Wahl unter den
+   * freien Bahnen:
+   *
+   *     aussen 35.9 %   innen 15.8 %   innen 14.3 %   aussen 34.1 %
+   *
+   * Man spielte also faktisch an den Rändern, und die beiden mittleren
+   * Bahnen waren halb so gefährlich wie die äusseren.
+   *
+   * Deshalb wird gezählt, wie oft jede Bahn schon dran war, und die Wahl
+   * gewichtet: Gewicht = 1/(Anzahl+1). Das ist kein starres Reihum — welche
+   * Bahn als Nächstes kommt, bleibt zufällig, nur die Schlagseite fällt
+   * weg. An der Lückengarantie ändert es NICHTS: die entscheidet, welche
+   * Bahnen frei SIND, nicht welche davon benutzt wird.
+   *
+   * @param {number[]} frei erlaubte Bahnen
+   * @param {number[]} alle alle Bahnen (für die Zählung)
+   */
+  _bahnWaehlen(frei, alle) {
+    if (frei.length === 1) return frei[0];
+
+    // Zähler passend zur Bahnzahl anlegen bzw. nachziehen (Drehen des Geräts
+    // ändert die Positionen, nicht die Anzahl — aber sicher ist sicher).
+    if (!this._bahnZaehler || this._bahnZaehler.length !== alle.length) {
+      this._bahnZaehler = new Array(alle.length).fill(0);
+    }
+
+    let summe = 0;
+    const gewichte = frei.map((x) => {
+      const i = alle.indexOf(x);
+      const n = i >= 0 ? this._bahnZaehler[i] : 0;
+      const g = 1 / (n + 1);
+      summe += g;
+      return g;
+    });
+
+    let r = Math.random() * summe;
+    let treffer = frei.length - 1;
+    for (let i = 0; i < gewichte.length; i++) {
+      r -= gewichte[i];
+      if (r <= 0) {
+        treffer = i;
+        break;
+      }
+    }
+
+    const x = frei[treffer];
+    const idx = alle.indexOf(x);
+    if (idx >= 0) this._bahnZaehler[idx]++;
+    return x;
   }
 
   /**
@@ -585,11 +685,35 @@ export class Spawner {
       (this.difficulty.rockFallSpeed * bananaCfg.fallSpeedFactor + basis) * 1,
     );
     const t = this.korridor.jetzt + (this.world.spawnY - this.cfg.player.startPosition[1]) / v;
-    const mitte = this.korridor.bei(t);
-    const streu = this.cfg.rock.korridor.halbbreite * 0.8;
-    const x = mitte + (Math.random() * 2 - 1) * streu;
-    const halb = this.world.spawnHalfWidth;
-    return x < -halb ? -halb : x > halb ? halb : x;
+    return this._naechsteBahn(this.korridor.bei(t));
+  }
+
+  /**
+   * Die Bahn, die einem stufenlosen x am nächsten liegt.
+   *
+   * ALLES, WAS FÄLLT, MUSS AUF EINER BAHN LIEGEN — auch das, was man haben
+   * WILL. Steine waren schon bahngebunden, Münzen und Bananen nicht: sie
+   * kamen bei `korridor.bei(t) ± streu` herunter, also an einer stufenlosen
+   * Stelle. Der Affe steht aber nur noch auf vier festen Spuren. Gemessen
+   * lagen dadurch Münzen regelmässig zwischen zwei Bahnen — sichtbar,
+   * hörbar angekündigt, und je nach Abstand nicht einzusammeln.
+   *
+   * Die Streuung um den Korridor entfällt damit ersatzlos. Sie sollte
+   * Abwechslung bringen; die kommt jetzt daher, dass der Korridor selbst
+   * zwischen den Bahnen wandert und mal die eine, mal die andere die
+   * nächste ist.
+   *
+   * @param {number} x
+   * @returns {number} x-Position einer Bahn
+   */
+  _naechsteBahn(x) {
+    const bahnen = this.world.bahnX;
+    if (!bahnen?.length) return x;
+    let beste = bahnen[0];
+    for (const b of bahnen) {
+      if (Math.abs(b - x) < Math.abs(beste - x)) beste = b;
+    }
+    return beste;
   }
 
   /**
@@ -611,24 +735,13 @@ export class Spawner {
     const t =
       this.korridor.jetzt +
       (this.world.spawnY - this.cfg.player.startPosition[1]) / v;
-    const mitte = this.korridor.bei(t);
-
-    // Nur wenig streuen: das Pendeln der Münze bringt die Bewegung, nicht der
-    // Abwurfort.
-    const streu = this.cfg.rock.korridor.halbbreite * 0.5;
-    let x = mitte + (Math.random() * 2 - 1) * streu;
-
-    /* Geklemmt wird auf die BEWEGUNGSGRENZEN, nicht auf die Abwurfbreite —
-     * und zusätzlich um die Pendelweite nach innen.
+    /* AUF EINE BAHN, wie alles andere auch.
      *
-     * Vorher stand hier `spawnHalfWidth` (±5.0), dazu kam ungeklemmt das
-     * Pendeln (±0.55) — Münzen landeten damit bei bis zu ±5.55, während der
-     * Affe nur bis ±4.6 kommt. Gemessen 0.4 % aller Münzen: sichtbar,
-     * hörbar versprochen, aber nicht erreichbar. Ein Bonus, den man sehen und
-     * nicht holen kann, ist schlimmer als keiner. */
-    const rand = Math.max(0, this.world.bounds.maxX - this.cfg.coin.pendelWeite);
-    if (x < -rand) x = -rand;
-    else if (x > rand) x = rand;
+     * Hier stand eine Streuung um den Korridor plus eine Klemmung auf die
+     * Bewegungsgrenzen. Beides ist überholt, seit der Affe nur noch auf vier
+     * festen Spuren steht: eine Münze zwischen zwei Spuren ist genau die
+     * Sorte Belohnung, die man sieht und nicht bekommt. */
+    const x = this._naechsteBahn(this.korridor.bei(t));
 
     coin.spawn(x, this.world.spawnY, Math.random());
   }
