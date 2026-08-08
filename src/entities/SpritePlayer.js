@@ -109,6 +109,10 @@ export class SpritePlayer {
     this.invulnerableTimer = 0;
     this.alive = true;
 
+    /* Auf welcher der drei Bahnen er steht bzw. hin will. 1 = Mitte.
+     * Gesetzt wird das von aussen (Game), siehe update(). */
+    this.zielBahn = 1;
+
     this._inputX = 0;
     this._phase = 0;
     this._lean = 0;
@@ -203,6 +207,7 @@ export class SpritePlayer {
 
   reset() {
     this.x = this.cfg.startPosition[0];
+    this.zielBahn = 1;
     this.y = this.cfg.startPosition[1];
     this.vx = 0;
     this.vy = 0;
@@ -254,19 +259,46 @@ export class SpritePlayer {
    * früher: nicht mehr das Bewegungsband des Affen, sondern das Gefahren-
    * und Sichtbarkeitsband der fallenden Objekte (siehe Spawner).
    */
-  update(dt, axis, bounds) {
+  /**
+   * @param {number} dt
+   * @param {{x:number}} axis  nur noch das Vorzeichen zählt (Bahnwechsel)
+   * @param {{minX:number,maxX:number}} bounds
+   * @param {number[]} bahnX  x-Positionen der drei Bahnen
+   */
+  update(dt, axis, bounds, bahnX) {
     const cfg = this.cfg;
     this._inputX = axis.x;
 
-    if (this.alive) {
-      const targetVx = axis.x * cfg.moveSpeed;
-      const rateX = axis.x !== 0 ? cfg.acceleration : cfg.damping;
+    if (this.alive && bahnX?.length) {
+      /* AUF DIE BAHN ZU, NICHT FREI.
+       *
+       * Vorher war axis.x eine Wunschgeschwindigkeit und der Affe fuhr
+       * stufenlos. Jetzt ist die Bahn das Ziel: er fährt darauf zu und
+       * bleibt dort stehen. Die Trägheit bleibt — ein harter Sprung nähme
+       * dem Ausweichen jedes Gefühl.
+       *
+       * `zielBahn` setzt der Eingabe-Weg (Game), nicht diese Methode: ein
+       * Bahnwechsel ist ein EREIGNIS, kein Dauerzustand. Würde hier jeden
+       * Frame aus axis.x weitergeschaltet, rutschte man bei gedrückter
+       * Taste sofort ganz nach aussen. */
+      const ziel = bahnX[Math.max(0, Math.min(bahnX.length - 1, this.zielBahn))];
+      const rest = ziel - this.x;
 
-      this.vx += (targetVx - this.vx) * (1 - Math.exp(-rateX * dt));
-      this.x += this.vx * dt;
+      // Zeitkonstante aus der gewünschten Wechselzeit: nach etwa
+      // `bahnWechselZeit` ist der Weg zu ~95 % zurückgelegt.
+      const rate = 3 / Math.max(0.02, cfg.bahnWechselZeit ?? 0.16);
+      const schritt = rest * (1 - Math.exp(-rate * dt));
+      this.x += schritt;
+      this.vx = dt > 0 ? schritt / dt : 0;
 
-      if (this.x < bounds.minX) { this.x = bounds.minX; this.vx = 0; }
-      else if (this.x > bounds.maxX) { this.x = bounds.maxX; this.vx = 0; }
+      // Ganz kleine Reste wegräumen, sonst zittert die Position ewig.
+      if (Math.abs(ziel - this.x) < 0.002) {
+        this.x = ziel;
+        this.vx = 0;
+      }
+
+      if (this.x < bounds.minX) this.x = bounds.minX;
+      else if (this.x > bounds.maxX) this.x = bounds.maxX;
     } else {
       this.vx += (0 - this.vx) * (1 - Math.exp(-cfg.damping * dt));
     }

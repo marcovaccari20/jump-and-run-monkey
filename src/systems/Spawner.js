@@ -506,17 +506,49 @@ export class Spawner {
     const sperreVon = s.min - abstand;
     const sperreBis = s.max + abstand;
 
-    const halb = world.spawnHalfWidth;
-    const linksBreite = Math.max(0, sperreVon - -halb);
-    const rechtsBreite = Math.max(0, halb - sperreBis);
-    const gesamt = linksBreite + rechtsBreite;
+    /* NUR IN DIE DREI BAHNEN.
+     *
+     * Vorher wurde irgendein freier x-Wert gezogen. Das hatte einen echten
+     * Nachteil, den man im Spiel sofort sah: die Abwurfbreite ist breiter
+     * als das Feld, in dem der Affe sich bewegen darf (spawnHalfWidth =
+     * limit + 0.8). Objekte fielen also regelmässig dort, wo man gar nicht
+     * hinkommt — sie sahen aus wie eine Bedrohung, waren aber keine, und im
+     * Hochformat war das der Grossteil.
+     *
+     * Jetzt kommt jedes Objekt auf eine der drei Bahnen. Die Garantie
+     * darüber bleibt unverändert: gewählt wird nur unter den Bahnen, die
+     * im gefährlichen Zeitfenster AUSSERHALB der gesperrten Spanne liegen.
+     * Ist keine frei, fällt nichts — lieber ein Objekt weniger als eine
+     * dichte Wand. */
+    const bahnen = world.bahnX ?? [];
+    let frei = bahnen.filter((x) => x < sperreVon || x > sperreBis);
 
-    // Kein Platz: dann fällt hier eben nichts. Die Garantie schlägt die
-    // Wunsch-Anzahl — lieber ein Objekt weniger als eine dichte Wand.
-    if (gesamt < 0.02) return null;
+    /* MINDESTENS EINE BAHN BLEIBT IMMER FREI.
+     *
+     * Die gesperrte Spanne liegt um die garantierte Bahn herum — die ist
+     * aber ein stufenloser x-Wert und kann ZWISCHEN zwei Spuren liegen.
+     * Trifft sie dabei keine einzige, wären plötzlich alle drei bespielbar,
+     * und ein Burst von bis zu sechs Objekten könnte alle drei zumauern.
+     * Der Affe hätte dann nachweislich keinen Ausweg — genau das, was die
+     * Garantie ausschliessen soll.
+     *
+     * Bei stufenloser Bewegung konnte das nicht passieren: dort blieb immer
+     * der Streifen neben der Sperre übrig. Mit drei Spuren gibt es diesen
+     * Zwischenraum nicht mehr.
+     *
+     * Deshalb: ist nichts gesperrt, wird die Spur am dichtesten an der Bahn
+     * selbst zur Sperre erklärt. */
+    if (frei.length === bahnen.length && bahnen.length > 1) {
+      const mitte = (sperreVon + sperreBis) / 2;
+      let naechste = bahnen[0];
+      for (const x of bahnen) {
+        if (Math.abs(x - mitte) < Math.abs(naechste - mitte)) naechste = x;
+      }
+      frei = frei.filter((x) => x !== naechste);
+    }
 
-    const w = Math.random() * gesamt;
-    return w < linksBreite ? -halb + w : sperreBis + (w - linksBreite);
+    if (frei.length === 0) return null;
+    return frei[Math.floor(Math.random() * frei.length)];
   }
 
   /**

@@ -120,6 +120,8 @@ export class Game {
     this.worldView = {
       ...CONFIG.world,
       bounds: { ...CONFIG.world.bounds },
+      // Wird in _updateWorldBounds aus CONFIG.world.bahnen berechnet.
+      bahnX: CONFIG.world.bahnen.map((a) => a * CONFIG.world.bounds.maxX),
     };
 
     this._buildRenderer();
@@ -1334,8 +1336,25 @@ export class Game {
       }
     }
 
+    /* ---- Bahnwechsel --------------------------------------------------- *
+     * Die Eingabe liefert einen Dauerwert (-1 / 0 / +1). Ein Bahnwechsel ist
+     * aber ein EREIGNIS: bei gedrückter Taste soll er EINMAL wechseln, nicht
+     * jeden Frame weiterrutschen. Deshalb die Flanke auswerten — gewechselt
+     * wird nur, wenn die Richtung vorher nicht schon anlag. */
+    if (this.player.alive) {
+      const richtung = axis.x < -0.5 ? -1 : axis.x > 0.5 ? 1 : 0;
+      if (richtung !== 0 && richtung !== this._letzteRichtung) {
+        const anzahl = world.bahnX?.length ?? 3;
+        this.player.zielBahn = Math.max(
+          0,
+          Math.min(anzahl - 1, this.player.zielBahn + richtung),
+        );
+      }
+      this._letzteRichtung = richtung;
+    }
+
     /* ---- Entities ----------------------------------------------------- */
-    this.player.update(dt, this.player.alive ? axis : ZERO_AXIS, world.bounds);
+    this.player.update(dt, this.player.alive ? axis : ZERO_AXIS, world.bounds, world.bahnX);
     this.spawner.update(dt, this.player.revives > 0, base);
 
     if (this.player.alive) {
@@ -1526,6 +1545,12 @@ export class Game {
     view.bounds.maxX = Math.min(base.bounds.maxX, limit);
     view.bounds.minY = base.bounds.minY;
     view.bounds.maxY = base.bounds.maxY;
+
+    /* Die drei Bahnen aus den Anteilen. Hängen am tatsächlichen Feld, nicht
+     * an festen Weltkoordinaten — im Hochformat ist es weniger als halb so
+     * breit wie im Querformat. */
+    const halbFeld = view.bounds.maxX;
+    view.bahnX = base.bahnen.map((anteil) => anteil * halbFeld);
 
     /* Objekte nur dort erzeugen, wo sie auch zu sehen sind — sonst fällt der
      * Grossteil im Hochformat unsichtbar neben dem Bild herunter.

@@ -59,6 +59,25 @@ export const CONFIG = {
      * despawnY (-5.6) sichtbar bleiben — gemessen kippt der Anteil der Frames
      * mit überlappenden Objektbildern dadurch von 0.000 % auf 0.278 %. */
     bounds: { minX: -4.6, maxX: 4.6, minY: -2.9, maxY: 2.7 },
+
+    /* DREI BAHNEN — links, Mitte, rechts.
+     *
+     * Der Affe bewegt sich nicht mehr stufenlos, sondern springt zwischen
+     * drei festen Spuren. Das ist keine Vereinfachung aus Bequemlichkeit,
+     * sondern räumt ein echtes Ärgernis ab: bei freier Bewegung fielen
+     * Objekte auch dort, wo der Affe im Hochformat gar nicht hinkam — das
+     * Feld ist dort schmaler als die Abwurfbreite. Mit Bahnen fällt alles
+     * genau dort, wo man auch hin kann.
+     *
+     * Die Werte sind ANTEILE der nutzbaren Halbbreite, keine Weltkoordinaten:
+     * das Feld ist im Hochformat viel schmaler als im Querformat, feste
+     * Zahlen lägen dort ausserhalb. Game._updateWorldBounds rechnet daraus
+     * die tatsächlichen x-Positionen (worldView.bahnX).
+     *
+     * 0.66 statt 1.0: ganz am Rand klebte der Affe halb im Bildrand, und die
+     * äusseren Bahnen lägen so weit auseinander, dass der Wechsel von links
+     * nach rechts länger dauert als die Vorwarnzeit. */
+    bahnen: [-0.66, 0, 0.66],
     // Höhe, auf der Steine/Bananen erzeugt werden.
     // MUSS über der sichtbaren Oberkante liegen, und zwar mindestens um den
     // grössten Steinradius (0.62): sonst ploppt der Stein sichtbar ins Bild,
@@ -119,8 +138,20 @@ export const CONFIG = {
      * die beiden hängen über die Vorwarnzeit zusammen. */
     startPosition: [0, -0.1, 0],
 
-    // Seitliche Bewegungsgeschwindigkeit in der Wandebene. (Senkrecht gibt
-    // es nicht mehr — der Affe steht fest, siehe startPosition.)
+    /* Wie lange ein Bahnwechsel dauert (Sekunden bis praktisch angekommen).
+     *
+     * Steht hier statt bei world, weil es eine Eigenschaft DES AFFEN ist:
+     * der weisse ist der flinke, er wechselt schneller. Die Werte je
+     * Charakter stehen in CONFIG.characters.
+     *
+     * Nicht 0: ein harter Sprung nimmt dem Ausweichen jedes Gefühl.
+     * Nicht zu gross: sonst steht man beim Wechsel zu lange dazwischen und
+     * wird genau dort getroffen. */
+    bahnWechselZeit: 0.16,
+
+    /* Seitliche Bewegungsgeschwindigkeit — seit der Umstellung auf drei
+     * Bahnen nur noch für die Animation gebraucht (animSpeed), nicht mehr
+     * für die Position. Die kommt aus bahnWechselZeit. */
     moveSpeed: 8.4,
     // Glättungsraten in 1/s (nicht Beschleunigung im physikalischen Sinn):
     // v nähert sich dem Zielwert mit 1 - e^(-rate * dt).
