@@ -1380,6 +1380,23 @@ export const CONFIG = {
       minSprung: 0.28,
       // Flügelschläge pro Sekunde.
       flugZyklus: 1.6,
+
+      /* --- Der Schlag selbst (Adler3D) --------------------------------- *
+       * Er ist keine Bildfolge mehr, sondern eine gebaute Figur — diese
+       * drei Zahlen sind seine ganze Bewegung.
+       *
+       * schlagAuf/schlagAb sind BEWUSST UNGLEICH. Ein Vogel zieht die
+       * Flügel weiter über den Rücken, als er sie unter den Bauch drückt;
+       * mit gleichen Werten sieht der Schlag aus wie ein Scheibenwischer.
+       *
+       * nachlauf ist die Verzögerung des Aussenflügels gegenüber dem
+       * Innenflügel, in Radiant der Schlagphase. Ohne sie bleibt der Flügel
+       * ein starres Brett. 0.55 entspricht knapp einem Zehntel Schlag —
+       * genug, dass man die Welle vom Körper zur Flügelspitze laufen sieht,
+       * zu wenig, um wie ein Wackelkontakt zu wirken. */
+      schlagAuf: 1.15, // Radiant, Aufschlag über den Rücken
+      schlagAb: 0.62, // Radiant, Abschlag unter den Bauch
+      nachlauf: 0.55, // Radiant Phasenversatz des Aussenflügels
     },
 
     /* KACKEN. Die Animation dauert ihre Zeit; losgelassen wird genau dann,
@@ -1457,6 +1474,71 @@ export const CONFIG = {
       bild: '/boss/warnung.webp',
       blinkProSekunde: 3.2,
     },
+  },
+
+  /* ================================================================== *
+   *  STURZFLUG — angekündigter Schnellangriff
+   *
+   *  Ablauf, drei Abschnitte:
+   *
+   *    warnung   Über ein bis drei Bahnen erscheint oben ein rotes Schild
+   *              und blinkt. Der Nachschub ist abgestellt; was noch fällt,
+   *              fällt zu Ende.
+   *    sturz     Genau auf diesen Bahnen schiessen Vögel herunter — viel
+   *              schneller als alles andere im Spiel.
+   *    aus       Kurz durchatmen, dann läuft der normale Strom weiter.
+   *
+   *  NIE ALLE BAHNEN. Bei vier Bahnen sind höchstens drei bedroht — eine
+   *  bleibt immer frei. Das ist keine Nettigkeit, sondern dieselbe Zusage
+   *  wie beim Korridor: es muss einen Weg geben, sonst ist der Tod nicht
+   *  Fehler des Spielers, sondern des Spiels.
+   *
+   *  WARUM DIE WARNUNG ÜBERHAUPT NÖTIG IST
+   *  Die Vögel sind mit 22 Einheiten/s rund viermal so schnell wie ein
+   *  Stein im Spätspiel. Auf Reaktion allein ist das nicht zu schaffen —
+   *  das Schild ist die Reaktionszeit, nicht Deko.
+   * ================================================================== */
+  sturzflug: {
+    /* Ab dem zweiten Gebiet. Im ersten lernt man das Spiel; ein Angriff,
+     * den man noch nicht einordnen kann, ist kein Reiz, sondern Pech. */
+    abGebiet: 2,
+
+    /* Wie oft je Gebiet. Wächst mit der Zahl der Gebietswechsel — pro drei
+     * Gebiete einer mehr, gedeckelt bei `max`. Der Nutzer wollte "ein bis
+     * dreimal, und immer öfter, je höher man kommt". */
+    proGebiet: { start: 1, max: 3, alleXGebiete: 3 },
+
+    /* Vorwarnung. 1.15 s ist knapp und soll es sein: genug für einen
+     * Bahnwechsel (im Hochformat 0.13 s, im Querformat 0.65 s), zu wenig
+     * zum Nachdenken. */
+    warnung: {
+      sekunden: 1.15,
+      bild: '/hazards/warnung_bahn.webp',
+      /* 1.15 statt 0.85. Bei 0.85 war das Schild im Bild kaum grösser als
+       * eine Blume an der Wand — gemessen 74 Bildpunkte hoch im Querformat.
+       * Eine Warnung, die man suchen muss, ist keine. */
+      hoehe: 1.15,
+      blinkProSekunde: 5,
+    },
+
+    /* Höchstens so viele Bahnen gleichzeitig — UND nie alle. Der kleinere
+     * der beiden Werte gewinnt (siehe Sturzflug._bahnenWaehlen). */
+    maxBahnen: 3,
+
+    /* Die Vögel. Bilder aus der Vorlage des Nutzers, von oben im Sturz. */
+    bilder: ['/hazards/vogel_1.webp', '/hazards/vogel_2.webp', '/hazards/vogel_3.webp'],
+    /* 1.8 statt 1.15. Kleiner las sich der Vogel als Pfeil, nicht als
+     * Tier — bei diesem Tempo hat man nur die Silhouette, und die muss
+     * auf den ersten Blick sitzen. Zum Vergleich: der Affe ist 2.5 hoch. */
+    vogelHoehe: 1.8,
+    tempo: 22.0, // Units/s — bewusst weit über allem anderen
+    hitRadius: 0.26, // schmaler als das Bild: getroffen wird der Körper
+    poolSize: 4,
+
+    /* Pause nach dem letzten Vogel, bevor der normale Strom weiterläuft.
+     * Ohne sie fällt einem der erste Stein direkt hinterher, und der
+     * Angriff hat kein Ende. */
+    nachlauf: 0.45,
   },
 
   /* ================================================================== *

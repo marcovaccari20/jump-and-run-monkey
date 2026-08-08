@@ -227,8 +227,13 @@ const FOLGEN = [
    * 800 ist praktisch die volle Auflösung der Rohbilder (972x806); höher zu
    * gehen brächte nichts ausser Dateigrösse. Die 26 Bilder werden ohnehin
    * erst geladen, wenn der erste Bosskampf ansteht. */
-  { quelle: 'adler_flug', ziel: 'public/boss/adler_flug', hoehe: 800 },
-  { quelle: 'adler_kacken', ziel: 'public/boss/adler_kacken', hoehe: 800 },
+  /* DIE ADLERBILDER SIND WEG.
+   *
+   * Der Adler ist keine Bildfolge mehr, sondern eine gebaute 3D-Figur
+   * (src/entities/Adler3D.js). Die 26 Einzelbilder haben 2.6 MB gewogen und
+   * sahen bei jeder Groesse nach abgefilmtem Video aus. Die Rohvideos
+   * liegen weiter in assets-src/art/adler_* — wer die Figur doch wieder
+   * gegen Bilder tauschen will, holt sich die Zeilen aus der Historie. */
   // Der goldene Affe ist ein Fellwechsel der Spielfigur und folgt deshalb
   // der Namensgebung der übrigen Kletter-Sätze.
   { quelle: 'affe_gold', ziel: 'public/textures/gold', hoehe: 720, name: 'move' },

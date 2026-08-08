@@ -26,7 +26,7 @@
  * es zwei Stellen, die entscheiden, wann jemand stirbt.
  */
 import { Mesh, MeshBasicMaterial, PlaneGeometry } from 'three';
-import { Adler } from '../entities/Adler.js';
+import { Adler3D } from '../entities/Adler3D.js';
 import { Kacke } from '../entities/Kacke.js';
 import { Wurfbanane } from '../entities/Wurfbanane.js';
 import { Pool } from '../entities/Pool.js';
@@ -70,7 +70,7 @@ export class BossKampf {
     this.phase = BossPhase.AUS;
     this._uhr = 0;
 
-    this.adler = new Adler(bilder.flug, bilder.kacken, cfg);
+    this.adler = new Adler3D(cfg);
     this.adler.object3D.visible = false;
     scene.add(this.adler.object3D);
 
@@ -163,10 +163,14 @@ export class BossKampf {
     this.adler.object3D.position.y = this.adler.y;
     this.adler.object3D.visible = false;
 
-    /* Kein Nachschub mehr. Was schon fällt, fällt zu Ende — es einfach
-     * verschwinden zu lassen sähe nach Fehler aus, und der Affe hat auf dem
-     * Weg nach unten ohnehin Zeit, ihm auszuweichen. */
-    this.spawner.nachschubAus = true;
+    /* Den Nachschub schaltet GAME ab, nicht dieses System.
+     *
+     * Es gibt inzwischen zwei Ereignisse, die den Bildschirm freiräumen —
+     * den Bosskampf und den Sturzflug. Setzte jedes den Schalter selbst,
+     * würde das eine ihn beim Aufräumen wieder einschalten, während das
+     * andere noch läuft. Game.js rechnet ihn jeden Frame aus
+     * (`nachschubAus = boss.aktiv || sturzflug.aktiv`); hier steht deshalb
+     * nichts mehr. */
 
     // Der Affe rutscht sofort los, nicht erst wenn der Adler da ist: bis der
     // Kampf beginnt, soll er unten stehen.
@@ -186,7 +190,6 @@ export class BossKampf {
     this.bananen.releaseAll((b) => b.despawn());
     if (this._goldBanane) this._goldBanane.visible = false;
     this._goldFlug = null;
-    this.spawner.nachschubAus = false;
     player?.hoeheAnsteuern?.(null);
     this.ui.zeigeWarnung(false);
     this.klang.boss(false);
@@ -469,7 +472,6 @@ export class BossKampf {
     this.adler.object3D.rotation.z = 0;
     this.bananen.releaseAll((b) => b.despawn());
     this.kacke.releaseAll((k) => k.despawn());
-    this.spawner.nachschubAus = false;
     player?.hoeheAnsteuern?.(null);
     this.onEnde();
   }

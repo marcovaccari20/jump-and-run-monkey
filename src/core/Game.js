@@ -23,6 +23,7 @@ import { Player } from '../entities/Player.js';
 import { SpritePlayer } from '../entities/SpritePlayer.js';
 import { groessteSpriteBreite, hazardSpriteUrls } from '../entities/Rock.js';
 import { BossKampf } from '../systems/BossKampf.js';
+import { Sturzflug } from '../systems/Sturzflug.js';
 import { PlantWall } from '../world/PlantWall.js';
 import { DifficultyCurve } from '../systems/DifficultyCurve.js';
 import { Spawner } from '../systems/Spawner.js';
@@ -125,6 +126,14 @@ export class Game {
     this._goldRest = 0;
     /** @type {import('three').Texture[]|null} goldenes Fell, erst bei Bedarf geladen */
     this._goldFrames = null;
+
+    /** @type {import('../systems/Sturzflug.js').Sturzflug|null} */
+    this.sturzflug = null;
+    this._sturzLaedt = false;
+    // Sekunden bis zum nächsten Sturzflug (0 = keiner geplant).
+    this._sturzUhr = 0;
+    // Wie viele Sturzfluege in DIESEM Gebiet schon gelaufen sind.
+    this._sturzImGebiet = 0;
 
     // Wirksame Spielfeldmasse. Start = Config, die seitlichen Grenzen werden
     // aber bei jedem Resize an das tatsächlich Sichtbare angepasst (siehe
@@ -604,15 +613,12 @@ export class Game {
   async _bossBauen() {
     const b = this.cfg.boss;
 
-    const adlerPfade = [];
-    for (const [satz, n] of [
-      ['flug', 12],
-      ['kacken', 14],
-    ]) {
-      for (let i = 0; i < n; i++) {
-        adlerPfade.push(`/boss/adler_${satz}/f_${String(i).padStart(2, '0')}.webp`);
-      }
-    }
+    /* KEINE ADLERBILDER MEHR.
+     *
+     * Hier wurden 26 Einzelbilder geladen (2.6 MB), aus denen der Adler als
+     * Bildfolge bestand. Er ist jetzt eine gebaute 3D-Figur (Adler3D) — die
+     * Bilder werden nicht mehr gebraucht, und der Kampf beginnt ohne die
+     * Ladepause davor. */
     const kackPfade = b.kacke.arten.map((a) => a.bild);
     const wurfPfade = Array.from(
       { length: 12 },
@@ -620,7 +626,7 @@ export class Game {
     );
 
     const texturen = await this._loader.loadTexturesParallel(
-      [...adlerPfade, ...kackPfade, ...wurfPfade, b.belohnung.bild, this.cfg.banana.bild],
+      [...kackPfade, ...wurfPfade, b.belohnung.bild, this.cfg.banana.bild],
       'Adler…',
     );
 
@@ -637,8 +643,6 @@ export class Game {
       this.scene,
       b,
       {
-        flug: adlerPfade.slice(0, 12).map((p) => texturen.get(p)),
-        kacken: adlerPfade.slice(12).map((p) => texturen.get(p)),
         kacke: kackBilder,
         // Dieselbe Banane wie zum Einsammeln, nur halb so gross geworfen.
         banane: texturen.get(this.cfg.banana.bild) ?? null,
@@ -718,6 +722,111 @@ export class Game {
   /** Münzfaktor dieses Augenblicks — 1 normal, 3 im Goldmodus. */
   get _muenzFaktor() {
     return this._goldRest > 0 ? this.cfg.boss.belohnung.muenzFaktor : 1;
+  }
+
+  /* =========================================================== Sturzflug */
+
+  /**
+   * Wie viele Sturzflüge gehören in dieses Gebiet?
+   *
+   * Ab `abGebiet` einer, alle paar Gebiete einer mehr — gedeckelt bei `max`.
+   */
+  _sturzProGebiet() {
+    const s = this.cfg.sturzflug;
+    if (this._gebietWechsel + 1 < s.abGebiet) return 0;
+    const stufen = Math.floor((this._gebietWechsel + 1 - s.abGebiet) / s.proGebiet.alleXGebiete);
+    return Math.min(s.proGebiet.max, s.proGebiet.start + stufen);
+  }
+
+  /**
+   * Uhr für den nächsten Sturzflug stellen.
+   *
+   * Ein Gebiet dauert so lange wie der Abstand zweier Wandstufen. Bei n
+   * Angriffen wird es in n+1 Abschnitte geteilt, damit keiner direkt am
+   * Gebietswechsel klebt — dort ist ohnehin schon Bewegung im Bild.
+   */
+  _sturzUhrStellen() {
+    const n = this._sturzProGebiet();
+
+    /* DIE QUOTE WIRD GEZÄHLT, nicht nur ausgerechnet.
+     *
+     * Ohne Zähler stellte sich die Uhr nach jedem Angriff einfach neu, und
+     * in ein Gebiet passte, was zeitlich hineinpasste: gemessen kamen im
+     * Gebiet 2 ZWEI Angriffe, obwohl einer vorgesehen war. Die Zahl in der
+     * Config hätte damit nur den Abstand bestimmt, nicht die Menge — und
+     * "ab dem zweiten Gebiet einer" wäre eine Behauptung ohne Deckung. */
+    if (n <= 0 || this._sturzImGebiet >= n) {
+      this._sturzUhr = 0;
+      return;
+    }
+    const stages = this.cfg.wall.stages;
+    const dauer = stages.length > 1 ? stages[1].afterSeconds - stages[0].afterSeconds : 132;
+    const abschnitt = dauer / (n + 1);
+    // Streuung, sonst kommt er immer an derselben Stelle im Gebiet.
+    this._sturzUhr = abschnitt * (0.7 + Math.random() * 0.6);
+  }
+
+  /** Zählt die Uhr herunter und löst aus, wenn nichts anderes läuft. */
+  _sturzflugSchritt(dt) {
+    if (this._sturzUhr <= 0) return;
+    /* Während eines Bosskampfes ruht der Zähler. Zwei angekündigte
+     * Ereignisse gleichzeitig sind nicht mehr lesbar — und der Bosskampf
+     * räumt den Bildschirm ohnehin schon frei. */
+    if (this.boss?.aktiv || this.sturzflug?.aktiv) return;
+    this._sturzUhr -= dt;
+    if (this._sturzUhr > 0) return;
+    this._sturzUhr = 0;
+    this.sturzflugStarten(); // ohne await, siehe dort
+  }
+
+  /**
+   * Sturzflug auslösen. Lädt beim ersten Mal die Bilder nach.
+   *
+   * BEWUSST OHNE await AUFGERUFEN — der Lauf soll nicht auf das Netz warten.
+   * Kommen die Bilder zu spät, fällt dieser eine Angriff eben aus.
+   */
+  async sturzflugStarten() {
+    if (this.sturzflug?.aktiv || this._sturzLaedt) return false;
+    if (!this.states.is(GameState.PLAYING)) return false;
+
+    const s = this.cfg.sturzflug;
+
+    if (!this.sturzflug) {
+      this._sturzLaedt = true;
+      try {
+        const pfade = [...s.bilder, s.warnung.bild];
+        const t = await this._loader.loadTexturesParallel(pfade, 'Vögel…');
+        this.sturzflug = new Sturzflug(
+          this.scene,
+          s,
+          {
+            voegel: s.bilder.map((p) => t.get(p)),
+            warnung: t.get(s.warnung.bild) ?? null,
+          },
+          {
+            klang: this.klang,
+            // Ein Vogeltreffer wirkt wie ein Stein — über Leben und Tod
+            // entscheidet weiter genau eine Stelle.
+            onTreffer: () => this._onRockHit(null),
+            onEnde: () => this._sturzUhrStellen(),
+          },
+        );
+      } catch (fehler) {
+        console.error('[Sturzflug] konnte nicht geladen werden:', fehler);
+        return false;
+      } finally {
+        this._sturzLaedt = false;
+      }
+      if (!this.states.is(GameState.PLAYING) || !this.player.alive) return false;
+    }
+
+    /* Stärke: 0 im ersten erlaubten Gebiet, 1 ab dem Deckel. Sie entscheidet,
+     * ob eine, zwei oder drei Bahnen bedroht werden. */
+    const spanne = Math.max(1, s.proGebiet.max - s.proGebiet.start);
+    const staerke = Math.min(1, (this._sturzProGebiet() - s.proGebiet.start) / spanne);
+    const los = this.sturzflug.starten(this.worldView, staerke, this.player.cfg?.moveSpeed ?? this.cfg.player.moveSpeed);
+    if (los) this._sturzImGebiet++;
+    return los;
   }
 
   /**
@@ -1115,6 +1224,9 @@ export class Game {
      * schon bekämpften Gebiete leer sein — sonst bliebe der erste Boss der
      * zweiten Runde aus. */
     this.boss?.abbrechen(this.player);
+    this.sturzflug?.abbrechen();
+    this._sturzUhr = 0;
+    this._sturzImGebiet = 0;
     this._bossGehabt.clear();
     this._goldmodusAus();
 
@@ -1287,8 +1399,9 @@ export class Game {
     if (this.states.is(GameState.PLAYING)) this.states.transitionTo(GameState.PAUSED);
     this.spawner.reset();
     this.player.reset(this.worldView.bahnX);
-    // Der Adler gehört zum Lauf, nicht zum Menü — samt Bossmusik.
+    // Adler und Sturzflug gehören zum Lauf, nicht zum Menü.
     this.boss?.abbrechen(this.player);
+    this.sturzflug?.abbrechen();
     this._goldmodusAus();
     this.states.transitionTo(GameState.MENU);
   }
@@ -1557,6 +1670,10 @@ export class Game {
       this._letztesGebiet = this.wall.stageName;
       this.klang.tempo(this._musikTempo());
 
+      // Neues Gebiet, neue Sturzflüge — Zahl und Zeitpunkt hängen daran.
+      this._sturzImGebiet = 0;
+      this._sturzUhrStellen();
+
       /* Bosskampf? Beim Betreten eines Gebiets entschieden, nicht mitten
        * darin: so weiss man immer, woran man ist, und die Warnung fällt mit
        * dem Wandwechsel zusammen.
@@ -1630,8 +1747,21 @@ export class Game {
     if (spielerEreignis === 'wurf') this.boss?.bananeLoslassen(this.player);
 
     this.spawner.update(dt, this.player.revives > 0, base);
-    // Der Kampf NACH dem Spieler: er prüft gegen dessen frische Position.
+    // Kampf und Sturzflug NACH dem Spieler: beide prüfen gegen dessen
+    // frische Position.
     this.boss?.update(dt, this.player, world, this.difficulty.rockFallSpeed + base);
+    this._sturzflugSchritt(dt);
+    this.sturzflug?.update(dt, this.player, world);
+
+    /* NACHSCHUB: EINE Stelle entscheidet.
+     *
+     * Bosskampf und Sturzflug räumen beide den Bildschirm frei. Setzte jedes
+     * den Schalter selbst, schaltete das eine ihn beim Aufräumen wieder ein,
+     * während das andere noch läuft — und mitten im Sturzflug fielen wieder
+     * Steine. Deshalb wird er hier jeden Frame aus beiden Zuständen
+     * gebildet. */
+    this.spawner.nachschubAus = (this.boss?.aktiv ?? false) || (this.sturzflug?.aktiv ?? false);
+
     this._goldmodusSchritt(dt);
 
     if (this.player.alive) {
@@ -1652,6 +1782,7 @@ export class Game {
         // Sonst bliebe der Adler stehen und die Bossmusik liefe über den
         // Game-Over-Screen weiter.
         this.boss?.abbrechen(this.player);
+        this.sturzflug?.abbrechen();
         this.states.transitionTo(GameState.GAME_OVER);
       }
     }

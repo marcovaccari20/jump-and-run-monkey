@@ -19,7 +19,8 @@
     "pruef:unterordner": "node scripts/pruef-unterordner.mjs",
     "prep:klaenge": "node scripts/prepare-klaenge.mjs",
     "prep:boss": "node scripts/prepare-boss.mjs",
-    "video:frames2": "node scripts/video-frames.mjs"
+    "video:frames2": "node scripts/video-frames.mjs",
+    "prep:sturz": "node scripts/prepare-sturzflug.mjs"
   },
   "type": "module",
   "dependencies": {
