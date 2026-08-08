@@ -205,6 +205,29 @@ export class Game {
     this.camera.position.set(...cam.position);
     this.camera.lookAt(...cam.lookAt);
 
+    /* MATRIZEN SOFORT NACHZIEHEN.
+     *
+     * `position.set` und `lookAt` schreiben nur Position und Drehung. Die
+     * Weltmatrix, mit der `project`/`unproject` rechnen, zieht three.js
+     * erst beim ersten Rendern nach — bis dahin ist sie die Einheitsmatrix:
+     * keine Position, KEINE NEIGUNG.
+     *
+     * Genau in dieses Loch fielen zwei Messungen, die beide vor dem ersten
+     * Bild laufen:
+     *
+     *   PlantWall.resize()     legte die Wandebenen auf y = 1.9 (die
+     *                          Kamerahöhe) statt auf y = -0.08. Unten
+     *                          blieben 1.145 Einheiten unbedeckt — der
+     *                          grüne Streifen am unteren Bildrand.
+     *   _updateWorldBounds()   mass die Feldbreite mit einer ungeneigten
+     *                          Kamera.
+     *
+     * Beides heilte beim ersten Fenster-Resize von selbst. Deshalb war es
+     * beim Ausprobieren am Rechner oft weg, sobald man einmal am Fenster
+     * gezogen hatte — und auf dem Handy blieb es. */
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld(true);
+
     const ambient = new AmbientLight(render.lights.ambient.color, render.lights.ambient.intensity);
     this.scene.add(ambient);
 
@@ -1741,6 +1764,11 @@ export class Game {
     const h = Math.max(1, window.innerHeight);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    /* Auch hier: die beiden Messungen unten rechnen mit der WELTMATRIX, und
+     * die ist nach einem Seitenverhältnis-Wechsel bis zum nächsten Bild
+     * veraltet. Ein `updateProjectionMatrix` allein genügt nicht — siehe
+     * die ausführliche Begründung in _buildScene. */
+    this.camera.updateMatrixWorld(true);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.cfg.render.maxPixelRatio));
     this.renderer.setSize(w, h);
 
