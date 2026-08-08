@@ -104,20 +104,33 @@ async function freistellen(datei) {
   const [br, bg_, bb] = bgFarbe(data, w, h, ch);
   const wandHell = (br + bg_ + bb) / 3;
 
-  /* IN WELCHE RICHTUNG HEBT SICH DIE FIGUR AB?
+  /* HELLIGKEIT IN BEIDE RICHTUNGEN — mit einem Freibetrag nach unten.
    *
-   * Die Videos haben zweierlei Hintergrund: eine mittelgraue Wand (Adler,
-   * weisser und oranger Affe) oder reines Weiss (Wurfanimation).
+   * HIER STAND EINE RICHTUNGSANNAHME, und die hat sichtbaren Schaden
+   * angerichtet. Die Regel lautete: bei grauer Wand ist die Figur HELLER,
+   * bei weisser DUNKLER. Sie stimmt, solange die Figur flach ausgeleuchtet
+   * ist. Die neuen Kletter- und Chilivideos sind es nicht — der Affe wird
+   * von der Seite angestrahlt, und seine Schattenseite ist DUNKLER als die
+   * graue Wand. Für die galt dann nur noch die Buntheit, und dunkelbraunes
+   * Fell im Schatten ist kaum bunt.
    *
-   *   graue Wand   Figur ist HELLER oder bunter; der Schlagschatten ist
-   *                dunkler und soll weg -> Aufhellung zählt.
-   *   weiss        Figur ist DUNKLER; "heller als Weiss" gibt es nicht.
-   *                Mit der Aufhellungs-Regel frass das Keying Löcher in den
-   *                Körper, überall wo das Fell hell und wenig bunt war.
+   * Gemessen am fertigen Bild: 14.4 % der Figur waren halbdurchsichtig
+   * (beim Goldaffen aus einem flach beleuchteten Video: 2.7 %). Im Spiel sah
+   * das aus wie ein zerfressener, verpixelter Kopf mit Löchern im Rumpf.
    *
-   * Deshalb wird die Richtung aus der gemessenen Hintergrundhelligkeit
-   * abgeleitet, statt sie anzunehmen. */
-  const hellerHintergrund = wandHell > 200;
+   * Beide Richtungen bedingungslos zu nehmen geht aber auch nicht: der
+   * SCHLAGSCHATTEN auf der Wand ist ebenfalls dunkler und würde damit zum
+   * Inhalt. Gemessen an einem Rohbild lassen sich die beiden sauber
+   * trennen:
+   *
+   *   Schlagschatten   Buntheit  0-6,  dunkler um   0-20   (neutrales Grau)
+   *   Fell im Schatten Buntheit 18-36, dunkler um  60-120  (braun)
+   *
+   * Nach unten gilt deshalb ein Freibetrag: die ersten `SCHATTEN` Stufen
+   * Dunkelheit zählen nicht. Ein weicher Schatten fällt darunter, eine
+   * beschattete Flanke weit darüber. Nach oben gibt es keinen Freibetrag —
+   * heller als der Hintergrund wird nichts ausser der Figur. */
+  const SCHATTEN = 26;
 
   const alpha = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -126,7 +139,8 @@ async function freistellen(datei) {
     const m = (r + g + b) / 3;
     const dr = r - m, dg = g - m, db = b - m;
     const buntheit = Math.sqrt(dr * dr + dg * dg + db * db);
-    const abstandHell = hellerHintergrund ? wandHell - m : m - wandHell;
+    const heller = m - wandHell;
+    const abstandHell = heller >= 0 ? heller : Math.max(0, -heller - SCHATTEN);
     const k = Math.max(buntheit, abstandHell);
     alpha[i] = k <= LO ? 0 : k >= HI ? 1 : (k - LO) / (HI - LO);
   }

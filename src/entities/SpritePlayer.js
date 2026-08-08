@@ -123,6 +123,9 @@ export class SpritePlayer {
      * Siehe hoeheAnsteuern(). */
     this.zielY = this.y;
 
+    /** Reiner Anzeige-Versatz zur Seite (Chili-Flug). Siehe update(). */
+    this.versatzX = 0;
+
     this._inputX = 0;
     this._phase = 0;
     this._lean = 0;
@@ -283,9 +286,41 @@ export class SpritePlayer {
       this.frames = this._fellOriginal;
       this._fellOriginal = null;
     }
+    this._masseAnpassen();
     // Erzwingt im nächsten _animate einen echten Bildwechsel.
     this._frameIndex = -1;
     this._frameSatz = null;
+  }
+
+  /**
+   * Die Ebene an das Seitenverhältnis des aktuellen Bildsatzes anpassen.
+   *
+   * DIE BILDSÄTZE SIND NICHT GLEICH GROSS. Die Kletterbilder sind 407x725,
+   * die Chili-Bilder 612x900 — dort hängt eine Flamme unter dem Affen, also
+   * ist das Bild breiter UND höher. Die Ebene wurde aber einmal aus den
+   * Kletterbildern gebaut.
+   *
+   * Ohne Anpassung passiert zweierlei: das Bild wird quer gestaucht (die
+   * Flamme wird schmal und der Affe dick), und weil die Höhe gleich bleibt,
+   * schrumpft der Affe selbst — die Flamme frisst seinen Platz auf.
+   *
+   * Gerechnet wird deshalb über die HÖHE DES AFFEN, nicht über die
+   * Bildhöhe: die Ebene wächst um genau so viel, wie das neue Bild höher
+   * ist, und in der Breite zusätzlich um den Unterschied der
+   * Seitenverhältnisse. Der Affe bleibt dadurch gleich gross, und die
+   * Flamme kommt unten dazu.
+   */
+  _masseAnpassen() {
+    const jetzt = this.frames?.[0]?.image;
+    const urspruenglich = (this._fellOriginal ?? this.frames)?.[0]?.image;
+    if (!jetzt?.height || !urspruenglich?.height) {
+      this.art.scale.set(1, 1, 1);
+      return;
+    }
+    const hoehenFaktor = jetzt.height / urspruenglich.height;
+    const aspektJetzt = jetzt.width / jetzt.height;
+    const aspektVorher = urspruenglich.width / urspruenglich.height;
+    this.art.scale.set((aspektJetzt / aspektVorher) * hoehenFaktor, hoehenFaktor, 1);
   }
 
   _resetAnimation() {
@@ -295,13 +330,10 @@ export class SpritePlayer {
     // Ohne das startet ein neuer Lauf mit der Schräglage des letzten.
     this._lean = 0;
     this._dieTimer = 0;
-    // Ein abgebrochener Wurf würde sonst die Breitenkorrektur stehen lassen
-    // und den Affen den ganzen nächsten Lauf lang breit ziehen.
-    this._wurf = null;
-    this._hatGeworfen = false;
-    this._wurfEreignis = false;
-    this.art.scale.x = 1;
-    // Goldmodus endet mit dem Lauf.
+    /* Gold- und Chili-Fell enden mit dem Lauf. `fellWechseln` zieht die
+     * Masse der Ebene selbst wieder gerade (siehe _masseAnpassen) — deshalb
+     * steht hier KEIN eigenes `art.scale` mehr, das hätte die Korrektur
+     * überschrieben. */
     this.fellWechseln(null);
     this.material.opacity = 1;
     this.pivot.position.set(0, 0, 0);
@@ -342,6 +374,7 @@ export class SpritePlayer {
     }
     this.y = this.cfg.startPosition[1];
     this.zielY = this.y;
+    this.versatzX = 0;
     this.vx = 0;
     this.vy = 0;
     this.speed = 0;
@@ -454,7 +487,12 @@ export class SpritePlayer {
       this.vx += (0 - this.vx) * (1 - Math.exp(-cfg.damping * dt));
     }
 
-    this.root.position.x = this.x;
+    /* `versatzX` ist ein reiner ANZEIGE-Versatz — der Chili-Flug lässt den
+     * Affen damit hin und her schwenken. Er geht bewusst NICHT in `this.x`
+     * ein: davon hängen Bahnlogik und Kollision ab, und die sollen von
+     * einer Flugkurve nichts mitbekommen. Während des Flugs fällt ohnehin
+     * nichts, es kann also nichts danebengehen. */
+    this.root.position.x = this.x + this.versatzX;
 
     /* HÖHE. Im normalen Lauf ist zielY gleich der Starthöhe, der Ausdruck
      * unten also ein Nullschritt — der Affe steht so fest wie vorher. Nur

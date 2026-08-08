@@ -58,7 +58,7 @@ function stufeBei(sek) {
 
 const DT = 1 / 120;
 
-function lauf({ seed, affeId, aspect, verzugOverride, startZeit, sekunden, halbeBreite }) {
+function lauf({ seed, affeId, aspect, verzugOverride, startZeit, sekunden, halbeBreite, voraus }) {
   const echt = Math.random;
   Math.random = rng(seed);
   try {
@@ -108,7 +108,7 @@ function lauf({ seed, affeId, aspect, verzugOverride, startZeit, sekunden, halbe
         uhr -= DT;
         if (uhr <= 0) { uhr = 0; if (pending !== null) { zielBahn = pending; pending = null; } }
       } else {
-        const soll = naechsteBahnIdx(spawner.korridor.bei(spawner.korridor.jetzt));
+        const soll = naechsteBahnIdx(spawner.korridor.bei(spawner.korridor.jetzt + (voraus ? verzug : 0)));
         if (soll !== zielBahn) {
           const dir = Math.sign(soll - zielBahn);
           const ziel = Math.max(0, Math.min(bahnX.length - 1, zielBahn + dir));
@@ -156,6 +156,7 @@ for (const [aName, aspect] of Object.entries(aspects)) {
     ['braun  (kein Verzug)', { affeId: 'braun', verzugOverride: 0, halbeBreite: breiten.braun }],
     ['orange OHNE Verzug  ', { affeId: 'orange', verzugOverride: 0, halbeBreite: breiten.orange }],
     ['orange MIT 0.5 s    ', { affeId: 'orange', verzugOverride: undefined, halbeBreite: breiten.orange }],
+    ['orange 0.5s vorausschauend', { affeId: 'orange', verzugOverride: undefined, halbeBreite: breiten.orange, voraus: true }],
   ]) {
     let ges = 0; let erster = null;
     for (let s = 1; s <= 8; s++) {

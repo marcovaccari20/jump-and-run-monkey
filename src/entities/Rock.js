@@ -163,7 +163,9 @@ function spritePfad(cfg, name) {
 export function spriteHoehe(cfg, lookId, type) {
   const geteiltJetzt = geteilt;
   const look = cfg.looks[lookId] ?? cfg.looks.stein;
-  const d = 2 * type.radius * (cfg.spriteScale ?? 1) * (look.bildScale ?? 1);
+  const slot = cfg.types.indexOf(type);
+  const bs = look.bildScaleSlots?.[slot < 0 ? 0 : slot] ?? look.bildScale ?? 1;
+  const d = 2 * type.radius * (cfg.spriteScale ?? 1) * bs;
   const s = geteiltJetzt?.get(`${lookId}/${type.id}`);
   if (!s || !s.sprite) {
     // Prozedural: `strecken` verzerrt nur die Darstellung.
@@ -195,7 +197,8 @@ export function groessteSpriteBreite(cfg) {
       const s = geteilt?.get(`${lookId}/${t.id}`);
       let breite;
       if (s?.sprite) {
-        const d = 2 * t.radius * (cfg.spriteScale ?? 1) * (look.bildScale ?? 1);
+        const d =
+          2 * t.radius * (cfg.spriteScale ?? 1) * (look.bildScaleSlots?.[i] ?? look.bildScale ?? 1);
         breite = d * Math.sqrt(s.aspect);
       } else {
         const st = look.strecken;
@@ -306,7 +309,11 @@ export class Rock {
        *
        * Sprites DREHEN sich nicht, sie kippen nur hin und her. Ein Kürbis
        * mit Gesicht, der sich überschlägt, sieht nach Fehler aus. */
-      const d = 2 * this.radius * (cfg.spriteScale ?? 1) * (look.bildScale ?? 1);
+      /* bildScaleSlots schlaegt bildScale: manche Saetze brauchen nur EIN
+       * Stueck groesser (der Holzstock etwa war kaum zu sehen, der Stamm
+       * daneben aber schon gross genug). */
+      const bs = look.bildScaleSlots?.[i] ?? look.bildScale ?? 1;
+      const d = 2 * this.radius * (cfg.spriteScale ?? 1) * bs;
       const wurzel = Math.sqrt(s.aspect);
       this.mesh.scale.set(d * wurzel, d / wurzel, 1);
 

@@ -362,7 +362,7 @@ export const CONFIG = {
         // abtastet, bekommt Wiederholungen, und die Animation hakt sichtbar.
         // Die Zahl meldet `npm run video:frames -- extract …` am Ende.
         frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        cycleSpeed: 1.4, // = CONFIG.sprite.cycleSpeed
+        cycleSpeed: 0.85, // = CONFIG.sprite.cycleSpeed
         artScale: 1.0, // skaliert den Versatz des Umrisses mit
         bananas: true,
         maxStored: 1, // -> CONFIG.revive.maxStored
@@ -404,7 +404,7 @@ export const CONFIG = {
         // Muss gesetzt werden: die Bildrate wird auf moveSpeed NORMIERT
         // (SpritePlayer: speedRatio = animSpeed / cfg.moveSpeed), ein
         // höheres moveSpeed allein macht den Zyklus also NICHT schneller.
-        cycleSpeed: 1.9, // x1.36
+        cycleSpeed: 1.15, // x1.35 — der flinke bleibt anteilig schneller
         artScale: 0.5,
 
         /* ZWEI BAHNEN AUF EINMAL.
@@ -444,7 +444,7 @@ export const CONFIG = {
         preview: '/characters/orange.webp',
         framePath: '/textures/orange/move_{n}.webp',
         frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        cycleSpeed: 1.1, // x0.79  schwerfälliger Zyklus
+        cycleSpeed: 0.67, // x0.79  schwerfälliger Zyklus
         artScale: 1.0,
         bananas: true,
         maxStored: 1,
@@ -835,13 +835,17 @@ export const CONFIG = {
         // Stock, Baumscheibe, Stamm. Der Stamm ist beim Aufbereiten um 90°
         // gedreht worden und fällt mit der Schnittfläche voran.
         bilder: ['holz_klein', 'holz_mittel', 'holz_gross'],
-        /* 2.1 statt 1.05 — DOPPELT SO GROSS.
+        /* NUR DER STOCK WIRD DOPPELT SO GROSS, nicht der ganze Satz.
          *
-         * Der Stock ist lang und dünn; bei 1.05 war er vor der
-         * Blumenwand kaum vom Gestrüpp zu unterscheiden. Was man nicht
-         * sieht, kann man nicht ausweichen — und dann ist es kein
-         * Hindernis, sondern eine Falle. */
-        bildScale: 2.1,
+         * Der Stock ist lang und dünn und war vor der Blumenwand kaum vom
+         * Gestrüpp zu unterscheiden — was man nicht sieht, kann man nicht
+         * ausweichen, und dann ist es kein Hindernis, sondern eine Falle.
+         *
+         * Erst stand hier `bildScale: 2.1` für alle drei. Das hat auch den
+         * STAMM verdoppelt, und der füllte damit ein Drittel des
+         * Bildschirms. Scheibe und Stamm stehen deshalb wieder genau auf
+         * ihrem alten Wert (1.05); nur der Stock ist grösser. */
+        bildScaleSlots: [2.1, 1.05, 1.05],
         // Weniger Taumeln als beim Stein: Holz ist länglich, und was sich
         // schnell dreht, liest sich schlechter in seiner Fallrichtung.
         taumeln: 10,
@@ -1514,16 +1518,36 @@ export const CONFIG = {
     abGebiet: 2,
     jedesXteGebiet: { min: 3, max: 4 },
 
-    /* Wie lange der Schub dauert. Fünf Sekunden, wie gewünscht: lang genug,
-     * dass man es geniesst, kurz genug, dass es nicht zur Pause wird. */
+    /* Wie lange der Schub HÖCHSTENS dauert. */
     sekunden: 5.0,
 
-    /* Wie schnell er dabei steigt, als Vielfaches der normalen
-     * Scrollgeschwindigkeit. Das Gebiet ist 132 s lang; in 5 s muss der
-     * Rest davon durchflogen sein, deshalb wird der Faktor zur Laufzeit
-     * aus der Reststrecke berechnet — dieser Wert ist nur die Untergrenze,
-     * damit es auch am Anfang eines Gebiets nach Schub aussieht. */
-    tempoMin: 6.0,
+    /* Und wie lange MINDESTENS.
+     *
+     * Ohne Untergrenze richtete sich die Dauer allein nach dem, was vom
+     * Gebiet übrig war. Wer die Schote kurz vor dem Wechsel aufhob, bekam
+     * einen Flug von 1.2 Sekunden — technisch mit 10-fachem Tempo, aber
+     * vorbei, bevor man hinsieht. Genau das las sich als "er war gleich
+     * schnell wie beim Klettern".
+     *
+     * Jetzt gilt: mindestens 2.5 Sekunden. Reicht die restliche
+     * Gebietsstrecke dafür nicht, fliegt er eben ins nächste Gebiet hinein
+     * — das ist ohnehin das Ziel. */
+    minSekunden: 2.5,
+
+    /* MINDESTENS ZEHNFACHES TEMPO.
+     *
+     * Wie schnell er fliegt, ergibt sich normalerweise aus der Rechnung
+     * "restliche Gebietszeit in `sekunden` abarbeiten". Steht er beim
+     * Aufheben aber schon kurz vor dem Gebietswechsel, wäre der Rest klein
+     * und der Flug entsprechend lahm — die Animation liefe fünf Sekunden,
+     * und die Wand bewegte sich kaum. Das sähe nach Fehler aus, nicht nach
+     * Schub.
+     *
+     * Die Flugdauer ergibt sich aus `Reststrecke / tempoMin`, gedeckelt auf
+     * [minSekunden, sekunden]. Bleibt nach dem Deckeln Zeit übrig, wird
+     * entsprechend weiter vorgeschoben — er fliegt dann ins nächste Gebiet
+     * hinein statt langsamer zu werden. */
+    tempoMin: 7.5,
 
     /* Bildfolgen des Fluges, je Charakter. Fehlt einer, klettert er eben
      * weiter — der Schub wirkt trotzdem. */
@@ -1532,7 +1556,16 @@ export const CONFIG = {
       weiss: '/textures/chili_weiss/move_{n}.webp',
       orange: '/textures/chili_orange/move_{n}.webp',
     },
-    frameAnzahl: 14,
+    /* MUSS ZUR ZAHL DER EXPORTIERTEN BILDER PASSEN.
+     *
+     * Stand hier 14, während `npm run prep:boss` nur noch 12 schreibt. Der
+     * Loader forderte move_12 und move_13 an, bekam vom Entwicklungsserver
+     * die index.html mit Status 200, warf — und weil der Fehler nur in einem
+     * `catch` mit `console.warn` landete, sah man im Spiel bloss einen Affen,
+     * der beim Chili weiterkletterte statt zu fliegen.
+     *
+     * Die Zahl meldet prepare-boss.mjs am Ende jeder Bildfolge. */
+    frameAnzahl: 12,
     /* Bilder je Sekunde. Die Vorlage ist ein 5-Sekunden-Video mit 14
      * verschiedenen Bildern — knapp drei je Sekunde wirkt zu langsam,
      * deshalb läuft die Folge einmal an und bleibt dann auf dem letzten
@@ -1788,7 +1821,14 @@ export const CONFIG = {
     // Kletterzyklen pro Sekunde bei voller Bewegungsgeschwindigkeit.
     // Bildrate = cycleSpeed * frames.length (hier 1.4 * 12 ≈ 17 Bilder/s).
     // Der Zyklus im Video dauert 1.017 s, also entspricht 1.0 dem Originaltempo.
-    cycleSpeed: 1.4,
+    /* 0.85 STATT 1.4 — der Zyklus lief zu hektisch.
+     *
+     * Der Wert kommt aus der Zeit der alten Kletterbilder. Das neue Video
+     * zeigt einen ruhigeren, weiter ausholenden Klettergang; mit demselben
+     * Takt abgespielt wirkte er, als würde er die Wand hochrennen statt
+     * klettern. Bei 12 Bildern sind das jetzt rund 10 Bilder je Sekunde
+     * statt 17. */
+    cycleSpeed: 0.85,
     /* DER AFFE KLETTERT IMMER — auch ohne Eingabe.
      *
      * Ich hatte das erst missverstanden und den Zyklus im Stillstand
@@ -1800,7 +1840,11 @@ export const CONFIG = {
      * 0.7 heisst: im Stillstand die halbe Bildrate der vollen Bewegung —
      * ruhiges, gleichmässiges Kraxeln, das nicht mit dem Ausweichen
      * konkurriert. */
-    idleCycleSpeed: 0.7,
+    /* 0.45 statt 0.7. Dieser Sockel gilt, solange man NICHT seitlich
+     * ausweicht — also die meiste Zeit. Er war damit der eigentliche
+     * Klettertakt und musste mit cycleSpeed zusammen heruntergehen, sonst
+     * hätte sich nichts geändert. */
+    idleCycleSpeed: 0.45,
 
     /* Neigung in Bewegungsrichtung.
      *

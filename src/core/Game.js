@@ -645,12 +645,26 @@ export class Game {
     const c = this.cfg.chili;
 
     /* Wie viel Spielzeit bis zum nächsten Gebiet noch fehlt. Genau die wird
-     * in `sekunden` echten Sekunden abgearbeitet. */
+     * abgearbeitet — höchstens in `sekunden`, aber schneller, wenn sonst
+     * kein Schub zu sehen wäre.
+     *
+     * DIE FLUGDAUER IST DAS ERGEBNIS, NICHT DIE VORGABE. Steht er kurz vor
+     * dem Gebietswechsel, sind nur noch ein paar Sekunden Gebietszeit übrig;
+     * die über volle fünf Sekunden zu strecken hiesse, eine Flammenanimation
+     * zu zeigen, während sich die Wand kaum bewegt. Deshalb wird die Dauer
+     * so gekürzt, dass mindestens `tempoMin`-faches Tempo herauskommt. */
     const dauerGebiet = this.cfg.difficulty.sekundenProWand;
     const imGebiet = this.difficulty.elapsed % dauerGebiet;
-    const rest = dauerGebiet - imGebiet;
+    const restGebiet = dauerGebiet - imGebiet;
 
-    this._chiliFlug = { rest: c.sekunden, phase: 0, uhrRest: rest };
+    /* Dauer aus der Reststrecke, aber nach BEIDEN Seiten gedeckelt. Ist die
+     * Reststrecke zu kurz für einen sichtbaren Flug, wird die Strecke
+     * verlängert statt der Flug verlangsamt: er fliegt dann ins nächste
+     * Gebiet hinein. */
+    const dauer = Math.max(c.minSekunden, Math.min(c.sekunden, restGebiet / c.tempoMin));
+    const strecke = Math.max(restGebiet, dauer * c.tempoMin);
+
+    this._chiliFlug = { rest: dauer, dauer, phase: 0, uhrRest: strecke };
     this.spawner.rocks.releaseAll((r) => r.despawn());
     this.spawner.bananas.releaseAll((b) => b.despawn());
     this.sturzflug?.abbrechen();
@@ -688,19 +702,52 @@ export class Game {
     const f = this._chiliFlug;
     if (!f) return 0;
 
-    f.rest -= dt;
+    const vorher = f.rest;
+    f.rest = Math.max(0, f.rest - dt);
     f.phase += dt;
 
-    /* Die restliche Gebietszeit gleichmässig über die Flugdauer verteilen.
-     * `uhrRest` wird dabei aufgebraucht — läuft der Flug aus, ist genau ein
-     * Gebietswechsel passiert, nicht mehr und nicht weniger. */
-    const anteil = Math.min(1, dt / Math.max(0.001, this.cfg.chili.sekunden));
+    /* DIE RESTLICHE GEBIETSZEIT WIRD AUFGEBRAUCHT, nicht geschätzt.
+     *
+     * Verteilt wird nach dem ANTEIL DER RESTLICHEN FLUGZEIT, den dieser
+     * Frame ausmacht — nicht nach `dt / sekunden`. Der Unterschied zählt am
+     * Ende: bei Rucklern oder einem letzten kurzen Frame bliebe sonst ein
+     * Rest stehen, und der Affe käme kurz VOR dem neuen Gebiet heraus.
+     *
+     * So ist es exakt: was an Gebietszeit übrig ist, wird über die noch
+     * verbleibende Flugzeit verteilt. Im letzten Frame ist der Anteil 1,
+     * also geht der ganze Rest raus. */
+    const genutzt = vorher - f.rest;
+    const anteil = vorher > 0 ? genutzt / vorher : 1;
     const schub = f.uhrRest * anteil;
+    f.uhrRest -= schub;
+
+    /* HIN UND HER SCHWENKEN.
+     *
+     * Eine Rakete, die schnurgerade nach oben geht, sieht aus wie ein Aufzug.
+     * Der Affe pendelt deshalb während des Flugs zur Seite — zwei volle
+     * Schwünge über die Flugdauer, gedämpft an beiden Enden, damit er weich
+     * losschwingt und wieder mittig ankommt.
+     *
+     * Das ist ein reiner ANZEIGE-Versatz (SpritePlayer.versatzX): Bahn und
+     * Trefferkreis bleiben, wo sie sind. Während des Flugs fällt ohnehin
+     * nichts, es kann also nichts danebengehen.
+     *
+     * Die Weite hängt am Feld, nicht an einer festen Zahl — im Hochformat
+     * wären zwei Einheiten der halbe Bildschirm. */
+    const fortschritt = 1 - f.rest / f.dauer;
+    const daempfung = Math.sin(Math.min(1, fortschritt) * Math.PI);
+    const weite = this.worldView.bounds.maxX * 0.55;
+    this.player.versatzX = Math.sin(fortschritt * Math.PI * 4) * weite * daempfung;
+    // Er legt sich in die Kurve — dieselbe Richtung wie beim Ausweichen.
+    this.player.pivot.rotation.z = -Math.cos(fortschritt * Math.PI * 4) * 0.22 * daempfung;
 
     if (f.rest <= 0) {
       this._chiliFlug = null;
+      this.player.versatzX = 0;
+      this.player.pivot.rotation.z = 0;
       this.player.fellWechseln?.(this._goldRest > 0 ? this._goldFrames : null);
-      return 0;
+      // Was an Gebietszeit noch offen ist, kommt im letzten Schub mit.
+      return schub + f.uhrRest;
     }
     return schub;
   }
@@ -1757,7 +1804,21 @@ export class Game {
      * Übrig blieb eine Rechnung, die garantiert `base` ergibt. */
     const base = this.difficulty.scrollSpeed;
     const axis = this.input.axis;
-    const climbed = base * dt;
+
+    /* DER CHILI-DURCHFLUG RAST — Wand, Meter und Wandstufe gemeinsam.
+     *
+     * `chiliSchub` ist die zusätzliche SPIELZEIT dieses Frames. Wird sie
+     * hier auf die Kletterstrecke mitgerechnet, bewegt sich die ganze Welt
+     * um genau diese Zeit weiter: die Wand rauscht nach unten, der
+     * Meterzähler springt, und die Wandstufe wechselt am selben Punkt wie
+     * sonst auch.
+     *
+     * Erst ging der Schub allein in `difficulty.update`, und hier stand nur
+     * `base * dt`. Ergebnis: das Gebiet wechselte zwar, aber im Bild
+     * passierte nichts — er stand mit brennendem Hintern da und wartete.
+     * Genau das ist der Unterschied zwischen "die Uhr springt" und "er
+     * fliegt durch". */
+    const climbed = base * (dt + chiliSchub);
 
     // Die Wand scrollt während der Sterbe-Verzögerung weiter (sonst friert das
     // Bild abrupt ein), der Score aber NICHT — sonst bekäme man für die
