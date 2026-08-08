@@ -683,6 +683,20 @@ export const CONFIG = {
         leuchten: 0,
         glanz: 0,
       },
+      holz: {
+        // Stock, Baumscheibe, Stamm. Der Stamm ist beim Aufbereiten um 90°
+        // gedreht worden und fällt mit der Schnittfläche voran.
+        bilder: ['holz_klein', 'holz_mittel', 'holz_gross'],
+        bildScale: 1.05,
+        // Weniger Taumeln als beim Stein: Holz ist länglich, und was sich
+        // schnell dreht, liest sich schlechter in seiner Fallrichtung.
+        taumeln: 10,
+        form: 'zylinder',
+        // Rückfallfarben, falls ein Bild fehlt — Rinde und Kernholz.
+        farben: [0xa9855c, 0x7a5433, 0x4e3520],
+        leuchten: 0,
+        glanz: 0,
+      },
       kokosnuss: {
         // klein = die halbe Nuss, mittel und gross = dieselbe ganze Nuss.
         // Die Grössenklasse skaliert sie — es braucht kein zweites Bild.
@@ -1737,7 +1751,8 @@ export const CONFIG = {
       },
       {
         name: 'blumen',
-        hazard: 'stein',
+        // Holz statt Stein: Stock (klein), Baumscheibe (mittel), Stamm (gross).
+        hazard: 'holz',
         afterSeconds: 132,
         near: '/textures/stage2_flowers.webp',
         far: '/textures/stage2_flowers_far.webp',

@@ -205,6 +205,28 @@ const BILDER = [
     dreh: [0, 0, 180],
   },
   {
+    quelle: 'holz.png',
+    // Im Bild stehen sie als Stock, Stamm, Scheibe — gebraucht werden sie als
+    // klein, mittel, gross. Der Stamm ist das grösste Objekt und kommt daher
+    // nach hinten, die Scheibe in die Mitte.
+    ziele: ['holz_klein', 'holz_mittel', 'holz_gross'],
+    objekte: 3,
+    waehle: [0, 2, 1], // Stock, Scheibe, Stamm
+    t0: 10,
+    t1: 34,
+    /* Der Stamm liegt im Original waagerecht, die Schnittfläche zeigt nach
+     * rechts. Gedreht fällt er senkrecht mit der Schnittfläche voran — das
+     * liest sich als Stamm, der auf einen zukippt, statt als Klotz, der
+     * seitlich vorbeitreibt.
+     *
+     * ACHTUNG, siehe wolken.png weiter oben: `dreh` wird nach der Reihenfolge
+     * IM BILD indiziert, nicht nach `waehle`. Der Stamm steht im Bild an
+     * ZWEITER Stelle — die 90° gehören auf Index 1, nicht auf 2. Stock und
+     * Scheibe bleiben, wie sie sind: der Stock fällt schräg (das wirkt
+     * lebendiger als senkrecht), die Scheibe ist rund. */
+    dreh: [0, 90, 0],
+  },
+  {
     quelle: 'kristall.png',
     ziele: ['kristall_klein', 'kristall_mittel', 'kristall_gross'],
     objekte: 3,
