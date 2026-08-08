@@ -57,6 +57,31 @@ const WUNSCH = arg('frames', 12);
 /** Ab dieser Änderung gilt ein Bild als neu (Skala: mittlerer Kanalabstand). */
 const MIN_ABSTAND = arg('abstand', 2.5);
 
+/** Bilder je Sekunde des Videos — für die Tempoangabe am Ende. */
+const FPS = arg('fps', 24);
+
+/* GENAU EIN ZYKLUS statt "sichtbar verschiedene Bilder".
+ *
+ * HIER LAG EIN FEHLER, der jede Kletteranimation ruiniert hat, und zwar
+ * unabhängig davon, wie das Tempo eingestellt war.
+ *
+ * Die Vorlagen enthalten nicht EINE Bewegung, sondern die Bewegung mehrfach
+ * hintereinander — das gemessene Beispiel hatte in 5,04 Sekunden sechs
+ * vollständige Kletterzyklen. Der alte Lauf sammelte über das GESAMTE Video
+ * alle "sichtbar verschiedenen" Bilder und dünnte sie dann gleichmässig auf
+ * zwölf aus. Damit stammten die zwölf Bilder aus sechs verschiedenen Zyklen:
+ * Bild 3 war nicht der Nachfolger von Bild 2, sondern die gleiche Pose eine
+ * Bewegung später. Aneinandergereiht ergibt das keine Bewegung, sondern ein
+ * Zucken — und es liest sich als "viel zu schnell", weil in jedem Bildwechsel
+ * ein ganzer Zyklussprung steckt. Kein Tempowert der Welt repariert das.
+ *
+ * Mit --zyklus wird stattdessen die Periode gemessen (Autokorrelation über
+ * die Rohbilder), die sauberste Wiederholung gesucht und GENAU DIESE
+ * lückenlos übernommen. Ergebnis: eine echte, geschlossene Schleife, deren
+ * Tempo direkt aus dem Video folgt (Zyklen/Sekunde = fps / Periode).
+ */
+const ZYKLUS = process.argv.includes('--zyklus');
+
 if (!existsSync(VIDEO)) {
   console.error(`Video nicht gefunden: ${VIDEO}`);
   process.exit(1);
@@ -215,25 +240,81 @@ function abstand(a, b, w, h) {
 
 /* ------------------------------------------------------------------ Lauf */
 
-const behalten = [];
-let letztes = null;
-
-for (const f of roh) {
-  const bild = await freistellen(resolve(ROH, f));
-  if (letztes && abstand(letztes.rgba, bild.rgba, bild.w, bild.h) < MIN_ABSTAND) continue;
-  letztes = bild;
-  behalten.push(bild);
+/** Graustufen-Miniatur eines Rohbildes — Grundlage der Periodenmessung. */
+async function miniatur(datei) {
+  return sharp(datei).resize(120, 120, { fit: 'fill' }).greyscale().raw().toBuffer();
 }
 
-console.log(`        ${behalten.length} sichtbar verschiedene Bilder`);
+/** Mittlerer Abstand zweier Miniaturen. */
+function miniAbstand(a, b) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
+  return s / a.length;
+}
 
-// Gleichmässig bis zu WUNSCH Stück auswählen.
-const anzahl = Math.min(WUNSCH, behalten.length);
-const schritt = behalten.length / anzahl;
-const gewaehlt = [];
-for (let i = 0; i < anzahl; i++) gewaehlt.push(behalten[Math.floor(i * schritt)]);
+/**
+ * Sucht die Bewegungsperiode und die sauberste Wiederholung darin.
+ *
+ * Die Periode ist der Versatz, bei dem sich das Video im Mittel am ähnlichsten
+ * ist. Der Startpunkt ist danach jene Stelle, an der Anfang und Ende der
+ * Periode am besten zusammenpassen — dort schliesst die Schleife am
+ * unauffälligsten.
+ */
+async function periodeFinden(dateien) {
+  const mini = [];
+  for (const f of dateien) mini.push(await miniatur(resolve(ROH, f)));
 
-// Gemeinsame Leinwand aus allen Bounding-Boxen.
+  const obergrenze = Math.min(48, Math.floor(mini.length / 2));
+  let beste = null;
+  for (let p = 8; p <= obergrenze; p++) {
+    let s = 0, n = 0;
+    for (let i = 0; i + p < mini.length; i++) { s += miniAbstand(mini[i], mini[i + p]); n++; }
+    const mittel = s / n;
+    if (!beste || mittel < beste.mittel) beste = { p, mittel };
+  }
+
+  let start = null;
+  for (let s = 0; s + beste.p < mini.length; s++) {
+    const d = miniAbstand(mini[s], mini[s + beste.p]);
+    if (!start || d < start.d) start = { s, d };
+  }
+  return { periode: beste.p, start: start.s };
+}
+
+const behalten = [];
+
+if (ZYKLUS) {
+  const { periode, start } = await periodeFinden(roh);
+  console.log(`        Periode ${periode} Bilder (${(periode / FPS).toFixed(3)} s), ` +
+    `sauberste Wiederholung ab Rohbild ${start + 1}`);
+  for (let i = 0; i < periode; i++) {
+    behalten.push(await freistellen(resolve(ROH, roh[start + i])));
+  }
+} else {
+  let letztes = null;
+  for (const f of roh) {
+    const bild = await freistellen(resolve(ROH, f));
+    if (letztes && abstand(letztes.rgba, bild.rgba, bild.w, bild.h) < MIN_ABSTAND) continue;
+    letztes = bild;
+    behalten.push(bild);
+  }
+  console.log(`        ${behalten.length} sichtbar verschiedene Bilder`);
+}
+
+/* Auswahl. Im Zyklusmodus bleibt JEDES Bild der Periode erhalten — dünnt man
+ * eine Bewegung aus, verliert sie genau die Zwischenposen, die sie flüssig
+ * machen. Nur der alte Modus reduziert auf WUNSCH Stück. */
+let gewaehlt;
+if (ZYKLUS) {
+  gewaehlt = behalten;
+} else {
+  const anzahl = Math.min(WUNSCH, behalten.length);
+  const schritt = behalten.length / anzahl;
+  gewaehlt = [];
+  for (let i = 0; i < anzahl; i++) gewaehlt.push(behalten[Math.floor(i * schritt)]);
+}
+
+// Bounding-Box je Bild.
 const boxen = gewaehlt.map(({ rgba, w, h }) => {
   let minX = w, maxX = -1, minY = h, maxY = -1;
   for (let i = 0; i < w * h; i++) {
@@ -249,15 +330,36 @@ const boxen = gewaehlt.map(({ rgba, w, h }) => {
 });
 
 const pad = 6;
-const leinwandW = Math.max(...boxen.map((b) => b.w)) + pad * 2;
-const leinwandH = Math.max(...boxen.map((b) => b.h)) + pad * 2;
+
+/* AUSSCHNITT: gemeinsam statt je Bild.
+ *
+ * Wird jedes Bild einzeln auf seine eigene Silhouette zugeschnitten und dann
+ * zentriert, verschiebt sich die Figur bei jedem Bildwechsel — streckt der
+ * Affe den Arm nach oben, wächst seine Box nach oben, und das Zentrieren
+ * schiebt den ganzen Körper nach unten. Im Ergebnis wackelt der Kopf, obwohl
+ * er in der Vorlage still steht.
+ *
+ * Im Zyklusmodus wird deshalb EIN Fenster über alle Bilder gelegt (die
+ * Vereinigung aller Boxen). Die Bilder bleiben zueinander in Deckung, und die
+ * Bewegung ist die aus dem Video — nicht die des Zuschnitts. */
+const gemeinsam = ZYKLUS ? {
+  left: Math.min(...boxen.map((b) => b.left)),
+  top: Math.min(...boxen.map((b) => b.top)),
+  right: Math.max(...boxen.map((b) => b.left + b.w)),
+  unten: Math.max(...boxen.map((b) => b.top + b.h)),
+} : null;
+
+const leinwandW = (gemeinsam ? gemeinsam.right - gemeinsam.left : Math.max(...boxen.map((b) => b.w))) + pad * 2;
+const leinwandH = (gemeinsam ? gemeinsam.unten - gemeinsam.top : Math.max(...boxen.map((b) => b.h))) + pad * 2;
 
 rmSync(ZIEL, { recursive: true, force: true });
 mkdirSync(ZIEL, { recursive: true });
 
 for (let i = 0; i < gewaehlt.length; i++) {
   const { rgba, w, h } = gewaehlt[i];
-  const b = boxen[i];
+  const b = gemeinsam
+    ? { left: gemeinsam.left, top: gemeinsam.top, w: gemeinsam.right - gemeinsam.left, h: gemeinsam.unten - gemeinsam.top }
+    : boxen[i];
   const cut = await sharp(rgba, { raw: { width: w, height: h, channels: 4 } })
     .extract({ left: b.left, top: b.top, width: b.w, height: b.h })
     .png()
@@ -275,4 +377,8 @@ rmSync(ROH, { recursive: true, force: true });
 
 console.log(`Ziel:   ${ZIEL}`);
 console.log(`        ${gewaehlt.length} Bilder, je ${leinwandW}x${leinwandH}` +
-  (gewaehlt.length < WUNSCH ? `  (statt ${WUNSCH} — mehr gibt das Video nicht her)` : ''));
+  (!ZYKLUS && gewaehlt.length < WUNSCH ? `  (statt ${WUNSCH} — mehr gibt das Video nicht her)` : ''));
+if (ZYKLUS) {
+  console.log(`TEMPO:  cycleSpeed ${(FPS / gewaehlt.length).toFixed(3)}  ` +
+    `(${gewaehlt.length} Bilder bei ${FPS} fps = ${(gewaehlt.length / FPS).toFixed(3)} s je Zyklus)`);
+}

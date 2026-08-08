@@ -23,6 +23,7 @@ import { Player } from '../entities/Player.js';
 import { SpritePlayer } from '../entities/SpritePlayer.js';
 import { groessteSpriteBreite, hazardSpriteUrls } from '../entities/Rock.js';
 import { Sturzflug } from '../systems/Sturzflug.js';
+import { Tempolinien } from '../entities/Tempolinien.js';
 import { PlantWall } from '../world/PlantWall.js';
 import { DifficultyCurve } from '../systems/DifficultyCurve.js';
 import { Spawner } from '../systems/Spawner.js';
@@ -489,6 +490,12 @@ export class Game {
     this.wall = new PlantWall(this.cfg.wall, getTexture, this.camera);
     this.scene.add(this.wall.group);
 
+    /* Tempolinien für den Chili-Flug. Sie liegen vor der Wand und hinter dem
+     * Affen; warum es sie braucht, steht in Tempolinien.js. */
+    this.tempolinien = new Tempolinien(this.cfg.chili.linien);
+    this.tempolinien.groesseSetzen(this.worldView.bounds);
+    this.scene.add(this.tempolinien.object3D);
+
     /* --- Affe ---------------------------------------------------------- */
     if (spriteMode) {
       this._frameCache.set(char.id, frameUrls.map((u) => textures.get(u)));
@@ -657,14 +664,46 @@ export class Game {
     const imGebiet = this.difficulty.elapsed % dauerGebiet;
     const restGebiet = dauerGebiet - imGebiet;
 
-    /* Dauer aus der Reststrecke, aber nach BEIDEN Seiten gedeckelt. Ist die
-     * Reststrecke zu kurz für einen sichtbaren Flug, wird die Strecke
-     * verlängert statt der Flug verlangsamt: er fliegt dann ins nächste
-     * Gebiet hinein. */
-    const dauer = Math.max(c.minSekunden, Math.min(c.sekunden, restGebiet / c.tempoMin));
-    const strecke = Math.max(restGebiet, dauer * c.tempoMin);
+    /* DIE STRECKE STEHT ZUERST FEST, DANN ERST DIE DAUER.
+     *
+     * Gefordert ist beides: mindestens achtfaches Tempo UND im nächsten
+     * Gebiet ankommen. Das geht nur, wenn die Strecke die Vorgabe ist —
+     * der Rest des Gebiets plus ein Stück hinein — und die Dauer sich
+     * danach richtet.
+     *
+     * Reicht `sekunden`, um das mit dem achtfachen Tempo zu schaffen, wird
+     * genau achtfach geflogen. Reicht es nicht (am Gebietsanfang sind 132
+     * Sekunden offen), wird schneller geflogen statt länger. Der Faktor ist
+     * also eine Untergrenze, kein Sollwert. */
+    /* DIE MINDESTDAUER DARF DEN FAKTOR NICHT DRÜCKEN.
+     *
+     * Gemessen bei 97 Prozent Gebietsfortschritt: Reststrecke 4 Sekunden,
+     * durch `minSekunden` auf 2.5 Sekunden Flugzeit gestreckt — macht Faktor
+     * 5.8 statt 8. Genau am Gebietsende, wo der Chili am ehesten fällt, war
+     * der Flug also am langsamsten.
+     *
+     * Die Untergrenze gehört deshalb an die STRECKE, nicht an die Zeit: bei
+     * einer kurzen Reststrecke fliegt er einfach weiter ins nächste Gebiet
+     * hinein, statt langsamer zu werden. */
+    const strecke = Math.max(
+      restGebiet + dauerGebiet * c.einstieg,
+      c.minSekunden * c.tempoFaktor,
+    );
 
-    this._chiliFlug = { rest: dauer, dauer, phase: 0, uhrRest: strecke };
+    /* Zeit bei genau achtfachem Tempo: in einer echten Sekunde vergehen acht
+     * Spielsekunden. Länger als `sekunden` darf es nicht dauern. */
+    const dauerBeiAcht = strecke / c.tempoFaktor;
+    const dauer = Math.max(c.minSekunden, Math.min(c.sekunden, dauerBeiAcht));
+
+    this._chiliFlug = {
+      rest: dauer,
+      dauer,
+      phase: 0,
+      uhrRest: strecke,
+      // Nur für die Anzeige: mit welchem Vielfachen es tatsächlich läuft.
+      faktor: strecke / dauer,
+    };
+    this.player.hoeheAnsteuern?.(c.flughoehe);
     this.spawner.rocks.releaseAll((r) => r.despawn());
     this.spawner.bananas.releaseAll((b) => b.despawn());
     this.sturzflug?.abbrechen();
@@ -674,21 +713,40 @@ export class Game {
 
     // Bildfolge beim ersten Mal nachladen.
     if (!this._chiliFrames) this._chiliFramesLaden();
-    else this.player.fellWechseln?.(this._chiliFrames);
+    else this._chiliFellSetzen();
+  }
+
+  /**
+   * Legt das Flugfell an und lässt es im Videotakt DURCHLAUFEN.
+   *
+   * Der Takt kommt aus CONFIG.chili.frameTakt (Bilder je Sekunde) geteilt
+   * durch die Bildzahl des Satzes — so läuft die Flammenschleife genau so
+   * schnell wie in der Vorlage und nicht im Kletterakt des Affen. Ohne das
+   * flackerte das Feuer mit rund 1.26 Durchläufen je Sekunde statt mit 3
+   * und sah aus wie eine Lavalampe.
+   */
+  _chiliFellSetzen() {
+    const n = this._chiliFrames?.length ?? 0;
+    if (!n) return;
+    this.player.fellWechseln?.(this._chiliFrames);
+    this.player.taktVorgeben?.(this.cfg.chili.frameTakt / n);
   }
 
   /** Lädt die Flugbilder des gewählten Affen. */
   _chiliFramesLaden() {
     const c = this.cfg.chili;
-    const muster = c.frames[this.character?.id ?? 'braun'] ?? c.frames.braun;
-    const pfade = Array.from({ length: c.frameAnzahl }, (_, i) =>
+    const id = this.character?.id ?? 'braun';
+    const muster = c.frames[id] ?? c.frames.braun;
+    // Bildzahl JE CHARAKTER — die Sätze sind unterschiedlich lang, siehe config.
+    const anzahl = c.frameAnzahl[id] ?? c.frameAnzahl.braun;
+    const pfade = Array.from({ length: anzahl }, (_, i) =>
       muster.replace('{n}', String(i).padStart(2, '0')),
     );
     this._loader
       .loadTexturesParallel(pfade, 'Chili…')
       .then((t) => {
         this._chiliFrames = pfade.map((p) => t.get(p)).filter(Boolean);
-        if (this._chiliFlug) this.player.fellWechseln?.(this._chiliFrames);
+        if (this._chiliFlug) this._chiliFellSetzen();
       })
       .catch((f) => console.warn('[Chili] Flugbilder fehlen:', f));
   }
@@ -739,17 +797,53 @@ export class Game {
     const weite = this.worldView.bounds.maxX * 0.55;
     this.player.versatzX = Math.sin(fortschritt * Math.PI * 4) * weite * daempfung;
     // Er legt sich in die Kurve — dieselbe Richtung wie beim Ausweichen.
-    this.player.pivot.rotation.z = -Math.cos(fortschritt * Math.PI * 4) * 0.22 * daempfung;
+    this.player.neigungVorgeben?.(-Math.cos(fortschritt * Math.PI * 4) * 0.22 * daempfung);
+
+    /* DER KAMERASTOSS.
+     *
+     * Ein weiterer Bildwinkel schiebt die Ränder nach aussen. Das ist der
+     * einzige Hinweis auf Tempo, der ohne verfolgbare Struktur auskommt —
+     * er wirkt selbst dann, wenn die Wand flimmert. */
+    if (this.camera) {
+      const soll = this.cfg.render.camera.fov + this.cfg.chili.fovStoss * daempfung;
+      if (Math.abs(this.camera.fov - soll) > 0.01) {
+        this.camera.fov = soll;
+        this.camera.updateProjectionMatrix();
+      }
+    }
 
     if (f.rest <= 0) {
-      this._chiliFlug = null;
-      this.player.versatzX = 0;
-      this.player.pivot.rotation.z = 0;
-      this.player.fellWechseln?.(this._goldRest > 0 ? this._goldFrames : null);
+      const offen = f.uhrRest;
+      this._chiliAbbrechen();
       // Was an Gebietszeit noch offen ist, kommt im letzten Schub mit.
-      return schub + f.uhrRest;
+      return schub + offen;
     }
     return schub;
+  }
+
+  /**
+   * Setzt ALLES zurück, was der Flug verstellt hat.
+   *
+   * Eigene Methode, weil der Flug nicht nur regulär endet: stirbt man kurz
+   * danach oder startet man einen neuen Lauf, blieben sonst Bildwinkel,
+   * Flughöhe, Neigung und Flugfell stehen. Der Bildwinkel ist dabei der
+   * unangenehmste — er wird nur hier zurückgesetzt, und ein hängengebliebener
+   * Wert hätte den ganzen nächsten Lauf verzerrt.
+   */
+  _chiliAbbrechen() {
+    this._chiliFlug = null;
+    if (this.player) {
+      this.player.versatzX = 0;
+      this.player.neigungVorgeben?.(null);
+      this.player.hoeheAnsteuern?.(null);
+      this.player.taktVorgeben?.(null);
+      this.player.fellWechseln?.(this._goldRest > 0 ? this._goldFrames : null);
+    }
+    this.tempolinien?.aus();
+    if (this.camera && this.camera.fov !== this.cfg.render.camera.fov) {
+      this.camera.fov = this.cfg.render.camera.fov;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   /* ========================================================= Bahnwechsel */
@@ -1060,6 +1154,16 @@ export class Game {
       ...this.cfg.sprite,
       framePath: char.framePath,
       cycleSpeed: char.cycleSpeed,
+      /* DER SOCKEL MUSS MITWANDERN.
+       *
+       * `idleCycleSpeed` ist die Untergrenze des Takts (siehe SpritePlayer),
+       * und im Spiel klettert der Affe fast immer geradeaus — der Sockel IST
+       * damit das normale Tempo und nicht der Sonderfall. Blieb hier der
+       * globale Wert stehen, lief jeder Affe im selben Takt, egal wie lang
+       * sein eigener Kletterzyklus ist. Der orange hat 21 Bilder statt 19;
+       * mit fremdem Sockel abgespielt stimmt seine Bewegung nicht mehr mit
+       * seiner Vorlage überein. */
+      idleCycleSpeed: char.cycleSpeed,
       outline: {
         ...ol,
         // Der Versatz ist ein ABSOLUTES Weltmass. Beim halb so grossen Affen
@@ -1076,9 +1180,19 @@ export class Game {
     this.scene.add(this.player.object3D);
     this.character = char;
 
+    /* FLUGBILDER GEHÖREN ZUM AFFEN, NICHT ZUM SPIEL.
+     *
+     * `_chiliFramesLaden` lädt nur, wenn `_chiliFrames` noch leer ist. Ohne
+     * dieses Zurücksetzen behielte ein gewechselter Affe die Flugbilder des
+     * vorherigen: wer als brauner spielt und dann auf orange wechselt, flöge
+     * mit braunem Fell — und beim weissen wäre es noch auffälliger, weil
+     * seine Folge nur acht Bilder hat statt zwölf. */
+    this._chiliFrames = null;
+
     // Die seitlichen Grenzen hängen am Trefferradius — nach einem Wechsel neu
     // rechnen, sonst gälte bis zum nächsten Resize das alte Band.
     this._updateWorldBounds();
+    this.tempolinien?.groesseSetzen(this.worldView.bounds);
 
     // Der weisse Affe bekommt gar keine Bananen: weder Spawn noch Anzeige.
     if (this.spawner) {
@@ -1393,6 +1507,7 @@ export class Game {
     this._sturzUhr = 0;
     this._sturzImGebiet = 0;
     this._goldmodusAus();
+    this._chiliAbbrechen();
 
     /* Runde bei der Weltliste anmelden. Der Server stempelt den Start mit
      * seiner Uhr und misst die Spielzeit später selbst — nur deshalb lässt
@@ -1827,6 +1942,11 @@ export class Game {
     // Die Spielzeit steuert die Hintergrundstufe — der Wechsel fällt damit
     // mit dem Schwierigkeitssprung zusammen.
     this.wall.update(dt, climbed, this.difficulty.elapsed);
+
+    /* Tempolinien mit der TATSÄCHLICH zurückgelegten Strecke dieses Frames,
+     * nicht mit einem Schätzwert. Ausserhalb des Fluges ist der Wert 0,
+     * dann blenden sie von selbst aus. */
+    this.tempolinien?.update(dt, this._chiliFlug ? climbed / Math.max(dt, 1e-4) : 0);
     // Jede Wand wirft etwas anderes ab. Bereits fallende Objekte behalten ihr
     // Aussehen — es wechselt nur, was ab jetzt neu erzeugt wird.
     this.spawner.hazardLook = this.wall.stageHazard;
@@ -2084,6 +2204,8 @@ export class Game {
     this.renderer.setSize(w, h);
 
     this._updateWorldBounds();
+
+    this.tempolinien?.groesseSetzen(this.worldView.bounds);
     this.wall?.resize();
   }
 

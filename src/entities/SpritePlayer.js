@@ -129,6 +129,10 @@ export class SpritePlayer {
     this._inputX = 0;
     this._phase = 0;
     this._lean = 0;
+    /** Von aussen vorgegebene Neigung (Chili-Flug); null = selbst berechnen. */
+    this._neigungVorgabe = null;
+    /** Fester Abspieltakt eines fremden Bildsatzes; null = Kletterzyklus. */
+    this._taktVorgabe = null;
     this._blinkPhase = 0;
     this._dieTimer = 0;
     // true, solange der Zyklus im Menü läuft (siehe updateAmbient)
@@ -329,6 +333,10 @@ export class SpritePlayer {
     this._phase = 0;
     // Ohne das startet ein neuer Lauf mit der Schräglage des letzten.
     this._lean = 0;
+    /** Von aussen vorgegebene Neigung (Chili-Flug); null = selbst berechnen. */
+    this._neigungVorgabe = null;
+    /** Fester Abspieltakt eines fremden Bildsatzes; null = Kletterzyklus. */
+    this._taktVorgabe = null;
     this._dieTimer = 0;
     /* Gold- und Chili-Fell enden mit dem Lauf. `fellWechseln` zieht die
      * Masse der Ebene selbst wieder gerade (siehe _masseAnpassen) — deshalb
@@ -621,7 +629,17 @@ export class SpritePlayer {
      * `idleCycleSpeed` ist jetzt der SOCKEL, nicht der Sonderfall: er
      * kraxelt immer mindestens in diesem Takt und wird schneller, wenn man
      * zusätzlich ausweicht. */
-    const rate = Math.max(sc.idleCycleSpeed, sc.cycleSpeed * (0.35 + 0.65 * speedRatio));
+    /* EIN FREMDER BILDSATZ BRINGT SEINEN EIGENEN TAKT MIT.
+     *
+     * Der Chili-Flug ist keine Kletterbewegung, sondern eine Flammenschleife:
+     * acht Bilder, die im Video in einem Drittel einer Sekunde durchlaufen.
+     * Über den Kletterakt abgespielt (rund 1.26 Zyklen je Sekunde) flackert
+     * die Flamme dreimal zu langsam und wirkt wie eine Lavalampe.
+     *
+     * `taktVorgeben` setzt für die Dauer eines solchen Satzes die Rate direkt;
+     * `null` gibt sie wieder an den Kletterzyklus zurück. */
+    const rate = this._taktVorgabe ??
+      Math.max(sc.idleCycleSpeed, sc.cycleSpeed * (0.35 + 0.65 * speedRatio));
     this._phase += rate * TAU * dt;
     if (this._phase > TAU) this._phase -= TAU;
 
@@ -644,8 +662,35 @@ export class SpritePlayer {
         : Math.max(-lean.max, Math.min(lean.max, -this.vx * lean.proTempo));
       // Exponentielle Annäherung statt linearer: bildratenunabhängig.
       this._lean += (ziel - this._lean) * (1 - Math.exp(-lean.glaettung * dt));
-      this.pivot.rotation.z = this._lean * GRAD;
+
+      /* VORGEGEBENE NEIGUNG SCHLÄGT DIE BERECHNETE.
+       *
+       * Der Chili-Flug setzte die Drehung vorher direkt auf `pivot.rotation.z`
+       * — und diese Zeile hier überschrieb sie im selben Frame wieder, weil
+       * `_animate` nach dem Flugschritt läuft. Das Schwenken war deshalb im
+       * Bild nicht zu sehen, obwohl der Wert gesetzt wurde. Wer die Neigung
+       * von aussen vorgibt, meldet sie jetzt an, statt daran vorbei zu
+       * schreiben. */
+      this.pivot.rotation.z = this._neigungVorgabe ?? this._lean * GRAD;
     }
+  }
+
+  /**
+   * Neigung von aussen vorgeben (Bogenmass), `null` gibt sie wieder frei.
+   * @param {number|null} winkel
+   */
+  neigungVorgeben(winkel) {
+    this._neigungVorgabe = winkel;
+    if (winkel !== null && winkel !== undefined) this.pivot.rotation.z = winkel;
+  }
+
+  /**
+   * Abspieltakt eines fremden Bildsatzes vorgeben (Durchläufe je Sekunde).
+   * `null` gibt den Takt an den Kletterzyklus zurück.
+   * @param {number|null} zyklenProSekunde
+   */
+  taktVorgeben(zyklenProSekunde) {
+    this._taktVorgabe = zyklenProSekunde;
   }
 
   _updateInvulnerability(dt) {

@@ -73,11 +73,24 @@ const BACKGROUNDS = [
  * Wandfarbe entsäumt — ein zweiter Durchgang gegen Weiss würde ihre Kante
  * fälschlich aufhellen.
  */
+/* `registriert: true` heisst: die Bilder stehen bereits zueinander in Deckung
+ * (ein geschlossener Zyklus aus video-frames.mjs --zyklus) und dürfen NICHT
+ * einzeln zentriert werden — siehe die Erklärung in prepareMovementFrames. */
 const MOVE_SETS = [
-  { quelle: 'movement', ziel: '', weissSaum: true },
-  { quelle: 'movement_white', ziel: 'weiss', weissSaum: false },
+  { quelle: 'movement', ziel: '', weissSaum: false, registriert: true },
   { quelle: 'movement_orange', ziel: 'orange', weissSaum: false },
 ];
+
+/* WEISS FEHLT HIER ABSICHTLICH.
+ *
+ * Der weisse Affe ist kein eigenes Video mehr, sondern der braune umgefärbt
+ * (scripts/prepare-weiss.mjs, aus public/textures/move_NN.webp). Stünde er
+ * weiter in dieser Liste, gäbe es zwei Quellen für denselben Ordner: die alte
+ * assets-src/art/movement_white mit ihrer eigenen Bildzahl und die Umfärbung
+ * mit der aktuellen. Wer zuletzt läuft, gewinnt — und bei ungleicher Bildzahl
+ * bleibt ein Mischsatz zurück, der im Spiel als fehlendes Bild auffällt (der
+ * Entwicklungsserver liefert dafür index.html mit Status 200, der Loader
+ * bekommt also HTML statt PNG). */
 
 mkdirSync(OUT, { recursive: true });
 
@@ -225,8 +238,15 @@ async function prepareBackgrounds() {
  * wird deshalb auf seine Alpha-Bounding-Box beschnitten und mittig auf eine für
  * ALLE Frames gemeinsame Leinwand gelegt. Ohne das würde die Figur beim
  * Abspielen im Bild umherspringen.
+ *
+ * ...ausser die Bilder stehen schon in Deckung (`registriert`). Dann ist das
+ * Einzelzentrieren genau falsch herum: es misst die Box eines Bildes, in dem
+ * der Affe den Arm streckt, findet sie höher, und schiebt zum Ausgleich den
+ * ganzen Körper nach unten. Die Figur wackelt dann bei jedem Bildwechsel,
+ * obwohl in der Vorlage nur der Arm bewegt wurde. Bei registrierten Sätzen
+ * wird deshalb EIN gemeinsames Fenster über alle Bilder gelegt.
  */
-async function prepareMovementFrames({ quelle, ziel, weissSaum }) {
+async function prepareMovementFrames({ quelle, ziel, weissSaum, registriert }) {
   const dir = resolve(SRC, quelle);
   const outDir = ziel ? resolve(OUT, ziel) : OUT;
   if (!existsSync(dir)) {
@@ -268,12 +288,18 @@ async function prepareMovementFrames({ quelle, ziel, weissSaum }) {
   }
 
   const pad = 6;
-  const canvasW = Math.max(...boxes.map((b) => b.w)) + pad * 2;
-  const canvasH = Math.max(...boxes.map((b) => b.h)) + pad * 2;
+  const fenster = registriert ? {
+    left: Math.min(...boxes.map((b) => b.left)),
+    top: Math.min(...boxes.map((b) => b.top)),
+    w: Math.max(...boxes.map((b) => b.left + b.w)) - Math.min(...boxes.map((b) => b.left)),
+    h: Math.max(...boxes.map((b) => b.top + b.h)) - Math.min(...boxes.map((b) => b.top)),
+  } : null;
+  const canvasW = (fenster ? fenster.w : Math.max(...boxes.map((b) => b.w))) + pad * 2;
+  const canvasH = (fenster ? fenster.h : Math.max(...boxes.map((b) => b.h))) + pad * 2;
 
   let total = 0;
   for (let i = 0; i < boxes.length; i++) {
-    const b = boxes[i];
+    const b = fenster ? { ...fenster, f: boxes[i].f } : boxes[i];
 
     /* --- Weiss-Saum entfernen ------------------------------------------
      * Der Videohintergrund war reinweiss. Halbtransparente Randpixel tragen

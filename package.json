@@ -21,7 +21,8 @@
     "prep:boss": "node scripts/prepare-boss.mjs",
     "video:frames2": "node scripts/video-frames.mjs",
     "prep:sturz": "node scripts/prepare-sturzflug.mjs",
-    "prep:weiss": "node scripts/prepare-weiss.mjs"
+    "prep:weiss": "node scripts/prepare-weiss.mjs",
+    "pruef:bilder": "node scripts/pruef-bilder.mjs"
   },
   "type": "module",
   "dependencies": {

@@ -361,8 +361,8 @@ export const CONFIG = {
         // WIRKLICH verschiedene Bilder pro Kletterzyklus. Wer stur zwölf
         // abtastet, bekommt Wiederholungen, und die Animation hakt sichtbar.
         // Die Zahl meldet `npm run video:frames -- extract …` am Ende.
-        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        cycleSpeed: 0.85, // = CONFIG.sprite.cycleSpeed
+        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+        cycleSpeed: 1.263, // = CONFIG.sprite.cycleSpeed = Videotempo
         artScale: 1.0, // skaliert den Versatz des Umrisses mit
         bananas: true,
         maxStored: 1, // -> CONFIG.revive.maxStored
@@ -400,11 +400,11 @@ export const CONFIG = {
          * herumzuflicken ist er jetzt der braune Affe in Weiss
          * (scripts/prepare-weiss.mjs) — gleiche saubere Bewegung, gleiche
          * zwölf Bilder, nur anderes Fell. */
-        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
         // Muss gesetzt werden: die Bildrate wird auf moveSpeed NORMIERT
         // (SpritePlayer: speedRatio = animSpeed / cfg.moveSpeed), ein
         // höheres moveSpeed allein macht den Zyklus also NICHT schneller.
-        cycleSpeed: 1.15, // x1.35 — der flinke bleibt anteilig schneller
+        cycleSpeed: 1.263, // gleiche Bilder wie braun -> gleiches Videotempo
         artScale: 0.5,
 
         /* ZWEI BAHNEN AUF EINMAL.
@@ -443,8 +443,9 @@ export const CONFIG = {
         blurb: 'Dick und langsam — die kleinsten Steine prallen an ihm ab.',
         preview: '/characters/orange.webp',
         framePath: '/textures/orange/move_{n}.webp',
-        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        cycleSpeed: 0.67, // x0.79  schwerfälliger Zyklus
+        // 21 Bilder: eigenes Video, eigene Periode (0.875 s).
+        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+        cycleSpeed: 1.143, // Videotempo seines eigenen Videos
         artScale: 1.0,
         bananas: true,
         maxStored: 1,
@@ -1534,6 +1535,34 @@ export const CONFIG = {
      * — das ist ohnehin das Ziel. */
     minSekunden: 2.5,
 
+    /* MINDESTENS ACHTFACHES TEMPO — und zwar auf die normale KLETTERSTRECKE
+     * bezogen, nicht auf irgendeine innere Grösse.
+     *
+     * Reicht das nicht, um das Gebiet in `sekunden` zu Ende zu bringen, wird
+     * schneller geflogen, nicht länger: er soll im nächsten Gebiet ankommen.
+     * Bei 132 Sekunden Gebietsdauer und 5 Sekunden Flug sind das bis zum
+     * 26-fachen. Der Faktor ist also die UNTERGRENZE, kein Sollwert. */
+    tempoFaktor: 8,
+
+    /* Wie weit er ins neue Gebiet hineinfliegt, als Anteil der Gebietsdauer.
+     * Ohne diesen Zuschlag endet der Flug exakt auf der Gebietsgrenze, und
+     * man landet im Wechsel statt im neuen Gebiet. */
+    einstieg: 0.08,
+
+    /* WIE HOCH ER IM BILD STEIGT.
+     *
+     * Beim Klettern steht der Affe fest auf seiner Hoehe, und nur die Wand
+     * bewegt sich. Im Flug reicht das NICHT: der Bildschirm rast zwar mit
+     * dem Achtfachen, aber die Wand ist ein dichtes, sich wiederholendes
+     * Blattmuster — bei diesem Tempo liest es sich als Rauschen, nicht als
+     * Fahrt. Was fehlt, ist ein fester Bezugspunkt, und der ist der Affe
+     * selbst.
+     *
+     * Er steigt deshalb waehrend des Fluges sichtbar nach oben und sinkt am
+     * Ende zurueck. Erst dadurch sieht man, dass er faehrt und nicht nur
+     * die Tapete wechselt. */
+    flughoehe: 1.6,
+
     /* MINDESTENS ZEHNFACHES TEMPO.
      *
      * Wie schnell er fliegt, ergibt sich normalerweise aus der Rechnung
@@ -1556,21 +1585,53 @@ export const CONFIG = {
       weiss: '/textures/chili_weiss/move_{n}.webp',
       orange: '/textures/chili_orange/move_{n}.webp',
     },
-    /* MUSS ZUR ZAHL DER EXPORTIERTEN BILDER PASSEN.
+    /* MUSS ZUR ZAHL DER EXPORTIERTEN BILDER PASSEN — JE CHARAKTER.
      *
-     * Stand hier 14, während `npm run prep:boss` nur noch 12 schreibt. Der
-     * Loader forderte move_12 und move_13 an, bekam vom Entwicklungsserver
-     * die index.html mit Status 200, warf — und weil der Fehler nur in einem
-     * `catch` mit `console.warn` landete, sah man im Spiel bloss einen Affen,
-     * der beim Chili weiterkletterte statt zu fliegen.
+     * Stand hier eine einzelne 14, während `npm run prep:boss` zwölf Bilder
+     * schrieb. Der Loader forderte move_12 und move_13 an, bekam vom
+     * Entwicklungsserver die index.html mit Status 200, warf — und weil der
+     * Fehler nur in einem `catch` mit `console.warn` landete, sah man im
+     * Spiel bloss einen Affen, der beim Chili weiterkletterte statt zu
+     * fliegen.
      *
-     * Die Zahl meldet prepare-boss.mjs am Ende jeder Bildfolge. */
-    frameAnzahl: 12,
-    /* Bilder je Sekunde. Die Vorlage ist ein 5-Sekunden-Video mit 14
-     * verschiedenen Bildern — knapp drei je Sekunde wirkt zu langsam,
-     * deshalb läuft die Folge einmal an und bleibt dann auf dem letzten
-     * Bild (dem vollen Schub) stehen. */
-    frameTakt: 9,
+     * Seit die Bildfolgen als geschlossene Zyklen geschnitten werden
+     * (video-frames.mjs --zyklus), hat jede Vorlage ihre EIGENE Länge: der
+     * braune Flug ist eine Flammenperiode von 8 Bildern, der orange stammt
+     * aus einem anderen Video mit 12. Eine gemeinsame Zahl kann es deshalb
+     * nicht mehr geben. `npm run pruef:bilder` vergleicht diese Angaben mit
+     * dem, was wirklich in public/ liegt — und lässt den Fehler nicht mehr
+     * bis ins Spiel durch. */
+    frameAnzahl: { braun: 8, weiss: 8, orange: 12 },
+
+    /* Bilder je Sekunde der Flugfolge.
+     *
+     * Beim braunen und weissen Affen ist das eine echte Flammenschleife (8
+     * Bilder = 0.333 s im Video), die DURCHGEHEND läuft — 24 ist genau das
+     * Videotempo. Der orange Satz stammt noch aus der alten Zerlegung. */
+    frameTakt: 24,
+
+    /* TEMPOLINIEN.
+     *
+     * Der Grund steht ausführlich in src/entities/Tempolinien.js: ab etwa
+     * 1/20 Kachelhöhe je Bild lässt sich die Wandstruktur nicht mehr von Bild
+     * zu Bild verfolgen, und was man nicht verfolgen kann, sieht man nicht
+     * fahren. Die Linien sind der Bezugspunkt, den die Wand bei diesem Tempo
+     * nicht mehr liefern kann. */
+    linien: {
+      z: -0.4, // zwischen Wand (-0.9) und Affe (~0.15)
+      deckkraft: 0.5,
+      einblenden: 14, // Glättung beim Aufblenden (1/s)
+      ausblenden: 6,
+      /* Anteil der echten Fluggeschwindigkeit, mit dem die Streifen laufen.
+       * Voll wäre wieder zu schnell zum Verfolgen — genau der Fehler, den
+       * die Linien beheben sollen. */
+      mitlauf: 0.06,
+    },
+
+    /* KAMERASTOSS. Ein grösserer Bildwinkel zieht die Ränder nach aussen; das
+     * liest sich als Beschleunigung, noch bevor man die Wand ansieht. Der
+     * Wert kommt zu CONFIG.render.camera.fov (46) hinzu. */
+    fovStoss: 9,
   },
 
   /* ================================================================== *
@@ -1814,7 +1875,7 @@ export const CONFIG = {
      * keine eigene Abwärts-Sequenz.
      */
     framePath: '/textures/move_{n}.webp',
-    frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
     // Frame, der im Stillstand gehalten wird (Index INNERHALB von frames).
     idleFrame: 0,
 
@@ -1828,7 +1889,9 @@ export const CONFIG = {
      * Takt abgespielt wirkte er, als würde er die Wand hochrennen statt
      * klettern. Bei 12 Bildern sind das jetzt rund 10 Bilder je Sekunde
      * statt 17. */
-    cycleSpeed: 0.85,
+    /* 0.425 — nochmals HALBIERT. Der Affe soll klettern, nicht die Wand
+     * hochrennen. Bei 12 Bildern sind das rund 5 Bilder je Sekunde. */
+    cycleSpeed: 1.263,
     /* DER AFFE KLETTERT IMMER — auch ohne Eingabe.
      *
      * Ich hatte das erst missverstanden und den Zyklus im Stillstand
@@ -1840,11 +1903,21 @@ export const CONFIG = {
      * 0.7 heisst: im Stillstand die halbe Bildrate der vollen Bewegung —
      * ruhiges, gleichmässiges Kraxeln, das nicht mit dem Ausweichen
      * konkurriert. */
-    /* 0.45 statt 0.7. Dieser Sockel gilt, solange man NICHT seitlich
-     * ausweicht — also die meiste Zeit. Er war damit der eigentliche
-     * Klettertakt und musste mit cycleSpeed zusammen heruntergehen, sonst
-     * hätte sich nichts geändert. */
-    idleCycleSpeed: 0.45,
+    /* GLEICH cycleSpeed — und das ist Absicht.
+     *
+     * Der Takt ist max(idleCycleSpeed, cycleSpeed * (0.35 + 0.65 * Tempo)).
+     * Wer geradeaus klettert, hat Tempo 0 und landet damit bei 35 Prozent
+     * des eingestellten Werts. Genau das ist aber der Normalfall: der Affe
+     * klettert die ganze Zeit und wischt nur gelegentlich. Der Sockel IST
+     * also das Tempo, das man sieht.
+     *
+     * GEMESSEN, nicht geschätzt: mit 0.63 hier und 1.263 dort lief der
+     * Zyklus im Spiel mit 0.626 Durchläufen je Sekunde — halb so schnell wie
+     * die Vorlage, obwohl in cycleSpeed das Videotempo stand. Deshalb steht
+     * hier derselbe Wert; damit läuft der Kletterakt konstant genau so
+     * schnell wie im Video. Je Charakter wird er in Game._buildPlayer auf
+     * dessen eigenen Wert gezogen. */
+    idleCycleSpeed: 1.263,
 
     /* Neigung in Bewegungsrichtung.
      *
