@@ -704,8 +704,16 @@ export class Game {
       faktor: strecke / dauer,
     };
     this.player.hoeheAnsteuern?.(c.flughoehe);
+    /* ALLES weg, nicht nur Steine und Bananen.
+    *
+    * Die Münzen blieben liegen und fielen mit ihrem normalen Tempo weiter,
+    * während die Welt mit dem Acht- bis Achtundzwanzigfachen an ihnen
+    * vorbeizog — sie standen dadurch scheinbar in der Luft. Für den Spieler
+    * ist "im Chili-Flug ist die Bahn frei" eine Zusage; eine hängende Münze
+    * bricht sie sichtbar. */
     this.spawner.rocks.releaseAll((r) => r.despawn());
     this.spawner.bananas.releaseAll((b) => b.despawn());
+    this.spawner.coins?.releaseAll?.((m) => m.despawn());
     this.sturzflug?.abbrechen();
 
     this.ui.toast('Feuer frei!', 'banana');
@@ -745,7 +753,16 @@ export class Game {
     this._loader
       .loadTexturesParallel(pfade, 'Chili…')
       .then((t) => {
-        this._chiliFrames = pfade.map((p) => t.get(p)).filter(Boolean);
+        let geladen = pfade.map((p) => t.get(p)).filter(Boolean);
+
+        /* HIN UND ZURÜCK, wenn der Satz keine geschlossene Schleife ist.
+         * Aus 0..11 wird 0..11,10..1 — jeder Bildwechsel ist damit ein
+         * Schritt zwischen Nachbarn, der harte Rücksprung entfällt.
+         * Begründung samt Messung in CONFIG.chili.pendeln. */
+        if (c.pendeln?.[id] && geladen.length > 2) {
+          geladen = [...geladen, ...geladen.slice(1, -1).reverse()];
+        }
+        this._chiliFrames = geladen;
         if (this._chiliFlug) this._chiliFellSetzen();
       })
       .catch((f) => console.warn('[Chili] Flugbilder fehlen:', f));
@@ -791,11 +808,32 @@ export class Game {
      * nichts, es kann also nichts danebengehen.
      *
      * Die Weite hängt am Feld, nicht an einer festen Zahl — im Hochformat
-     * wären zwei Einheiten der halbe Bildschirm. */
+     * wären zwei Einheiten der halbe Bildschirm.
+     *
+     * ER MUSS DABEI IM BILD BLEIBEN, und das war er nicht.
+     *
+     * Die Bahnen liegen bei -maxX / 0 / +maxX, also bereits am Rand des
+     * nutzbaren Feldes. Ein Schwung von zusätzlich 55 Prozent trug ihn auf
+     * den Aussenbahnen um bis zu 1.5·maxX nach draussen. Nachgerechnet mit
+     * der echten Kamera: im Querformat war der Affe rund eine halbe Sekunde
+     * am Stück GAR NICHT zu sehen und über die halbe Flugzeit angeschnitten
+     * — ausgerechnet im Moment der Belohnung. Auf dem Handy blieb dauerhaft
+     * ein Viertel von ihm ausserhalb.
+     *
+     * Der Schwung wird deshalb geklemmt: die ANGEZEIGTE Position darf nie
+     * weiter aussen liegen als die äusserste Bahn. Genau dort steht der Affe
+     * im normalen Spiel auch, und dort ist er nachweislich vollständig zu
+     * sehen — `_updateWorldBounds` rechnet maxX aus der halben Bildbreite der
+     * Figur. Auf der Mittelbahn ändert die Klemme nichts, dort ist Platz
+     * genug; auf den Aussenbahnen schwingt er nach INNEN aus, statt nach
+     * draussen zu verschwinden. */
     const fortschritt = 1 - f.rest / f.dauer;
     const daempfung = Math.sin(Math.min(1, fortschritt) * Math.PI);
-    const weite = this.worldView.bounds.maxX * 0.55;
-    this.player.versatzX = Math.sin(fortschritt * Math.PI * 4) * weite * daempfung;
+    const roh = Math.sin(fortschritt * Math.PI * 4) * daempfung;
+
+    const rand = this.worldView.bounds.maxX;
+    const ziel = this.player.x + roh * rand * 0.55;
+    this.player.versatzX = Math.max(-rand, Math.min(rand, ziel)) - this.player.x;
     // Er legt sich in die Kurve — dieselbe Richtung wie beim Ausweichen.
     this.player.neigungVorgeben?.(-Math.cos(fortschritt * Math.PI * 4) * 0.22 * daempfung);
 
@@ -814,7 +852,7 @@ export class Game {
 
     if (f.rest <= 0) {
       const offen = f.uhrRest;
-      this._chiliAbbrechen();
+      this._chiliAbbrechen({ hart: false });
       // Was an Gebietszeit noch offen ist, kommt im letzten Schub mit.
       return schub + offen;
     }
@@ -830,7 +868,7 @@ export class Game {
    * unangenehmste — er wird nur hier zurückgesetzt, und ein hängengebliebener
    * Wert hätte den ganzen nächsten Lauf verzerrt.
    */
-  _chiliAbbrechen() {
+  _chiliAbbrechen({ hart = true } = {}) {
     this._chiliFlug = null;
     if (this.player) {
       this.player.versatzX = 0;
@@ -839,7 +877,8 @@ export class Game {
       this.player.taktVorgeben?.(null);
       this.player.fellWechseln?.(this._goldRest > 0 ? this._goldFrames : null);
     }
-    this.tempolinien?.aus();
+    // Am regulären Ende weich auslaufen lassen (siehe Tempolinien.aus).
+    if (hart) this.tempolinien?.aus();
     if (this.camera && this.camera.fov !== this.cfg.render.camera.fov) {
       this.camera.fov = this.cfg.render.camera.fov;
       this.camera.updateProjectionMatrix();
@@ -938,9 +977,18 @@ export class Game {
       this.player.fellWechseln?.(this._goldFrames);
       return;
     }
+    /* Bildzahl aus der Konfiguration statt fest verdrahtet.
+     *
+     * Hier stand `{ length: 12 }`. Das Goldfell ist inzwischen ein
+     * geschlossener Kletterzyklus aus seinem Video (19 Posen) — mit der
+     * festen 12 hätte man sieben davon nie gesehen, und die Bewegung bräche
+     * mitten im Zyklus ab. Umgekehrt hätte eine zu grosse Zahl den bekannten
+     * stillen Fehler ausgelöst: der Entwicklungsserver liefert für fehlende
+     * Bilder index.html mit Status 200. `npm run pruef:bilder` vergleicht die
+     * Angabe jetzt mit der Platte. */
     const pfade = Array.from(
-      { length: 12 },
-      (_, i) => `/textures/gold/move_${String(i).padStart(2, '0')}.webp`,
+      { length: b.frameAnzahl },
+      (_, i) => b.framePath.replace('{n}', String(i).padStart(2, '0')),
     );
     this._loader
       .loadTexturesParallel(pfade, 'Goldaffe…')
@@ -1681,6 +1729,14 @@ export class Game {
     // Der Sturzflug gehört zum Lauf, nicht zum Menü.
     this.sturzflug?.abbrechen();
     this._goldmodusAus();
+    /* Auch der Chili-Flug. Er verstellt zwei Dinge, die `player.reset()` NICHT
+     * anfasst: den Bildwinkel der Kamera und die Tempolinien. Ein Tabwechsel
+     * pausiert von selbst, und aus der Pause führt ein Knopf ins Hauptmenü —
+     * wer das mitten im Flug tut, sah bis dahin ein herausgezoomtes Menü mit
+     * weissen Streifen darüber. Schlimmer: ein Charakterwechsel im Menü misst
+     * dann die Feldbreite mit dem hängengebliebenen Bildwinkel, und die Bahnen
+     * lägen den ganzen nächsten Lauf zu weit aussen. */
+    this._chiliAbbrechen();
     this.states.transitionTo(GameState.MENU);
   }
 
@@ -2234,7 +2290,30 @@ export class Game {
      * er senkrecht festgenagelt ist, verschenkt diese Messung Breite: auf
      * seiner tatsächlichen Höhe ist die Wand breiter. */
     const affenHoehe = this.cfg.player.startPosition[1];
+
+    /* IMMER MIT DEM NORMALEN BILDWINKEL MESSEN.
+     *
+     * Der Chili-Flug weitet `camera.fov` um bis zu 9 Grad (Kamerastoss). Wird
+     * währenddessen das Fenster gedreht oder in der Grösse verändert, läuft
+     * diese Messung mit dem geweiteten Winkel — und die Bahnen bleiben für den
+     * REST DES LAUFS zu weit aussen, denn nach dem Flug wird nicht neu
+     * gemessen. Gerechnet ergibt das bis zu einem Drittel zu breite Bahnen,
+     * auf denen der Affe teils aus dem Bild steht.
+     *
+     * Deshalb wird für die Messung kurz auf den Normalwert zurückgeschaltet.
+     * Das Feld ist damit eine Eigenschaft des Spiels und nicht davon abhängig,
+     * ob gerade eine Animation läuft. */
+    const fovJetzt = this.camera.fov;
+    const fovNormal = this.cfg.render.camera.fov;
+    if (fovJetzt !== fovNormal) {
+      this.camera.fov = fovNormal;
+      this.camera.updateProjectionMatrix();
+    }
     const half = halfWidthAt(this.camera, 0, affenHoehe);
+    if (fovJetzt !== fovNormal) {
+      this.camera.fov = fovJetzt;
+      this.camera.updateProjectionMatrix();
+    }
     if (!Number.isFinite(half)) return;
 
     /* DER RAND IST DIE HALBE BILDBREITE DES AFFEN, NICHT SEIN TREFFERRADIUS.

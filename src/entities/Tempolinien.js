@@ -149,6 +149,15 @@ export class Tempolinien {
     this.textur.offset.y = -(this.versatz % 1);
   }
 
+  /**
+   * Sofort abschalten — für Abbrüche (neuer Lauf, Menü), NICHT für das
+   * normale Flugende.
+   *
+   * Am regulären Ende blendet update() die Linien über `ausblenden` weich
+   * heraus; wer hier hart abschaltet, schneidet sie mitten in voller
+   * Deckkraft ab. Genau das passierte, weil _chiliAbbrechen beides erledigte
+   * — der Parameter `ausblenden` war damit wirkungslos.
+   */
   aus() {
     this.staerke = 0;
     this.mesh.visible = false;

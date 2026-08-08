@@ -33,11 +33,16 @@ const zeilen = [];
 
 /** Prüft eine Liste öffentlicher Pfade und meldet, was fehlt. */
 function pruefe(titel, pfade) {
-  const fehlend = pfade.filter((p) => !existsSync(resolve(PUBLIC, p.replace(/^\//, ''))));
+  /* Einmalig zählen: die Abspielreihenfolge darf Bilder WIEDERHOLEN (so
+   * stehen die Standzeiten aus dem Video darin). 19 Takte auf 14 Dateien ist
+   * kein Fehler, und "19 Bilder" wäre die falsche Auskunft. */
+  const einmalig = [...new Set(pfade)];
+  const fehlend = einmalig.filter((p) => !existsSync(resolve(PUBLIC, p.replace(/^\//, ''))));
   if (fehlend.length) {
-    fehler.push(`${titel}: ${fehlend.length} von ${pfade.length} fehlen — ${fehlend.slice(0, 4).join(', ')}${fehlend.length > 4 ? ' …' : ''}`);
+    fehler.push(`${titel}: ${fehlend.length} von ${einmalig.length} fehlen — ${fehlend.slice(0, 4).join(', ')}${fehlend.length > 4 ? ' …' : ''}`);
   } else {
-    zeilen.push(`  ok  ${titel.padEnd(34)} ${pfade.length} Bilder`);
+    zeilen.push(`  ok  ${titel.padEnd(30)} ${String(einmalig.length).padStart(2)} Bilder` +
+      (pfade.length !== einmalig.length ? `, ${pfade.length} Takte` : ''));
   }
 }
 
@@ -64,12 +69,33 @@ for (const [id, muster] of Object.entries(CONFIG.chili.frames)) {
     continue;
   }
   pruefe(`Chili ${id}`, folge(muster, n));
+}
 
-  /* ZU WENIG angemeldet ist genauso falsch wie zu viel: dann fehlt am Ende
-   * der Schleife ein Stück Bewegung, und das sieht man als Ruckler. */
+/* --- Goldfell ----------------------------------------------------------- */
+
+if (CONFIG.goldbanane?.framePath) {
+  pruefe('Goldfell', folge(CONFIG.goldbanane.framePath, CONFIG.goldbanane.frameAnzahl));
+}
+
+/* --- Zu VIELE Bilder sind auch ein Fehler ------------------------------- */
+
+/* Nicht nur fehlende Bilder zählen. Liegt in einem Ordner mehr, als
+ * angemeldet ist, fehlt am Ende der Schleife ein Stück Bewegung — die
+ * Animation springt an der Nahtstelle zurück, und niemand sucht den Grund in
+ * der Konfiguration. Genau so ist der Goldsatz mit 19 Bildern zwölfmal
+ * abgespielt worden. */
+const ueberzaehlig = [
+  ['sprite (Standard)', CONFIG.sprite.framePath, Math.max(...CONFIG.sprite.frames) + 1],
+  ...Object.values(CONFIG.characters.list).map((ch) => [`Charakter ${ch.id}`, ch.framePath, Math.max(...ch.frames) + 1]),
+  ...Object.entries(CONFIG.chili.frames).map(([id, m]) => [`Chili ${id}`, m, CONFIG.chili.frameAnzahl[id]]),
+  ...(CONFIG.goldbanane?.framePath
+    ? [['Goldfell', CONFIG.goldbanane.framePath, CONFIG.goldbanane.frameAnzahl]]
+    : []),
+];
+for (const [titel, muster, n] of ueberzaehlig) {
   const einsMehr = muster.replace('{n}', String(n).padStart(2, '0'));
   if (existsSync(resolve(PUBLIC, einsMehr.replace(/^\//, '')))) {
-    fehler.push(`Chili ${id}: es liegen MEHR Bilder als angemeldet (${n}) — ${einsMehr} existiert`);
+    fehler.push(`${titel}: es liegen MEHR Bilder als angemeldet (${n}) — ${einsMehr} existiert`);
   }
 }
 

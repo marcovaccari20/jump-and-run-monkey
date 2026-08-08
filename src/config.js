@@ -361,7 +361,7 @@ export const CONFIG = {
         // WIRKLICH verschiedene Bilder pro Kletterzyklus. Wer stur zwölf
         // abtastet, bekommt Wiederholungen, und die Animation hakt sichtbar.
         // Die Zahl meldet `npm run video:frames -- extract …` am Ende.
-        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+        frames: [0, 1, 1, 2, 3, 4, 4, 5, 6, 7, 7, 8, 9, 10, 10, 11, 12, 13, 13],
         cycleSpeed: 1.263, // = CONFIG.sprite.cycleSpeed = Videotempo
         artScale: 1.0, // skaliert den Versatz des Umrisses mit
         bananas: true,
@@ -400,7 +400,7 @@ export const CONFIG = {
          * herumzuflicken ist er jetzt der braune Affe in Weiss
          * (scripts/prepare-weiss.mjs) — gleiche saubere Bewegung, gleiche
          * zwölf Bilder, nur anderes Fell. */
-        frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+        frames: [0, 1, 1, 2, 3, 4, 4, 5, 6, 7, 7, 8, 9, 10, 10, 11, 12, 13, 13],
         // Muss gesetzt werden: die Bildrate wird auf moveSpeed NORMIERT
         // (SpritePlayer: speedRatio = animSpeed / cfg.moveSpeed), ein
         // höheres moveSpeed allein macht den Zyklus also NICHT schneller.
@@ -1472,6 +1472,14 @@ export const CONFIG = {
    * ================================================================== */
   goldbanane: {
     bild: '/hazards/banane_gold.webp',
+
+    /* Das Goldfell — derselbe Kletterzyklus, nur golden. Die Zahl stand
+     * früher fest verdrahtet in Game.js und passte nach dem Neuschnitt nicht
+     * mehr (19 Posen statt 12). Sie gehört hierher, damit
+     * `npm run pruef:bilder` sie gegen die Platte halten kann. */
+    framePath: '/textures/gold/move_{n}.webp',
+    frameAnzahl: 19,
+
     radius: 0.4,
     hitRadiusFactor: 1.3,
     fallSpeedFactor: 0.6,
@@ -1572,11 +1580,13 @@ export const CONFIG = {
      * und die Wand bewegte sich kaum. Das sähe nach Fehler aus, nicht nach
      * Schub.
      *
-     * Die Flugdauer ergibt sich aus `Reststrecke / tempoMin`, gedeckelt auf
-     * [minSekunden, sekunden]. Bleibt nach dem Deckeln Zeit übrig, wird
-     * entsprechend weiter vorgeschoben — er fliegt dann ins nächste Gebiet
-     * hinein statt langsamer zu werden. */
-    tempoMin: 7.5,
+     * Die Flugdauer ist das ERGEBNIS, nicht die Vorgabe: die Strecke steht
+     * fest (Rest des Gebiets plus `einstieg`), die Dauer folgt aus
+     * `tempoFaktor` und wird auf [minSekunden, sekunden] gedeckelt.
+     *
+     * Hier stand ein zweiter Wert `tempoMin: 7.5`, der die Dauer aus der
+     * Strecke rechnete. Seit `tempoFaktor` das tut, wurde er nirgends mehr
+     * gelesen — er stand nur noch als falsche Auskunft im Weg. */
 
     /* Bildfolgen des Fluges, je Charakter. Fehlt einer, klettert er eben
      * weiter — der Schub wirkt trotzdem. */
@@ -1602,6 +1612,21 @@ export const CONFIG = {
      * dem, was wirklich in public/ liegt — und lässt den Fehler nicht mehr
      * bis ins Spiel durch. */
     frameAnzahl: { braun: 8, weiss: 8, orange: 12 },
+
+    /* HIN UND ZURÜCK ABSPIELEN statt hart zurückzuspringen.
+     *
+     * Der orange Satz ist der einzige, den es nicht als geschlossenen Zyklus
+     * gibt: sein Quellvideo liegt nicht im Projekt, die zwölf Bilder stammen
+     * noch aus der alten Zerlegung. Gemessen sind die Schritte INNERHALB des
+     * Satzes gleichmässig (8 bis 20 auf der Abstandsskala), der Rücksprung
+     * vom letzten aufs erste Bild aber 52 — ein sichtbarer Ruck, zweimal je
+     * Sekunde.
+     *
+     * Hin und zurück abgespielt gibt es diese Nahtstelle nicht mehr: jeder
+     * Bildwechsel ist ein Schritt zwischen Nachbarn. Für eine Flamme ist das
+     * unauffällig, sie flackert ohnehin in beide Richtungen. Kommt das Video
+     * nach, wird der Satz normal geschnitten und der Eintrag hier fällt weg. */
+    pendeln: { orange: true },
 
     /* Bilder je Sekunde der Flugfolge.
      *
@@ -1875,7 +1900,7 @@ export const CONFIG = {
      * keine eigene Abwärts-Sequenz.
      */
     framePath: '/textures/move_{n}.webp',
-    frames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+    frames: [0, 1, 1, 2, 3, 4, 4, 5, 6, 7, 7, 8, 9, 10, 10, 11, 12, 13, 13],
     // Frame, der im Stillstand gehalten wird (Index INNERHALB von frames).
     idleFrame: 0,
 

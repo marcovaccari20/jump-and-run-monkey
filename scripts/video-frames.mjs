@@ -265,6 +265,28 @@ async function periodeFinden(dateien) {
   for (const f of dateien) mini.push(await miniatur(resolve(ROH, f)));
 
   const obergrenze = Math.min(48, Math.floor(mini.length / 2));
+  if (obergrenze < 8) {
+    throw new Error(`Video zu kurz für --zyklus: ${mini.length} Bilder, gebraucht werden mindestens 16.`);
+  }
+
+  /* WIEVIEL SICH ÜBERHAUPT BEWEGT — als Massstab.
+   *
+   * Die reine Ähnlichkeit reicht als Kriterium NICHT: ein Abschnitt, in dem
+   * sich gar nichts tut, ist sich selbst maximal ähnlich und gewinnt jeden
+   * solchen Vergleich. Bei einer Vorlage mit ruhigem Vor- oder Nachspann
+   * schnitte man so ausgerechnet den Stillstand als "Zyklus" heraus.
+   *
+   * Deshalb wird die Ähnlichkeit ins Verhältnis zur Bewegung INNERHALB des
+   * Fensters gesetzt: gesucht ist der Abschnitt, der sich gut schliesst UND
+   * in dem etwas passiert. */
+  const bewegung = (von, p) => {
+    let s = 0;
+    for (let i = von; i < von + p && i + 1 < mini.length; i++) s += miniAbstand(mini[i], mini[i + 1]);
+    return s / p;
+  };
+  const gesamtBewegung = bewegung(0, mini.length - 1);
+  const MINDEST_BEWEGUNG = gesamtBewegung * 0.5;
+
   let beste = null;
   for (let p = 8; p <= obergrenze; p++) {
     let s = 0, n = 0;
@@ -275,20 +297,82 @@ async function periodeFinden(dateien) {
 
   let start = null;
   for (let s = 0; s + beste.p < mini.length; s++) {
+    if (bewegung(s, beste.p) < MINDEST_BEWEGUNG) continue; // Stillstand überspringen
     const d = miniAbstand(mini[s], mini[s + beste.p]);
     if (!start || d < start.d) start = { s, d };
+  }
+  if (!start) {
+    throw new Error('Kein Abschnitt mit genug Bewegung gefunden — ist das wirklich eine Bewegungsvorlage?');
   }
   return { periode: beste.p, start: start.s };
 }
 
 const behalten = [];
+/** Länge der Periode in ROHBILDERN — bestimmt das Tempo, nicht die Bildzahl. */
+let periodeRoh = 0;
+
+/* ABSPIELREIHENFOLGE mit Wiederholungen.
+ *
+ * Die Vorlagen laufen mit 24 Bildern je Sekunde, die Bewegung darin ist
+ * gröber: im gemessenen Kletterzyklus sind 5 von 19 Rohbildern reine
+ * Wiederholungen der vorherigen Pose. Als DATEI sind sie überflüssig — als
+ * TAKT sind sie es nicht. Wer sie weglässt und den Rest gleichmässig
+ * abspielt, verschiebt die Standzeiten: gemessen wurden danach Schrittweiten
+ * zwischen 2.6 und 21.1 statt einer gleichmässigen Bewegung.
+ *
+ * Deshalb werden nur die verschiedenen Posen geschrieben, und diese Liste
+ * hält fest, welche Pose in welchem Takt zu sehen ist. Sie gehört nach
+ * CONFIG.sprite.frames bzw. in den Charakter — das Feld nimmt seit jeher eine
+ * beliebige Reihenfolge entgegen, Wiederholungen eingeschlossen. */
+const reihenfolge = [];
 
 if (ZYKLUS) {
   const { periode, start } = await periodeFinden(roh);
+  periodeRoh = periode;
   console.log(`        Periode ${periode} Bilder (${(periode / FPS).toFixed(3)} s), ` +
     `sauberste Wiederholung ab Rohbild ${start + 1}`);
+
+  /* DOPPELBILDER RAUS.
+   *
+   * Die Vorlagen laufen mit 24 Bildern je Sekunde, die Figur darin bewegt
+   * sich aber gröber — mehrere aufeinanderfolgende Rohbilder sind identisch.
+   * Im gemessenen Kletterzyklus waren 5 von 19 Bildern reine Wiederholungen.
+   * Übernimmt man sie, hält die Bewegung fünfmal je Durchlauf kurz an: der
+   * Affe zuckt, statt zu klettern. Genau das war als "die Animation ist nicht
+   * stimmig" zu sehen.
+   *
+   * WICHTIG: Für das TEMPO zählt weiter die Periode in ROHBILDERN. Der Zyklus
+   * dauert unverändert periode/FPS Sekunden — er besteht nur aus weniger,
+   * dafür wirklich verschiedenen Posen. Wer stattdessen durch die Zahl der
+   * behaltenen Bilder teilt, macht die Bewegung ungewollt langsamer. */
+  const SCHWELLE = 0.6; // mittlerer Kanalabstand; darunter ist es dasselbe Bild
+  let vorheriges = null;
   for (let i = 0; i < periode; i++) {
-    behalten.push(await freistellen(resolve(ROH, roh[start + i])));
+    const bild = await freistellen(resolve(ROH, roh[start + i]));
+    if (vorheriges && abstand(vorheriges.rgba, bild.rgba, bild.w, bild.h) < SCHWELLE) {
+      // Dieselbe Pose noch einmal: keine neue Datei, aber ein weiterer Takt.
+      reihenfolge.push(behalten.length - 1);
+      continue;
+    }
+    vorheriges = bild;
+    behalten.push(bild);
+    reihenfolge.push(behalten.length - 1);
+  }
+  /* Auch der Rücksprung darf kein Doppelbild sein: ist das letzte Bild gleich
+   * dem ersten, zeigt die Schleife dieselbe Pose zweimal hintereinander. */
+  if (behalten.length > 2) {
+    const a = behalten[0], z = behalten[behalten.length - 1];
+    if (abstand(a.rgba, z.rgba, a.w, a.h) < SCHWELLE) {
+      behalten.pop();
+      for (let i = 0; i < reihenfolge.length; i++) {
+        if (reihenfolge[i] === behalten.length) reihenfolge[i] = 0;
+      }
+    }
+  }
+  const doppelt = reihenfolge.length - behalten.length;
+  if (doppelt) {
+    console.log(`        ${behalten.length} verschiedene Posen, ${doppelt} davon werden ` +
+      `zweimal gehalten (Standzeiten wie im Video)`);
   }
 } else {
   let letztes = null;
@@ -379,6 +463,11 @@ console.log(`Ziel:   ${ZIEL}`);
 console.log(`        ${gewaehlt.length} Bilder, je ${leinwandW}x${leinwandH}` +
   (!ZYKLUS && gewaehlt.length < WUNSCH ? `  (statt ${WUNSCH} — mehr gibt das Video nicht her)` : ''));
 if (ZYKLUS) {
-  console.log(`TEMPO:  cycleSpeed ${(FPS / gewaehlt.length).toFixed(3)}  ` +
-    `(${gewaehlt.length} Bilder bei ${FPS} fps = ${(gewaehlt.length / FPS).toFixed(3)} s je Zyklus)`);
+  /* Der Takt folgt der PERIODE, nicht der Dateizahl — die Bewegung dauert
+   * genauso lange wie im Video, sie braucht nur weniger Dateien. */
+  console.log(`TEMPO:  cycleSpeed ${(FPS / reihenfolge.length).toFixed(3)}  ` +
+    `(${reihenfolge.length} Takte bei ${FPS} fps = ${(reihenfolge.length / FPS).toFixed(3)} s je Zyklus)`);
+  console.log(`FRAMES: [${reihenfolge.join(', ')}]`);
+  console.log('        ^ diese Liste nach CONFIG kopieren (frames:) — sie enthält die');
+  console.log('          Standzeiten aus dem Video, deshalb stehen Zahlen doppelt drin.');
 }
