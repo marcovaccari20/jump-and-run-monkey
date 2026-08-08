@@ -1792,6 +1792,8 @@ export class Game {
 
       // Goldene Banane bzw. Chili fuer dieses Gebiet.
       this._belohnungenPruefen();
+      // Gelbe Banane: hoechstens eine je Gebiet (siehe CONFIG.banana).
+      this.spawner.neuesGebiet();
 
     }
     /* Kümmert sich um den Schleifenpunkt der Musik. Hier stand vorher ein

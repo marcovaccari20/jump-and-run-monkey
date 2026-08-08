@@ -119,6 +119,9 @@ export class Spawner {
      * Sekunden (siehe muenzTakt). */
     this.goldrausch = false;
 
+    // Wie viele gelbe Bananen in DIESEM Gebiet schon gefallen sind.
+    this._bananenImGebiet = 0;
+
     /* Die garantierte freie Bahn. Siehe Korridor.js — sie ist der Grund,
      * warum die Objekte nicht mehr zufällig verteilt werden. */
     this.korridor = new Korridor(cfg.rock.korridor);
@@ -165,6 +168,7 @@ export class Spawner {
     // Bahnzähler für den Ausgleich (siehe _bahnWaehlen) — ein neuer Lauf
     // fängt ohne Schuldenstand an.
     this._bahnZaehler = null;
+    this._bananenImGebiet = 0;
 
     // Taktgeber für den Einzelstrom (siehe _einzelnesObjekt).
     this._salveRest = 0;
@@ -287,13 +291,21 @@ export class Spawner {
     // weiter, käme direkt nach dem Kampf alles Aufgestaute auf einmal.
     if (!this.nachschubAus) this.timer -= dt;
     if (this.timer <= 0 && !this.nachschubAus) {
+      /* WANN ÜBERHAUPT EINE GELBE BANANE FÄLLT — vier Bedingungen.
+       *
+       * Die letzten beiden sind neu und ausdrücklich gewünscht: nicht vor
+       * dem Ende des zweiten Gebiets, und höchstens eine je Gebiet. Beides
+       * steht in CONFIG.banana und ist dort begründet. */
       const bananaAllowed =
         this.bananasEnabled &&
         !(bananaCfg.suppressWhenStocked && playerHasRevive) &&
+        this.difficulty.elapsed >= (bananaCfg.abSekunde ?? 0) &&
+        this._bananenImGebiet < (bananaCfg.proGebiet ?? Infinity) &&
         Math.random() < bananaCfg.spawnChance;
 
       if (bananaAllowed) {
         this._spawnBanana(this._bananenX(bananaCfg), world.spawnY);
+        this._bananenImGebiet++;
         this.timer += this.difficulty.spawnDelay;
       } else {
         this.timer += this._einzelnesObjekt();
@@ -873,6 +885,18 @@ export class Spawner {
      * Unterschied zwischen "du bekommst mehr" und "sieh dir das an". */
     if (this.goldrausch) return this.cfg.goldbanane.muenzTakt;
     return this.cfg.difficulty.sekundenProWand / Math.max(1, this.cfg.coin.proGebiet);
+  }
+
+  /**
+   * Neues Gebiet betreten.
+   *
+   * Setzt den Bananenzähler zurück — die Regel "höchstens eine je Gebiet"
+   * braucht jemanden, der weiss, wann ein Gebiet anfängt, und das ist Game.
+   * Der Spawner sieht nur `hazardLook`, und der wechselt auch bei einem
+   * zyklischen Neudurchlauf derselben Wand.
+   */
+  neuesGebiet() {
+    this._bananenImGebiet = 0;
   }
 
   /**

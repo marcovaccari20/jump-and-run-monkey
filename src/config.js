@@ -1358,6 +1358,24 @@ export const CONFIG = {
     spawnChance: 0.085,
     // Keine Banane spawnen, solange der Spieler schon eine gebunkert hat.
     suppressWhenStocked: true,
+
+    /* FRÜHESTENS AM ENDE DES ZWEITEN GEBIETS.
+     *
+     * Im ersten Gebiet lernt man das Spiel. Eine zweite Chance, bevor man
+     * die erste verstanden hat, nimmt dem Anfang den Ernst — und wer sie
+     * dort einsammelt, weiss gar nicht, was er da hat.
+     *
+     * Ein Gebiet dauert 132 s, das zweite endet also bei 264 s. 230 s liegt
+     * kurz davor: sie taucht im letzten Viertel des zweiten Gebiets auf. */
+    abSekunde: 230,
+
+    /* HÖCHSTENS EINE JE GEBIET.
+     *
+     * Sie ist ein zweites Leben, kein Sammelobjekt. Zwei davon in einem
+     * Gebiet wären keine Belohnung mehr, sondern ein Polster — und mit
+     * Polster spielt man anders, nämlich schlechter. */
+    proGebiet: 1,
+
     radius: 0.38,
     hitRadiusFactor: 1.15, // Einsammeln soll grosszügig sein
     fallSpeedFactor: 0.72, // Bananen fallen langsamer als Steine
