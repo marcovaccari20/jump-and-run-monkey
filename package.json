@@ -17,7 +17,9 @@
     "paket": "node scripts/package-portal.mjs",
     "prep:musik": "node scripts/prepare-musik.mjs",
     "pruef:unterordner": "node scripts/pruef-unterordner.mjs",
-    "prep:klaenge": "node scripts/prepare-klaenge.mjs"
+    "prep:klaenge": "node scripts/prepare-klaenge.mjs",
+    "prep:boss": "node scripts/prepare-boss.mjs",
+    "video:frames2": "node scripts/video-frames.mjs"
   },
   "type": "module",
   "dependencies": {
