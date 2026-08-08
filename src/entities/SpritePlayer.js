@@ -109,8 +109,12 @@ export class SpritePlayer {
     this.invulnerableTimer = 0;
     this.alive = true;
 
-    /* Auf welcher der drei Bahnen er steht bzw. hin will. 1 = Mitte.
-     * Gesetzt wird das von aussen (Game), siehe update(). */
+    /* Auf welcher Bahn er steht bzw. hin will — Index in worldView.bahnX.
+     *
+     * Hier stand "eine von drei, 1 = Mitte". Es sind VIER, und bei vier
+     * geraden Bahnen gibt es keine Mitte: Index 1 liegt bei -1/3 der
+     * Feldbreite. Wo er startet, entscheidet reset() anhand der Bahnen.
+     * Gesetzt wird der Wert von aussen (Game), siehe update(). */
     this.zielBahn = 1;
 
     /* Zielhöhe. Im normalen Lauf immer die Starthöhe — der Affe steht fest.
@@ -392,7 +396,7 @@ export class SpritePlayer {
    * @param {number} dt
    * @param {{x:number}} axis  nur noch das Vorzeichen zählt (Bahnwechsel)
    * @param {{minX:number,maxX:number}} bounds
-   * @param {number[]} bahnX  x-Positionen der drei Bahnen
+   * @param {number[]} bahnX  x-Positionen der Bahnen (derzeit vier)
    */
   update(dt, axis, bounds, bahnX) {
     const cfg = this.cfg;

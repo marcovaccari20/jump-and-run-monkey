@@ -175,9 +175,19 @@ export const CONFIG = {
      * wird genau dort getroffen. */
     bahnWechselZeit: 0.16,
 
-    /* Seitliche Bewegungsgeschwindigkeit — seit der Umstellung auf drei
-     * Bahnen nur noch für die Animation gebraucht (animSpeed), nicht mehr
-     * für die Position. Die kommt aus bahnWechselZeit. */
+    /* Seitliche Höchstgeschwindigkeit — WIEDER EIN POSITIONSWERT.
+     *
+     * Hier stand, seit der Umstellung auf Bahnen werde der Wert nur noch für
+     * die Animation gebraucht und die Position komme allein aus
+     * `bahnWechselZeit`. Das galt genau so lange, wie die Bahnen dicht
+     * beieinander lagen. Seit sie über die volle Bildbreite gehen, wäre eine
+     * wegunabhängige Wechselzeit im Querformat ein Sprung mit 20
+     * Einheiten/s — SpritePlayer deckelt den Schritt deshalb auf `moveSpeed`.
+     *
+     * Damit bestimmt dieser Wert wieder mit, wie lange ein Bahnwechsel
+     * dauert, und er ist zugleich die Grösse, mit der scripts/fairness.mjs
+     * die erreichbare Restmenge aufweitet. Wer ihn senkt, macht das Spiel
+     * nicht nur träger, sondern verschiebt die bewiesene Grenze. */
     moveSpeed: 8.4,
     // Glättungsraten in 1/s (nicht Beschleunigung im physikalischen Sinn):
     // v nähert sich dem Zielwert mit 1 - e^(-rate * dt).
@@ -602,24 +612,24 @@ export const CONFIG = {
      *                  der Difficulty-Kurven während des Fluges ab.
      */
     korridor: {
-      /* SCHMALER ALS VORHER (war 0.5), und das ist kein Feintuning.
+      /* WIRD SEIT DER BAHN-UMSTELLUNG NIRGENDWO MEHR GELESEN.
        *
-       * Die freie Bahn sperrt links und rechts von sich einen Streifen, in
-       * dem nichts fallen darf. Der war so breit, dass im Hochformat 2.43
-       * von 3.88 Einheiten dauerhaft blockiert waren — 63 % des Feldes.
-       * Gemessen kam die Bildmitte dadurch auf 13.1 % der Objekte statt 33.3,
-       * und in jedem vierten 90-Sekunden-Fenster fiel überhaupt nichts durch
-       * die Mitte. Es fiel praktisch nur noch an den Rändern.
+       * Der Wert stammt aus der Zeit der stufenlosen Platzierung: die freie
+       * Bahn sperrte links und rechts einen Streifen dieser Halbbreite, in
+       * dem nichts fallen durfte. Er wurde von 0.5 auf 0.28 gesenkt, weil im
+       * Hochformat sonst 63 % des Feldes dauerhaft blockiert waren.
        *
-       * Zweiter, schlimmerer Nebeneffekt: die Bahn selbst konnte nicht mehr
-       * wandern. `_tempoDamitPlatzBleibt` bremst sie, wenn neben der Sperre
-       * kein Platz mehr bleibt — im Hochformat auf 0.05 Einheiten/s. Sie
-       * stand also fast still, und damit war auch die Seite, auf der die
-       * Objekte fielen, minutenlang dieselbe.
+       * Beide Stellen, die ihn benutzt haben, rechnen inzwischen anders:
        *
-       * Der Sicherheitsabstand steckt ohnehin schon in `rand` (Trefferkreis
-       * des Affen plus Objektradius). `halbbreite` ist nur der Zuschlag
-       * darüber hinaus. */
+       *   Spawner._freieStelle          sperrt BAHNEN (_noetigeBahnen) und
+       *                                 misst den Abstand mit `rand +
+       *                                 reserve`. Kein Band mehr.
+       *   Spawner._tempoDamitPlatzBleibt leitet die erlaubte Wanderung aus
+       *                                 derselben Schwelle her.
+       *
+       * Der Eintrag bleibt stehen, weil ein gelöschter Schlüssel in einer
+       * Konfigurationsdatei aussieht, als hätte man ihn vergessen. Wer ihn
+       * ändert, ändert nichts — das ist die einzige wichtige Aussage hier. */
       halbbreite: 0.28,
       tempoAnteil: 0.17,
       anteilStart: 0.45,

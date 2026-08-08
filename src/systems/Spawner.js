@@ -205,16 +205,36 @@ export class Spawner {
     const vLangsam = Math.max(0.5, fall * langsamste * this.spieler.minScrollFactor);
     const fenster = (world.spawnY - (world.bounds.minY - rand)) / vLangsam;
 
-    /* Was neben der Sperrzone übrig bleiben soll: ein grosser Brocken.
+    /* WIEVIEL DARF DIE BAHN IM FENSTER WANDERN, DAMIT EINE SPUR FREI BLEIBT?
      *
-     * Gemessen wird gegen das ECHTE FELD (bounds), nicht mehr gegen
-     * spawnHalfWidth. Die beiden waren dasselbe, solange die Abwurfbreite
-     * das Feld war; seit die Objekte auf Bahnen fallen, ist spawnHalfWidth
-     * nur noch eine Obergrenze und liegt um 0.8 daneben. Der Platz, um den
-     * es hier geht, ist der Platz zwischen den Bahnen — und der steht in
-     * bounds. */
-    const sperrRest = 2 * (k.halbbreite + rand + k.reserve) + 2 * this._groessterHitRadius;
-    const maxSpanne = 2 * world.bounds.maxX - sperrRest;
+     * Hier stand eine Rechnung aus der Zeit der stufenlosen Platzierung:
+     * "neben einem Band der Breite `halbbreite + rand + reserve` muss noch
+     * ein grosser Brocken Platz haben". Zwei Dinge stimmen daran nicht mehr.
+     *
+     * Erstens liest `_freieStelle` `k.halbbreite` überhaupt nicht mehr — es
+     * sperrt Bahnen über `_noetigeBahnen` und `rand + k.reserve`. Die Formel
+     * bremste also gegen eine Regel, die es nicht mehr gibt.
+     *
+     * Zweitens war das Ergebnis im Hochformat NEGATIV, und dann greift die
+     * Notbremse unten. Nachgemessen (braun, 9:19.5): sperrRest 4.066 gegen
+     * eine Feldbreite von 3.17 — die zugesicherte Bahn lief ab dem ersten
+     * Frame und dauerhaft mit 0.05 Einheiten/s, also praktisch still. Über
+     * 300 s wanderte sie 2.9 statt 11.2 Einheiten je Minute und wechselte
+     * 2.9 statt 10.6 mal die Spur. Wer sich auf die sichere Bahn stellte,
+     * stand dort bis zu 42 Sekunden unbehelligt.
+     *
+     * Richtig gefragt: die Bahn wandert im Fenster über eine Spanne der
+     * Breite W. Damit hinterher noch eine Spur frei ist, muss die ÄUSSERSTE
+     * Bahn weit genug von dieser Spanne weg sein. Im ungünstigsten Fall
+     * liegt die Spanne mittig; dann ist der Abstand zur äussersten Bahn
+     * `bounds.maxX - W/2`, und der muss mindestens `rand + reserve`
+     * betragen — genau die Schwelle, mit der `_freieStelle` sperrt.
+     *
+     *     bounds.maxX - W/2 >= rand + reserve
+     *     W <= 2 * (bounds.maxX - rand - reserve)
+     *
+     * Hochformat braun: 2 * (1.586 - 1.056 - 0.06) = 0.94 statt -0.89. */
+    const maxSpanne = 2 * (world.bounds.maxX - rand - k.reserve);
     if (maxSpanne <= 0) return 0.05; // extrem schmal: Bahn praktisch anhalten
     return maxSpanne / fenster;
   }
@@ -644,12 +664,22 @@ export class Spawner {
    * @param {number[]} alle alle Bahnen (für die Zählung)
    */
   _bahnWaehlen(frei, alle) {
-    if (frei.length === 1) return frei[0];
-
-    // Zähler passend zur Bahnzahl anlegen bzw. nachziehen (Drehen des Geräts
-    // ändert die Positionen, nicht die Anzahl — aber sicher ist sicher).
     if (!this._bahnZaehler || this._bahnZaehler.length !== alle.length) {
       this._bahnZaehler = new Array(alle.length).fill(0);
+    }
+
+    /* AUCH DIE EINZIGE FREIE BAHN WIRD GEZÄHLT.
+     *
+     * Hier stand `if (frei.length === 1) return frei[0]` VOR der Zählung.
+     * Damit blieben genau die Abwürfe ungezählt, bei denen es keine Wahl
+     * gab — und das sind im Hochformat die häufigsten. Der Ausgleich
+     * bekam also ein Bild, in dem die aussen liegenden Bahnen viel seltener
+     * dran waren als in Wirklichkeit, und schob noch mehr dorthin: er
+     * verstärkte genau die Schlagseite, gegen die er gebaut ist. */
+    if (frei.length === 1) {
+      const i = alle.indexOf(frei[0]);
+      if (i >= 0) this._bahnZaehler[i]++;
+      return frei[0];
     }
 
     let summe = 0;

@@ -21,7 +21,7 @@ import { AssetLoader } from './AssetLoader.js';
 import { AnimationController } from '../animation/AnimationController.js';
 import { Player } from '../entities/Player.js';
 import { SpritePlayer } from '../entities/SpritePlayer.js';
-import { hazardSpriteUrls } from '../entities/Rock.js';
+import { groessteSpriteBreite, hazardSpriteUrls } from '../entities/Rock.js';
 import { BossKampf } from '../systems/BossKampf.js';
 import { PlantWall } from '../world/PlantWall.js';
 import { DifficultyCurve } from '../systems/DifficultyCurve.js';
@@ -701,6 +701,20 @@ export class Game {
     }
   }
 
+  /**
+   * Goldmodus beenden — Fell UND Restzeit.
+   *
+   * Beide gehören zusammen, und genau daran hing ein Fehler: `player.reset()`
+   * bzw. `_resetAnimation()` zog dem Affen das Goldfell aus, `_goldRest` lief
+   * aber weiter. Nach dem Weiterspielen per Werbung gab es dann dreifache
+   * Münzen ohne goldenen Affen — ein Vorteil, den man weder sieht noch
+   * erklären kann. Deshalb hier eine Stelle für beides.
+   */
+  _goldmodusAus() {
+    this._goldRest = 0;
+    this.player?.fellWechseln?.(null);
+  }
+
   /** Münzfaktor dieses Augenblicks — 1 normal, 3 im Goldmodus. */
   get _muenzFaktor() {
     return this._goldRest > 0 ? this.cfg.boss.belohnung.muenzFaktor : 1;
@@ -1102,9 +1116,7 @@ export class Game {
      * zweiten Runde aus. */
     this.boss?.abbrechen(this.player);
     this._bossGehabt.clear();
-    this._goldRest = 0;
-    // player.reset() oben hat das Fell schon zurückgesetzt; hier steht nur,
-    // dass der Goldmodus wirklich zu Ende ist.
+    this._goldmodusAus();
 
     /* Runde bei der Weltliste anmelden. Der Server stempelt den Start mit
      * seiner Uhr und misst die Spielzeit später selbst — nur deshalb lässt
@@ -1236,6 +1248,16 @@ export class Game {
     this.player.reviveInPlace(cfg.invulnerableTime);
     this._deathTimer = 0;
 
+    /* Goldfell wieder anziehen, solange der Goldmodus läuft.
+     *
+     * `reviveInPlace` geht über `_resetAnimation`, und das setzt das Fell auf
+     * das normale zurück — `_goldRest` lief aber weiter. Ergebnis: dreifache
+     * Münzen an einem ganz normal aussehenden Affen. Ein Vorteil, den man
+     * weder sieht noch erklären kann, ist schlimmer als gar keiner. */
+    if (this._goldRest > 0 && this._goldFrames) {
+      this.player.fellWechseln?.(this._goldFrames);
+    }
+
     this.states.transitionTo(GameState.PLAYING, { weiter: true });
     this.ui.toast('Weiter geht’s!', 'revive');
     if (this.cfg.debug.showStats) {
@@ -1267,6 +1289,7 @@ export class Game {
     this.player.reset(this.worldView.bahnX);
     // Der Adler gehört zum Lauf, nicht zum Menü — samt Bossmusik.
     this.boss?.abbrechen(this.player);
+    this._goldmodusAus();
     this.states.transitionTo(GameState.MENU);
   }
 
@@ -1818,8 +1841,24 @@ export class Game {
      *
      * Vom SPIELER genommen, nicht aus CONFIG: der weisse Affe ist halb so
      * gross und bekommt dadurch ein breiteres Feld. */
-    const halbeBreite = (this.player?.spriteWidth ?? 1.4) / 2;
+    /* DER RAND MUSS AUCH DAS BREITESTE OBJEKT FASSEN, nicht nur den Affen.
+     *
+     * Auf der äussersten Bahn steht nicht nur der Affe — dort fällt auch,
+     * was ihn treffen soll. Gemessen ragte der Feuerball ("feuer/gross",
+     * 1.788 breit) 0.192 Einheiten über den Bildrand hinaus, während der
+     * Affe (1.403) bündig abschloss.
+     *
+     * Der Affe steht dadurch nicht mehr exakt am Rand, sondern 0.192
+     * Einheiten davor — im Hochformat rund 16 Bildpunkte. Das ist der
+     * richtige Tausch: "in der Ecke" bleibt es sichtbar, "halb aus dem Bild"
+     * wäre ein Fehler. */
+    const halbeBreite = Math.max(
+      (this.player?.spriteWidth ?? 1.4) / 2,
+      groessteSpriteBreite(this.cfg.rock) / 2,
+    );
     const limit = Math.max(0.9, half - halbeBreite);
+
+    const altesFeld = view.bounds.maxX;
 
     view.bounds.minX = Math.max(base.bounds.minX, -limit);
     view.bounds.maxX = Math.min(base.bounds.maxX, limit);
@@ -1831,6 +1870,42 @@ export class Game {
      * breit wie im Querformat. */
     const halbFeld = view.bounds.maxX;
     view.bahnX = base.bahnen.map((anteil) => anteil * halbFeld);
+
+    /* WAS SCHON FÄLLT, MUSS MITWANDERN.
+     *
+     * Die Bahnen sind Anteile der Feldbreite. Ändert sich die Breite — Handy
+     * drehen, Fenster ziehen, und ebenso JEDER CHARAKTERWECHSEL, weil das
+     * Feld an der Bildbreite des Affen hängt —, dann verschieben sich alle
+     * Bahnen, ein bereits fallender Stein aber nicht. Er liegt danach
+     * zwischen zwei Spuren: entweder harmlos oder halb auf einer Bahn, und
+     * die Zusicherung "auf deiner Spur liegt nichts" gilt für ihn nicht mehr,
+     * weil sie für die ALTEN Spuren ausgerechnet wurde.
+     *
+     * Weil die Bahnen Anteile sind, genügt eine Streckung: x mal dem
+     * Verhältnis der Feldbreiten. Ein Objekt auf Bahn 2 bleibt danach exakt
+     * auf Bahn 2, egal wie sich das Feld ändert. Es rutscht dabei sichtbar
+     * zur Seite — das ist richtig so, das ganze Bild ändert ja gerade seine
+     * Breite.
+     *
+     * Der Korridor wird unten zusätzlich geklemmt; er ist eine Kurve über
+     * die Zeit und wird deshalb anders behandelt. */
+    if (altesFeld > 0.01 && Math.abs(halbFeld - altesFeld) > 1e-6) {
+      const streckung = halbFeld / altesFeld;
+      for (const pool of [this.spawner?.rocks, this.spawner?.bananas, this.spawner?.coins]) {
+        for (const o of pool?.active ?? []) {
+          if (!o.active) continue;
+          o.x *= streckung;
+          // Die Münze pendelt um ihre Abwurfstelle — die muss mit.
+          if (o._mitteX !== undefined) o._mitteX *= streckung;
+          o.mesh.position.x = o.x;
+        }
+      }
+      for (const k of this.boss?.kacke.active ?? []) {
+        if (!k.active) continue;
+        k.x *= streckung;
+        k.mesh.position.x = k.x;
+      }
+    }
 
     /* Objekte nur dort erzeugen, wo sie auch zu sehen sind — sonst fällt der
      * Grossteil im Hochformat unsichtbar neben dem Bild herunter.

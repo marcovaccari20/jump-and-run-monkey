@@ -57,6 +57,7 @@ import { CONFIG } from '../src/config.js';
 import { DifficultyCurve } from '../src/systems/DifficultyCurve.js';
 import { Spawner } from '../src/systems/Spawner.js';
 import { halfWidthAt } from '../src/core/viewport.js';
+import { groessteSpriteBreite } from '../src/entities/Rock.js';
 
 /* ============================================================== Argumente */
 
@@ -239,18 +240,27 @@ function spielfeld(aspect, halbeAffenBreite, pCfg) {
    * oben in dieser Datei gewarnt wird, nur diesmal in ihr selbst. */
   const affenHoehe = (pCfg.startPosition ?? CONFIG.player.startPosition)[1];
   const half = halfWidthAt(camera, 0, affenHoehe);
-  const limit = Math.max(0.9, half - halbeAffenBreite);
+  // Wie im Spiel: der Rand muss auch das breiteste Objekt fassen.
+  const rand = Math.max(halbeAffenBreite, groessteSpriteBreite(CONFIG.rock) / 2);
+  const limit = Math.max(0.9, half - rand);
+  /* GEKLEMMT, wie im Spiel — und die Bahnen aus DIESEM Wert.
+   *
+   * Hier stand `bahnX: base.bahnen.map((a) => a * limit)`, also aus dem
+   * UNgeklemmten Wert. Solange die Sicherung (±9) nicht greift, ist das
+   * dasselbe; ab einem Seitenverhältnis von etwa 2 greift sie, und dann
+   * prüfte das Modell Bahnen, die es im Spiel nicht gibt. */
+  const maxX = Math.min(base.bounds.maxX, limit);
 
   return {
     ...base,
     bounds: {
       minX: Math.max(base.bounds.minX, -limit),
-      maxX: Math.min(base.bounds.maxX, limit),
+      maxX,
       minY: base.bounds.minY,
       maxY: base.bounds.maxY,
     },
     // Die Bahnen, auf die alles fällt. OHNE DIESE ZEILE FÄLLT NICHTS.
-    bahnX: base.bahnen.map((anteil) => anteil * limit),
+    bahnX: base.bahnen.map((anteil) => anteil * maxX),
     spawnHalfWidth: Math.min(base.spawnHalfWidth, limit + 0.8),
   };
 }

@@ -173,6 +173,40 @@ export function spriteHoehe(cfg, lookId, type) {
   return d / Math.sqrt(s.aspect);
 }
 
+/**
+ * Wie breit wird das BREITESTE Objekt, das überhaupt vorkommen kann?
+ *
+ * Gebraucht von Game._updateWorldBounds: das Spielfeld hört dort auf, wo
+ * sonst etwas aus dem Bild ragen würde. Für den Affen ist das seine halbe
+ * Bildbreite — für die Objekte muss dieselbe Frage gestellt werden, sonst
+ * hängt auf der äussersten Bahn ein grosser Brocken halb draussen.
+ * Gemessen war das der Feuerball ("feuer/gross", 1.788 breit gegen 1.403
+ * beim Affen): er ragte 0.192 Einheiten über den Rand.
+ *
+ * Dieselbe Rechnung wie in spawn(), damit beide nicht auseinanderlaufen.
+ * Ohne geladene Bilder (Fairness-Prüfung, Tests) wird über `strecken`
+ * geschätzt — dort gibt es keine Bildschirmkante, an der etwas abschneiden
+ * könnte.
+ */
+export function groessteSpriteBreite(cfg) {
+  let max = 0;
+  for (const [lookId, look] of Object.entries(cfg.looks)) {
+    cfg.types.forEach((t, i) => {
+      const s = geteilt?.get(`${lookId}/${t.id}`);
+      let breite;
+      if (s?.sprite) {
+        const d = 2 * t.radius * (cfg.spriteScale ?? 1) * (look.bildScale ?? 1);
+        breite = d * Math.sqrt(s.aspect);
+      } else {
+        const st = look.strecken;
+        breite = st ? 2 * t.radius * st[0] : 2 * t.radius;
+      }
+      if (breite > max) max = breite;
+    });
+  }
+  return max;
+}
+
 /** Alle Sprite-Pfade, die diese Config braucht — für das Vorladen. */
 export function hazardSpriteUrls(cfg) {
   const urls = new Set();
