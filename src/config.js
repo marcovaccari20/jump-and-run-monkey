@@ -104,8 +104,17 @@ export const CONFIG = {
     spawnY: 6.0,
     // Unterhalb dieser Höhe werden Entities wieder in den Pool zurückgegeben.
     despawnY: -5.6,
-    // Breite, über die Spawns horizontal verteilt werden.
-    spawnHalfWidth: 5.0,
+    /* Breite, über die Spawns horizontal verteilt werden — heute nur noch
+     * eine Obergrenze, die nie greifen soll.
+     *
+     * Der Wert stand auf 5.0 und passte zu den alten bounds von ±4.6. Seit
+     * das Feld der Kamera folgt, reicht es im Querformat (16:9) bis ±7.98 —
+     * `Math.min(5.0, limit + 0.8)` hätte dem Korridor dort eine Breite
+     * vorgerechnet, die es gar nicht mehr gibt, und ihn unnötig gebremst.
+     * Gefallen wäre trotzdem alles richtig (die Objekte liegen auf Bahnen,
+     * nicht auf spawnHalfWidth), aber die Bahn hätte träger gewirkt als
+     * nötig. 12 liegt über jedem Format, das die ±9-Sicherung durchlässt. */
+    spawnHalfWidth: 12.0,
   },
 
   /* ================================================================== *

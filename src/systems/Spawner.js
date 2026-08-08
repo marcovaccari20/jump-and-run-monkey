@@ -205,9 +205,16 @@ export class Spawner {
     const vLangsam = Math.max(0.5, fall * langsamste * this.spieler.minScrollFactor);
     const fenster = (world.spawnY - (world.bounds.minY - rand)) / vLangsam;
 
-    // Was neben der Sperrzone übrig bleiben soll: ein grosser Brocken.
+    /* Was neben der Sperrzone übrig bleiben soll: ein grosser Brocken.
+     *
+     * Gemessen wird gegen das ECHTE FELD (bounds), nicht mehr gegen
+     * spawnHalfWidth. Die beiden waren dasselbe, solange die Abwurfbreite
+     * das Feld war; seit die Objekte auf Bahnen fallen, ist spawnHalfWidth
+     * nur noch eine Obergrenze und liegt um 0.8 daneben. Der Platz, um den
+     * es hier geht, ist der Platz zwischen den Bahnen — und der steht in
+     * bounds. */
     const sperrRest = 2 * (k.halbbreite + rand + k.reserve) + 2 * this._groessterHitRadius;
-    const maxSpanne = 2 * world.spawnHalfWidth - sperrRest;
+    const maxSpanne = 2 * world.bounds.maxX - sperrRest;
     if (maxSpanne <= 0) return 0.05; // extrem schmal: Bahn praktisch anhalten
     return maxSpanne / fenster;
   }

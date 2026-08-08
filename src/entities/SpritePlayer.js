@@ -308,9 +308,34 @@ export class SpritePlayer {
     this._setFrame(this.sc.idleFrame % this.frames.length);
   }
 
-  reset() {
-    this.x = this.cfg.startPosition[0];
-    this.zielBahn = 1;
+  /**
+   * @param {number[]} [bahnX] Bahnen — bestimmt, wo er startet
+   */
+  reset(bahnX) {
+    /* AUF EINER BAHN STARTEN, nicht daneben.
+     *
+     * `zielBahn = 1` war bei drei Bahnen die Mitte und damit x = 0 — genau
+     * die Startposition. Bei VIER Bahnen gibt es keine Mitte: Bahn 1 liegt
+     * bei -1/3 der Feldbreite. Der Affe stand also auf 0 und rutschte in der
+     * ersten halben Sekunde sichtbar nach links, bevor der Spieler auch nur
+     * eine Taste berührt hatte.
+     *
+     * Deshalb: die Bahn nehmen, die der Startposition am nächsten liegt, und
+     * gleich dort hinstellen. Bei vier Bahnen sind die beiden mittleren
+     * gleich weit weg — die erste gewinnt, das ist links von der Mitte und
+     * völlig gleichwertig. */
+    const start = this.cfg.startPosition[0];
+    if (bahnX?.length) {
+      let beste = 0;
+      for (let i = 1; i < bahnX.length; i++) {
+        if (Math.abs(bahnX[i] - start) < Math.abs(bahnX[beste] - start)) beste = i;
+      }
+      this.zielBahn = beste;
+      this.x = bahnX[beste];
+    } else {
+      this.zielBahn = Math.floor((this.cfg.bahnAnzahl ?? 4) / 2) - 1;
+      this.x = start;
+    }
     this.y = this.cfg.startPosition[1];
     this.zielY = this.y;
     this.vx = 0;

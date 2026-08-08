@@ -47,6 +47,10 @@
  * relevanten Fenster wirklich schafft. Damit ist die Schrittweite eine untere
  * Schranke und die Aussage wieder gedeckt.
  */
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import sharp from 'sharp';
 import { PerspectiveCamera } from 'three';
 
 import { CONFIG } from '../src/config.js';
@@ -252,16 +256,45 @@ function spielfeld(aspect, halbeAffenBreite, pCfg) {
 }
 
 /**
- * Halbe Bildbreite des Affen — dieselbe Zahl, die SpritePlayer aus
- * spriteHeight und dem Seitenverhältnis der Textur bildet.
+ * Halbe Bildbreite eines Affen — dieselbe Zahl, die SpritePlayer aus
+ * spriteHeight und dem Seitenverhältnis SEINER Textur bildet.
  *
- * Das Seitenverhältnis steht nicht in CONFIG (es kommt aus der Bilddatei),
- * deshalb hier als gemessene Konstante: die Kletterbilder aller drei Affen
- * sind 377x720, also 0.5236 breit je Einheit Höhe.
+ * DIE DREI AFFEN SIND VERSCHIEDEN BREIT, und das ist keine Kleinigkeit:
+ *
+ *     braun    407x725   0.5614 breit je Einheit Höhe
+ *     weiss    454x864   0.5255
+ *     orange   538x889   0.6052
+ *
+ * Hier stand eine feste Zahl (377x720 = 0.5236 — das Seitenverhältnis der
+ * GOLD-Bilder, nicht der Kletterbilder). Damit rechnete der Prüfer für
+ * braun und orange ein BREITERES Feld als das Spiel, und ein Prüfer, der
+ * mehr Platz annimmt als vorhanden ist, ist zu milde.
+ *
+ * Gemessen wird deshalb die Datei selbst — dann stimmt es auch, wenn
+ * jemand die Grafiken austauscht.
  */
-const BILD_SEITE = 377 / 720;
-function halbeAffenBreite(pCfg) {
-  return (pCfg.spriteHeight * BILD_SEITE) / 2;
+const BILD_SEITE = new Map();
+
+/** Einmal beim Start füllen — danach ist die Abfrage synchron. */
+async function bildseitenLaden() {
+  const wurzel = dirname(fileURLToPath(import.meta.url));
+  for (const [id, char] of Object.entries(CONFIG.characters.list)) {
+    const pfad = (char.framePath ?? CONFIG.sprite.framePath).replace('{n}', '00');
+    const datei = resolve(wurzel, '..', 'public', pfad.replace(/^\//, ''));
+    try {
+      const m = await sharp(datei).metadata();
+      BILD_SEITE.set(id, m.width / m.height);
+    } catch (fehler) {
+      // Ohne Bild bleibt nur eine Schätzung — dann aber laut, nicht still.
+      console.warn(`[fairness] ${datei} nicht lesbar (${fehler.message}) — nehme 0.56.`);
+      BILD_SEITE.set(id, 0.56);
+    }
+  }
+}
+
+function halbeAffenBreite(charId, pCfg) {
+  const seite = BILD_SEITE.get(charId) ?? 0.56;
+  return (pCfg.spriteHeight * seite) / 2;
 }
 
 /** Wand-Stufe zur Spielzeit (Spiegel von PlantWall.stageIndexAt). */
@@ -289,7 +322,7 @@ function lauf({ seed, affe, aspect, steigt, hoehe }) {
     const hitRadius = pCfg.hitRadius;
     const ignoreR = charCfg.ignoreRockRadius ?? 0;
 
-    const world = spielfeld(aspect, halbeAffenBreite(pCfg), pCfg);
+    const world = spielfeld(aspect, halbeAffenBreite(affe, pCfg), pCfg);
     const difficulty = new DifficultyCurve(CONFIG.difficulty);
     difficulty.setRockMix(CONFIG.rock.mix);
 
@@ -375,6 +408,53 @@ function lauf({ seed, affe, aspect, steigt, hoehe }) {
         engsteStufe = stufeBei(t).name;
       }
 
+      /* IST AUCH EINE BAHN ÜBRIG?
+       *
+       * DAS IST DIE EIGENTLICHE FRAGE, seit der Affe nicht mehr stufenlos
+       * läuft. Die Mengenrechnung oben prüft einen Spieler, der ÜBERALL
+       * stehen darf. Unserer darf nur auf vier festen Spuren stehen — die
+       * Bahnmenge ist eine echte Teilmenge der stufenlosen. Eine
+       * Restmenge von 0.19 Einheiten irgendwo zwischen zwei Bahnen nützt
+       * ihm nichts: dort kann er gar nicht hin.
+       *
+       * Ohne diese Prüfung war der Beweis zu schwach — er hätte einen Fall
+       * durchgewunken, in dem alle vier Bahnen belegt sind und nur die
+       * Zwischenräume frei bleiben.
+       *
+       * `world.bahnX` ist dieselbe Liste, aus der auch der Spawner wählt. */
+      let bahnFrei = false;
+      for (const bx of world.bahnX) {
+        for (const [a, b] of S) {
+          if (bx >= a && bx <= b) {
+            bahnFrei = true;
+            break;
+          }
+        }
+        if (bahnFrei) break;
+      }
+      if (t > EINSCHWINGEN && !bahnFrei) {
+        return {
+          ok: false,
+          grund: 'keine Bahn erreichbar',
+          seed,
+          affe,
+          aspect,
+          steigt,
+          zeit: t,
+          stufe: stufeBei(t).name,
+          dichte: +difficulty.dichte.toFixed(2),
+          feld: [+world.bounds.minX.toFixed(2), +world.bounds.maxX.toFixed(2)],
+          bahnen: world.bahnX.map((x) => +x.toFixed(2)),
+          rest: S.map(([a, b]) => [+a.toFixed(2), +b.toFixed(2)]),
+          // Gleiche Form wie beim anderen Fehlschlag, sonst stolpert die
+          // Ausgabe unten darüber.
+          objekte: spawner.rocks.active
+            .filter((r) => r.active && Math.abs(r.y - py) < 2)
+            .map((r) => ({ x: +r.x.toFixed(2), y: +r.y.toFixed(2), art: r.type.id }))
+            .sort((a, b) => a.x - b.x),
+        };
+      }
+
       if (S.length === 0) {
         return {
           ok: false,
@@ -415,6 +495,8 @@ console.log(
     `Affen: ${AFFEN.join('/')}, Formate: ${formate.map(([n]) => n).join('/')}, ` +
     `Schrittweite ${RESERVE_ARG ?? 'hergeleitet aus der Trägheit'}\n`,
 );
+
+await bildseitenLaden();
 
 let gepruef = 0;
 let durchgefallen = 0;

@@ -1057,7 +1057,7 @@ export class Game {
   _startRun() {
     this.score.reset();
     this.difficulty.reset();
-    this.player.reset();
+    this.player.reset(this.worldView.bahnX);
     this.spawner.reset();
     // Ohne Überblendung zurück auf Stufe 1 — ein neuer Lauf fängt sichtbar
     // von vorne an, statt aus der letzten Stufe herüberzublenden.
@@ -1241,7 +1241,7 @@ export class Game {
     // Aufrufer die Reihenfolge kennen muss.
     if (this.states.is(GameState.PLAYING)) this.states.transitionTo(GameState.PAUSED);
     this.spawner.reset();
-    this.player.reset();
+    this.player.reset(this.worldView.bahnX);
     // Der Adler gehört zum Lauf, nicht zum Menü — samt Bossmusik.
     this.boss?.abbrechen(this.player);
     this.states.transitionTo(GameState.MENU);
