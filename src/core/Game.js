@@ -1130,9 +1130,23 @@ export class Game {
     }
 
     /* Stärke: 0 im ersten erlaubten Gebiet, 1 ab dem Deckel. Sie entscheidet,
-     * ob eine, zwei oder drei Bahnen bedroht werden. */
-    const spanne = Math.max(1, s.proGebiet.max - s.proGebiet.start);
-    const staerke = Math.min(1, (this._sturzProGebiet() - s.proGebiet.start) / spanne);
+     * wie wahrscheinlich ZWEI Bahnen gleichzeitig bedroht werden.
+     *
+     * HIER STAND `s.proGebiet.start`, UND DIESES FELD GIBT ES NICHT.
+     *
+     * Es ist aus der Zeit übrig, als die Häufigkeit eine Formel war
+     * (Startwert plus Steigerung). Seit sie als Tabelle `stufen` dasteht,
+     * war `start` undefined — und damit die ganze Rechnung NaN. Der
+     * Vergleich `Math.random() < NaN` ist immer falsch, also wurde nie eine
+     * zweite Bahn gezogen: über 22 Minuten Spielzeit kamen 49 Angriffe, alle
+     * einspurig. Gemeldet hat das nichts, NaN wirft nicht.
+     *
+     * Die Spanne kommt jetzt aus der Tabelle selbst: vom ersten Eintrag bis
+     * zum Deckel. */
+    const stufen = s.proGebiet.stufen;
+    const anfang = stufen[0];
+    const spanne = Math.max(1, s.proGebiet.max - anfang);
+    const staerke = Math.min(1, Math.max(0, (this._sturzProGebiet() - anfang) / spanne));
     const los = this.sturzflug.starten(this.worldView, staerke, this.player.cfg?.moveSpeed ?? this.cfg.player.moveSpeed);
     if (los) this._sturzImGebiet++;
     return los;

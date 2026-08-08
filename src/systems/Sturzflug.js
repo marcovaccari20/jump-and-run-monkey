@@ -151,8 +151,29 @@ export class Sturzflug {
    */
   _bahnenWaehlen(bahnX, staerke) {
     const erlaubt = Math.min(this.cfg.maxBahnen, Math.max(1, bahnX.length - 1));
-    // Bei niedriger Stärke eher eine, bei hoher eher alle erlaubten.
-    const anzahl = Math.max(1, Math.min(erlaubt, 1 + Math.floor(staerke * erlaubt)));
+
+    /* WIE VIELE BAHNEN — gewürfelt, nicht gestaffelt.
+     *
+     * Hier stand `1 + floor(staerke * erlaubt)`. Bei zwei erlaubten Bahnen
+     * heisst das: bis Stärke 0.5 immer EINE, danach immer ZWEI. Ab der Mitte
+     * des Spiels sah damit jeder Angriff gleich aus.
+     *
+     * Verlangt ist Abwechslung — mal links, mal rechts, mal zwei auf einmal.
+     * Die Zahl wird deshalb gewürfelt, und die Stärke verschiebt nur die
+     * Wahrscheinlichkeit. Die Untergrenze bleibt eine Bahn, die Obergrenze
+     * `erlaubt` — die Zusage "eine Bahn bleibt frei" gilt unverändert, sie
+     * steckt in `erlaubt`.
+     *
+     * Der Faktor deckelt die Wahrscheinlichkeit bei der Hälfte. Ohne ihn ist
+     * sie beim Deckel genau 1, und `Math.random() < 1` trifft immer — spät
+     * wäre dann JEDER Angriff zweispurig, gemessen 100 Prozent ab Gebiet 8.
+     * Zwei Schilder auf einmal sollen die Ausnahme bleiben, sonst sind sie
+     * keine Steigerung mehr, sondern der Normalfall. */
+    const ZWEITE_BAHN = 0.5;
+    let anzahl = 1;
+    for (let i = 1; i < erlaubt; i++) {
+      if (Math.random() < staerke * ZWEITE_BAHN) anzahl++;
+    }
 
     const misch = bahnX.slice();
     for (let i = misch.length - 1; i > 0; i--) {

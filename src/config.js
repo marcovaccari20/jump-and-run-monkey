@@ -1689,25 +1689,35 @@ export const CONFIG = {
     /* Wie oft je Gebiet. Wächst mit der Zahl der Gebietswechsel — pro drei
      * Gebiete einer mehr, gedeckelt bei `max`. Der Nutzer wollte "ein bis
      * dreimal, und immer öfter, je höher man kommt". */
-    /* WIE OFT JE GEBIET.
+    /* WIE OFT JE GEBIET — ab dem zweiten Gebiet einer mehr, Gebiet für
+     * Gebiet:
      *
-     * Vorher: einer ab Gebiet 2, alle drei Gebiete einer mehr, Deckel bei
-     * drei. Das war deutlich zu wenig — über 25 Minuten kamen 22 Angriffe.
-     * Jetzt gestaffelt, wie gewünscht:
+     *     Gebiet 2    2 Angriffe
+     *     Gebiet 3    3
+     *     Gebiet 4    4        … und so weiter
+     *     ab Gebiet 9   9  (Deckel)
      *
-     *     Gebiet 2-4    3 Angriffe
-     *     Gebiet 5-8    5-6 Angriffe
-     *     ab Gebiet 9   7 Angriffe
+     * Vorher stand hier eine Staffel, die bei DREI anfing (Gebiet 2 bis 4
+     * je drei). Verlangt ist ein sauberes Ansteigen von unten: im zweiten
+     * Gebiet zweimal, im dritten dreimal, danach immer mehr. Der Anfang ist
+     * damit ruhiger und die Steigerung deutlicher zu spüren.
      *
-     * Bedroht sind dabei ein bis zwei Bahnen — bei drei Spuren bleibt so
-     * immer mindestens eine frei. */
-    proGebiet: { stufen: [3, 3, 3, 5, 5, 6, 6, 7], max: 7 },
+     * Bedroht sind ein bis zwei Bahnen — bei drei Spuren bleibt immer
+     * mindestens eine frei. */
+    proGebiet: { stufen: [2, 3, 4, 5, 6, 7, 8, 9], max: 9 },
 
-    /* Vorwarnung. 1.15 s ist knapp und soll es sein: genug für einen
-     * Bahnwechsel (im Hochformat 0.13 s, im Querformat 0.65 s), zu wenig
-     * zum Nachdenken. */
+    /* Vorwarnung.
+     *
+     * 1.5 s statt 1.15. Man soll es erst SEHEN und dann ausweichen; bei
+     * 1.15 fiel beides zusammen — das Schild erschien, und man war schon
+     * am Reagieren. Eine knappe halbe Sekunde mehr reicht für den Blick
+     * nach oben und lässt trotzdem keine Zeit zum Überlegen.
+     *
+     * Der Wert ist die UNTERGRENZE: die tatsächliche Warnzeit rechnet
+     * Sturzflug._warnzeitBerechnen aus dem weitesten Weg zur nächsten
+     * freien Bahn aus. */
     warnung: {
-      sekunden: 1.15,
+      sekunden: 1.5,
       bild: '/hazards/warnung_bahn.webp',
       /* 1.15 statt 0.85. Bei 0.85 war das Schild im Bild kaum grösser als
        * eine Blume an der Wand — gemessen 74 Bildpunkte hoch im Querformat.
