@@ -55,6 +55,8 @@ export class Klang {
     this._wunsch = null;
     /** Dasselbe für das Abspieltempo (steigt mit jedem Gebiet). */
     this._tempoWunsch = 1;
+    /** Und für die Bossmusik. */
+    this._bossWunsch = false;
 
     /* ABSICHTLICH STILL — Pause, Werbespot, versteckter Tab.
      *
@@ -200,6 +202,20 @@ export class Klang {
   tempoZuruecksetzen() {
     this._tempoWunsch = 1;
     this.musik?.tempoZuruecksetzen();
+  }
+
+  /**
+   * Bossmusik an oder aus.
+   *
+   * Der Wunsch wird gemerkt wie bei atmo(): Der AudioContext entsteht erst
+   * mit der ersten Nutzereingabe, und ein Kampf, der davor beginnt, dürfte
+   * seine Musik nicht verlieren.
+   */
+  boss(an) {
+    this._bossWunsch = an === true;
+    if (!this.bereit || !this.musik) return;
+    if (an) this.musik.bossAn();
+    else this.musik.bossAus();
   }
 
   /**
@@ -391,6 +407,11 @@ export class Klang {
      * dann zwar zurück, aber mit dem Schwung des ersten Gebiets. */
     if (this.bereit && this._tempoWunsch !== 1) {
       this.musik?.tempo(this._tempoWunsch);
+    }
+    /* Und einen laufenden Bosskampf. Ohne das käme der Spieler aus einem
+     * Tabwechsel mit Gebietsmusik zurück, während der Adler noch angreift. */
+    if (this.bereit && this._bossWunsch && !this.musik?.bossLaeuft) {
+      this.musik?.bossAn();
     }
   }
 }

@@ -992,6 +992,31 @@ export const CONFIG = {
        * Der Deckel ist Pflicht, nicht Vorsicht: die Wände laufen zyklisch
        * endlos weiter. Ohne ihn wäre die Musik nach einer halben Stunde
        * unhörbar schnell. */
+      /* ------------------------------------------------- BOSSMUSIK ------ *
+       * Eigenes Stück für den Adlerkampf. Setzt mit der Vorwarnung ein und
+       * läuft, bis der Adler erledigt ist; danach kommt die Gebietsmusik
+       * zurück.
+       *
+       * EIGENE SCHLEIFENPUNKTE, nicht das ganze Stück.
+       * Das Lied ist 97.5 s lang, ein Bosskampf dauert eine knappe Minute —
+       * ohne Schleife hörte man nie mehr als den Anfang, mit ganzer Schleife
+       * käme das ruhige Intro mitten im Kampf wieder.
+       *
+       *   0 s ──────────────► 45 s     Intro, einmalig
+       *        10.5 s ◄────── 45 s     danach diese 34.5 s in Schleife
+       *
+       * Die Werte sind Sekunden IM STÜCK. Wird die Musik schneller gespielt,
+       * bleiben sie gültig — Musik.js rechnet die Restzeit in echte Sekunden
+       * um. */
+      boss: {
+        datei: 'boss', // public/musik/boss.mp3 bzw. .ogg
+        pegel: 0.62, // etwas lauter als die Gebietsmusik (0.55)
+        schleifeVon: 10.5,
+        schleifeBis: 45.0,
+        // Ein- und Ausblenden beim Wechsel von und zur Gebietsmusik.
+        fade: 1.2,
+      },
+
       tempoProGebiet: 0.032,
       tempoMax: 1.35,
       /* Wie lange das neue Tempo braucht (Sekunden). Ein Sprung mitten im

@@ -89,6 +89,11 @@ export class Musik {
     this._tempo = 1;
     /** Läuft gerade eine Tempoblende? (id des setInterval) */
     this._tempoUhr = 0;
+
+    /** Bossmusik: eigener Abspieler mit eigenen Schleifenpunkten. */
+    this._bossSpieler = null;
+    this._bossLaeuft = false;
+    this._bossUhr = 0;
   }
 
   /**
@@ -220,6 +225,129 @@ export class Musik {
     return this.cfg.pegel?.[gebiet] ?? this.cfg.grundPegel;
   }
 
+  /* ============================================================ Bossmusik */
+
+  /**
+   * Eigener Abspieler für den Adlerkampf.
+   *
+   * NUR EIN ELEMENT, anders als bei den Gebieten. Dort wechseln zwei
+   * Abspieler einander ab, weil die Stücke nicht als Schleife komponiert
+   * sind und ihr Ende nicht zum Anfang zurückführt. Hier ist der
+   * Schleifenpunkt ABSICHTLICH GEWÄHLT (CONFIG…boss.schleifeVon/Bis) und
+   * liegt musikalisch passend — ein einfacher Sprung genügt.
+   */
+  _bossAnlegen() {
+    if (this._bossSpieler) return this._bossSpieler;
+    const b = this.cfg.boss;
+
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(this.ziel);
+
+    const el = new Audio();
+    el.src = assetUrl(`${this.cfg.ordner}${b.datei}.${this._endung}`);
+    el.preload = 'auto';
+    // KEIN loop: die Schleife macht update() über die eigenen Punkte.
+    el.loop = false;
+
+    const quelle = this.ctx.createMediaElementSource(el);
+    quelle.connect(gain);
+
+    this._bossSpieler = { el, gain };
+    return this._bossSpieler;
+  }
+
+  /** Bosskampf beginnt: Gebietsmusik raus, Bossstück von vorn. */
+  bossAn() {
+    if (this._bossLaeuft) return;
+    this._bossLaeuft = true;
+
+    const b = this.cfg.boss;
+    const jetzt = this.ctx.currentTime;
+
+    // Gebietsmusik ausblenden — sie läuft weiter und wird beim Ende des
+    // Kampfes wieder aufgedreht. Anhalten würde bedeuten, sie danach neu zu
+    // starten, und ein Gebiet soll nicht mitten im Stück von vorn beginnen.
+    const gebiet = this._aktuell && this._gebiete.get(this._aktuell);
+    if (gebiet) {
+      gebiet.gain.gain.cancelScheduledValues(jetzt);
+      gebiet.gain.gain.setValueCurveAtTime(
+        blendkurve(gebiet.gain.gain.value, 0), jetzt, b.fade,
+      );
+    }
+
+    const s = this._bossAnlegen();
+    try {
+      s.el.currentTime = 0;
+    } catch {
+      /* noch nicht geladen — beginnt ohnehin bei 0 */
+    }
+    // Das Bossstück läuft in Normaltempo: es hat seinen eigenen Druck, und
+    // ein zusätzlich beschleunigtes Stück wäre nur noch Hektik.
+    try {
+      s.el.preservesPitch = true;
+      s.el.playbackRate = 1;
+    } catch {
+      /* egal */
+    }
+    this._starten(s.el);
+
+    s.gain.gain.cancelScheduledValues(jetzt);
+    s.gain.gain.setValueCurveAtTime(blendkurve(s.gain.gain.value, b.pegel), jetzt, b.fade);
+  }
+
+  /** Kampf vorbei: Bossstück raus, Gebietsmusik zurück. */
+  bossAus() {
+    if (!this._bossLaeuft) return;
+    this._bossLaeuft = false;
+
+    const b = this.cfg.boss;
+    const jetzt = this.ctx.currentTime;
+    const s = this._bossSpieler;
+
+    if (s) {
+      s.gain.gain.cancelScheduledValues(jetzt);
+      s.gain.gain.setValueCurveAtTime(blendkurve(s.gain.gain.value, 0), jetzt, b.fade);
+      clearTimeout(this._bossUhr);
+      this._bossUhr = setTimeout(() => {
+        if (this._bossLaeuft) return; // inzwischen wieder angefangen
+        try {
+          s.el.pause();
+          s.el.currentTime = 0;
+        } catch {
+          /* egal */
+        }
+      }, b.fade * 1000 + 120);
+    }
+
+    const gebiet = this._aktuell && this._gebiete.get(this._aktuell);
+    if (gebiet) {
+      gebiet.gain.gain.cancelScheduledValues(jetzt);
+      gebiet.gain.gain.setValueCurveAtTime(
+        blendkurve(gebiet.gain.gain.value, this._pegel(this._aktuell)), jetzt, b.fade,
+      );
+    }
+  }
+
+  get bossLaeuft() {
+    return this._bossLaeuft === true;
+  }
+
+  /** Schleifenpunkt des Bossstücks. Wird aus update() mitgeprüft. */
+  _bossSchleife() {
+    if (!this._bossLaeuft) return;
+    const s = this._bossSpieler;
+    if (!s || s.el.paused) return;
+    const b = this.cfg.boss;
+    if (s.el.currentTime >= b.schleifeBis) {
+      try {
+        s.el.currentTime = b.schleifeVon;
+      } catch {
+        /* egal */
+      }
+    }
+  }
+
   /* ================================================================ Tempo */
 
   /**
@@ -319,6 +447,32 @@ export class Musik {
    * Minuten bekommen, fern jeder Geste.
    */
   freischalten() {
+    /* Der Bossabspieler MUSS mit freigeschaltet werden. Safari verlangt die
+     * Nutzergeste pro <audio>-Element, und dieses hier bekommt sein erstes
+     * play() erst mitten im Spiel, wenn der Adler kommt — fern jeder Geste.
+     * Ohne diese Zeile bliebe der Bosskampf auf dem iPhone stumm.
+     *
+     * Angelegt wird er dafür schon jetzt, nicht erst beim ersten Kampf. */
+    if (this.cfg.boss) {
+      const s = this._bossAnlegen();
+      if (!this._freigeschaltet.has(s.el) && s.el.paused) {
+        const p = s.el.play();
+        if (p?.then) {
+          p.then(() => {
+            s.el.pause();
+            try {
+              s.el.currentTime = 0;
+            } catch {
+              /* egal */
+            }
+            this._freigeschaltet.add(s.el);
+          }).catch(() => {
+            /* noch nicht erlaubt — nächste Eingabe versucht es wieder */
+          });
+        }
+      }
+    }
+
     for (const e of this._gebiete.values()) {
       for (const s of [e.a, e.b]) {
         if (s === e.aktiv) continue; // der läuft schon
@@ -357,6 +511,9 @@ export class Musik {
    * ineinander geblendet.
    */
   update() {
+    // Der Schleifenpunkt des Bossstücks — läuft unabhängig vom Gebiet.
+    this._bossSchleife();
+
     if (!this._aktuell) return;
     const e = this._gebiete.get(this._aktuell);
     if (!e?.aktiv) return;
