@@ -202,4 +202,57 @@ if (existsSync(kacke)) {
   }
 }
 
-console.log(`\nZiel: public/boss/`);
+/* --- Bildfolgen aus den Videos ----------------------------------------- *
+ *
+ * scripts/video-frames.mjs hat sie bereits freigestellt und mittig auf eine
+ * gemeinsame Leinwand gelegt. Hier werden sie nur noch verkleinert und als
+ * WebP ausgeliefert — die Rohbilder sind knapp 1000 px breit, im Spiel ist
+ * der Adler keine 400 px gross.
+ *
+ * Die Zielhöhe je Satz bestimmt, wie gross die Figur im Spiel MAXIMAL
+ * aufgelöst ist; die tatsächliche Grösse steht in CONFIG.
+ */
+const FOLGEN = [
+  { quelle: 'adler_flug', ziel: 'public/boss/adler_flug', hoehe: 420 },
+  { quelle: 'adler_kacken', ziel: 'public/boss/adler_kacken', hoehe: 420 },
+  // Der goldene Affe ist ein Fellwechsel der Spielfigur und folgt deshalb
+  // der Namensgebung der übrigen Kletter-Sätze.
+  { quelle: 'affe_gold', ziel: 'public/textures/gold', hoehe: 720, name: 'move' },
+  { quelle: 'affe_wurf', ziel: 'public/textures/wurf', hoehe: 720, name: 'move' },
+];
+
+console.log('\nBildfolgen:');
+
+for (const f of FOLGEN) {
+  const von = resolve(ROOT, 'assets-src/art', f.quelle);
+  if (!existsSync(von)) {
+    console.warn(`  FEHLT: ${von} — erst "node scripts/video-frames.mjs" laufen lassen`);
+    continue;
+  }
+  const nach = resolve(ROOT, f.ziel);
+  mkdirSync(nach, { recursive: true });
+
+  const { readdirSync, rmSync: entfernen } = await import('node:fs');
+  // Alte Ausgaben weg: ein kürzerer Satz liesse sonst Reste stehen, die das
+  // Spiel als gültige Bilder einsammelt.
+  for (const alt of readdirSync(nach)) if (/\.webp$/i.test(alt)) entfernen(resolve(nach, alt));
+
+  const bilder = readdirSync(von).filter((n) => /\.png$/i.test(n)).sort();
+  let bytes = 0;
+  let masse = '';
+  for (let i = 0; i < bilder.length; i++) {
+    const name = `${f.name ?? 'f'}_${String(i).padStart(2, '0')}.webp`;
+    const g = await sharp(resolve(von, bilder[i]))
+      .resize({ height: f.hoehe })
+      .webp({ quality: 90, alphaQuality: 100 })
+      .toFile(resolve(nach, name));
+    bytes += g.size;
+    if (i === 0) masse = `${g.width}x${g.height}`;
+  }
+  console.log(
+    `  ${f.quelle.padEnd(14)} ${String(bilder.length).padStart(2)} Bilder, je ${masse}` +
+      `  ${(bytes / 1024).toFixed(0)} KB  ->  ${f.ziel}/`,
+  );
+}
+
+console.log(`\nZiel: public/boss/ und public/textures/`);

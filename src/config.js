@@ -1173,6 +1173,127 @@ export const CONFIG = {
   },
 
   /* ================================================================== *
+   *  BOSSKAMPF — der Adler
+   *
+   *  Ablauf, in dieser Reihenfolge:
+   *
+   *    warnung   Das Schild blinkt, der Ton kommt, die Musik setzt ein.
+   *              Bereits fallende Objekte dürfen auslaufen, neue kommen
+   *              keine mehr.
+   *    einflug   Der Adler kommt von oben ins Bild, der Affe sinkt nach
+   *              unten. Noch kein Beschuss von beiden Seiten.
+   *    kampf     Der Adler wandert unvorhersehbar und kackt; der Affe
+   *              weicht aus und wirft Bananen. Drei Treffer.
+   *    ende      Der Adler verschwindet, die goldene Banane fliegt zum
+   *              Affen, die normale Runde geht weiter.
+   *
+   *  WARUM DER AFFE NACH UNTEN GEHT
+   *  Der Adler sitzt selbst im Bild und verkürzt damit den Fallweg seiner
+   *  Kacke erheblich. Bliebe der Affe auf Normalhöhe, hätte er kaum noch
+   *  Reaktionszeit. Weiter unten gewinnt er sie zurück, ohne dass der Kampf
+   *  langsamer wirkt — der Gegner ist ja sichtbar näher.
+   * ================================================================== */
+  boss: {
+    /* WANN. Nicht in den ersten Gebieten — dort lernt man das Spiel noch.
+     * Danach alle paar Gebiete einer. Gezählt werden Gebietswechsel seit
+     * Rundenbeginn, dieselbe Zählung wie beim Musiktempo. */
+    abGebiet: 5,
+    jedesXteGebiet: 4,
+
+    /* Vorwarnung. Lang genug zum Lesen und um sich zu sortieren, kurz genug,
+     * dass es nicht wie ein Ladebildschirm wirkt. */
+    warnungSekunden: 2.2,
+    /* Einflug: währenddessen sinkt der Affe auf seine Kampfhöhe und der
+     * Adler kommt von oben herein. */
+    einflugSekunden: 1.6,
+
+    /* Kampfhöhe des Affen (World-Units). Normal steht er auf -0.1; hier
+     * geht er deutlich tiefer, um Reaktionsweg zurückzugewinnen.
+     * Die Untergrenze des Spielfelds liegt bei -2.9 — mit -2.1 bleibt Luft,
+     * damit ihn eine tief einschlagende Kacke nicht am Bildrand einklemmt. */
+    affeY: -2.1,
+    /* Höhe des Adlers. Weit oben, aber sichtbar im Bild. */
+    adlerY: 3.2,
+    adlerHoehe: 2.4, // World-Units, Bildhöhe des Adlers
+
+    /* BEWEGUNG DES ADLERS.
+     * Er zielt auf wechselnde Punkte und fährt sie mit Trägheit an — nicht
+     * geradlinig hin und her, das wäre nach zwei Zyklen durchschaut. */
+    adler: {
+      tempo: 3.4, // Units/s, Höchstgeschwindigkeit seitlich
+      beschleunigung: 3.0, // Glättung wie beim Affen (1/s)
+      // Wie lange er ein Ziel anfährt, bevor er ein neues wählt.
+      zielWechsel: { min: 0.7, max: 1.6 },
+      // Wie weit ein neues Ziel vom alten mindestens weg sein muss, damit
+      // er nicht auf der Stelle zittert (Anteil der Feldbreite).
+      minSprung: 0.28,
+      // Flügelschläge pro Sekunde.
+      flugZyklus: 1.6,
+    },
+
+    /* KACKEN. Die Animation dauert ihre Zeit; losgelassen wird genau dann,
+     * wenn sich die Krallen wieder öffnen. */
+    kacke: {
+      // Abstand zwischen zwei Angriffen.
+      abstand: { min: 1.1, max: 2.2 },
+      // Anteil der Kack-Animation, ab dem der Haufen erscheint (0..1).
+      // Bei 14 Bildern ist Bild 10 der Moment des Öffnens.
+      loslassenBei: 10 / 14,
+      // Dauer der ganzen Kack-Animation.
+      dauer: 1.0,
+      /* Drei Grössen. Radius ist zugleich Kollisionsradius mal Faktor;
+       * grössere fallen langsamer, das macht sie lesbar statt bloss fies. */
+      arten: [
+        { id: 'klein', bild: '/boss/kacke_klein.webp', radius: 0.30, tempo: 1.15 },
+        { id: 'mittel', bild: '/boss/kacke_mittel.webp', radius: 0.44, tempo: 1.0 },
+        { id: 'gross', bild: '/boss/kacke_gross.webp', radius: 0.62, tempo: 0.85 },
+      ],
+      hitRadiusFactor: 0.82, // wohlwollend, wie bei den Steinen
+      poolSize: 12,
+    },
+
+    /* BANANENWURF DES AFFEN.
+     * Geworfen wird auf Klick/Tipp. Die Banane verlässt die Hand NICHT
+     * sofort, sondern wenn der Arm gestreckt ist — sonst sieht es aus, als
+     * fiele sie aus dem Ärmel. */
+    wurf: {
+      // Anteil der Wurfanimation, bei dem die Banane die Hand verlässt.
+      // Gemessen an den 12 Bildern: ab Bild 8 ist der Arm gestreckt.
+      loslassenBei: 8 / 12,
+      dauer: 0.55, // ganze Wurfanimation
+      // Erst danach kann erneut geworfen werden.
+      nachladen: 0.18,
+      tempo: 11.0, // Units/s, fliegt gerade nach oben
+      radius: 0.20, // halb so gross wie die Sammelbanane
+      hitRadius: 0.34, // grosszügig — Treffen soll sich gut anfühlen
+      poolSize: 6,
+    },
+
+    /* Drei Treffer. Nach jedem blinkt er kurz und ist dabei unverwundbar,
+     * sonst zählen bei zwei Bananen dicht hintereinander beide. */
+    treffer: 3,
+    trefferPause: 0.45,
+
+    /* BELOHNUNG. Die goldene Banane erscheint dort, wo der Adler war, und
+     * fliegt zum Affen. Eingesammelt wird sie NICHT sofort benutzt —
+     * sie liegt im Vorrat und wirkt in der nächsten normalen Runde. */
+    belohnung: {
+      bild: '/boss/banane_gold.webp',
+      hoehe: 0.9,
+      flugSekunden: 1.1,
+      /* Goldmodus: der Affe wird golden und es fallen mehr Münzen. */
+      goldSekunden: 30,
+      muenzFaktor: 3,
+    },
+
+    /* Vorwarnschild. */
+    warnung: {
+      bild: '/boss/warnung.webp',
+      blinkProSekunde: 3.2,
+    },
+  },
+
+  /* ================================================================== *
    *  SPIELABLAUF
    * ================================================================== */
   flow: {
@@ -1701,6 +1822,11 @@ export const CONFIG = {
         far: '/textures/stage9_ash_far.webp',
       },
     ],
+    /* Reihenfolge der zwölf Gebiete, wie sie oben steht:
+     *   1 gruen   2 blumen   3 aeste     4 pilzwald  5 gift     6 halloween
+     *   7 wasser  8 wolken   9 eiszeit  10 kristall 11 lava    12 asche
+     * Die Nummern zählen für CONFIG.boss.abGebiet / jedesXteGebiet. */
+
     // Nach der letzten Stufe alle X Sekunden zur nächsten (zyklisch von vorne).
     stageLoopSeconds: 132,
     // Überblendzeit zwischen zwei Stufen (Sekunden). Kein harter Schnitt.
