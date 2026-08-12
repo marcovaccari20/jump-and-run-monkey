@@ -77,6 +77,11 @@ export class Game {
     this._eintragNummer = 0;
     // Dasselbe für die Lauf-Marke der Weltliste.
     this._laufNummer = 0;
+    /* Wie viele Runden in DIESER Sitzung schon gespielt wurden. Steuert,
+     * ab wann ein Zwischenspot kommt (CONFIG.ad.zwischenspot.abRunde). */
+    this._rundenGespielt = 0;
+    /* Zeitpunkt, an dem der letzte Spot ENDETE (ms). 0 = noch keiner. */
+    this._letzteWerbung = 0;
     this._weltLauf = null;
     /** Zuletzt eingetragener Name + Platz, damit die Liste ihn hervorhebt. */
     this._eigenerEintrag = null;
@@ -1495,7 +1500,7 @@ export class Game {
 
   _wireUI() {
     this.ui.callbacks.onStart = () => this._startRun();
-    this.ui.callbacks.onRetry = () => this._startRun();
+    this.ui.callbacks.onRetry = () => this._nochmal();
     this.ui.callbacks.onResume = () => this._resume();
     this.ui.callbacks.onMenu = () => this._toMenu();
     this.ui.callbacks.onSubmitName = (name) => this._submitName(name);
@@ -1617,6 +1622,7 @@ export class Game {
      * trifft „PLAYING und lebendig" wieder zu — nur eben auf einen anderen
      * Lauf. Die Bestenliste prüft die Marke aus genau diesem Grund. */
     this._laufNummer++;
+    this._rundenGespielt++;
     this.score.reset();
     this.difficulty.reset();
     this.player.reset(this.worldView.bahnX);
@@ -1695,6 +1701,73 @@ export class Game {
     return cfg.enabled && this._adsUsed < cfg.maxPerRun && this.ads.isReady();
   }
 
+  /**
+   * Ende eines Spots festhalten — EGAL WELCHER ART.
+   *
+   * Die Sperre ist nur dann eine Sperre, wenn sie für alle Spots gemeinsam
+   * gilt. Zählte der belohnte Spot fürs Weiterspielen nicht mit, sähe man
+   * ihn und direkt danach den Zwischenspot: zwei Werbungen in zehn Sekunden,
+   * genau das, was verhindert werden soll.
+   */
+  _werbungGelaufen() {
+    this._letzteWerbung = Date.now();
+  }
+
+  /** Sekunden seit dem letzten Spot. Ohne je einen: Unendlich. */
+  _seitLetzterWerbung() {
+    if (!this._letzteWerbung) return Infinity;
+    return (Date.now() - this._letzteWerbung) / 1000;
+  }
+
+  /**
+   * Kommt beim Druck auf „Nochmal" ein Zwischenspot?
+   *
+   * Drei Bedingungen, und die mittlere ist die wichtige: seit dem letzten
+   * Spot müssen `mindestAbstand` Sekunden vergangen sein. Wer viermal in
+   * zwanzig Sekunden stirbt, sieht deshalb höchstens einen.
+   */
+  _zwischenspotFaellig() {
+    const z = this.cfg.ad?.zwischenspot;
+    if (!this.cfg.ad?.enabled || !z?.an) return false;
+    if (this._rundenGespielt < (z.abRunde ?? 2)) return false;
+    if (this._seitLetzterWerbung() < z.mindestAbstand) return false;
+    return this.ads.isReady();
+  }
+
+  /**
+   * Neue Runde vom Game-Over-Bildschirm aus — mit Zwischenspot davor.
+   *
+   * BEWUSST HIER und nicht beim Erscheinen des Game-Over-Bildschirms: dort
+   * will man zuerst seine Meter sehen. Ein Spot, der einem das Ergebnis
+   * wegnimmt, ärgert mehr, als er einbringt.
+   */
+  async _nochmal() {
+    if (this._adRunning) return;
+
+    if (!this._zwischenspotFaellig()) {
+      this._startRun();
+      return;
+    }
+
+    this._adRunning = true;
+    this.klang.anhalten();
+    this.ui.showAd(this.cfg.ad.stubDuration);
+    try {
+      await this.ads.show((rest) => this.ui.setAdCountdown(rest), 'midgame');
+    } catch (err) {
+      console.warn('[Game] Zwischenspot fehlgeschlagen:', err);
+    }
+    this._adRunning = false;
+    this._werbungGelaufen();
+    this.klang.fortsetzen();
+
+    /* Der Spot lief asynchron. Wer inzwischen ins Hauptmenü gegangen ist,
+     * will nicht plötzlich in einem neuen Lauf landen — dieselbe Prüfung wie
+     * beim belohnten Spot. */
+    if (!this.states.is(GameState.GAME_OVER)) return;
+    this._startRun();
+  }
+
   _showGameOverScreen() {
     const meters = this.score.meters;
 
@@ -1744,6 +1817,7 @@ export class Game {
       console.warn('[Game] Werbung fehlgeschlagen:', err);
     }
     this._adRunning = false;
+    this._werbungGelaufen();
     this.klang.fortsetzen();
 
     // Der Spot lief asynchron. Wer inzwischen "Hauptmenü" gedrückt oder neu
@@ -2054,7 +2128,10 @@ export class Game {
 
     if (this.input.consumeConfirm()) {
       if (this.states.is(GameState.MENU)) this._startRun();
-      else if (this.states.is(GameState.GAME_OVER)) this._startRun();
+      // Enter auf dem Game-Over-Bildschirm ist derselbe Weg wie der Knopf
+      // „Nochmal" — also auch mit Zwischenspot. Sonst wäre die Tastatur ein
+      // stiller Weg, die Werbung zu umgehen.
+      else if (this.states.is(GameState.GAME_OVER)) this._nochmal();
       else if (this.states.is(GameState.PAUSED)) this._resume();
     }
   }

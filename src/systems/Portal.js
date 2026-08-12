@@ -188,8 +188,15 @@ export class CrazyGames {
     return this.bereit;
   }
 
-  /** @returns {Promise<'belohnt'|'abgebrochen'|'fehler'>} */
-  werbung() {
+  /**
+   * @param {'rewarded'|'midgame'} art
+   *   `rewarded` = belohnter Spot fürs Weiterspielen, `midgame` = kurzer
+   *   Zwischenspot zwischen zwei Runden. CrazyGames unterscheidet beide und
+   *   rechnet sie verschieden ab; ein Zwischenspot als `rewarded` zu melden
+   *   wäre eine Falschangabe gegenüber dem Portal.
+   * @returns {Promise<'belohnt'|'abgebrochen'|'fehler'>}
+   */
+  werbung(art = 'rewarded') {
     if (!this.bereit) return Promise.resolve('fehler');
     return new Promise((resolve) => {
       let erledigt = false;
@@ -223,7 +230,7 @@ export class CrazyGames {
 
       try {
         this.spielStop();
-        this.sdk.ad.requestAd('rewarded', {
+        this.sdk.ad.requestAd(art, {
           adFinished: () => einmal('belohnt'),
           adError: (err) => {
             console.info('[Portal] CrazyGames-Spot fehlgeschlagen:', err);

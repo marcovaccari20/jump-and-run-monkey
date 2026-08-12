@@ -119,8 +119,12 @@ export class PortalAds {
     return this.portal.hatWerbung();
   }
 
-  show() {
-    return this.portal.werbung();
+  /**
+   * @param {(rest:number)=>void} _onTick wird vom Portal nicht gebraucht
+   * @param {'rewarded'|'midgame'} art siehe Portal.werbung
+   */
+  show(_onTick, art = 'rewarded') {
+    return this.portal.werbung(art);
   }
 
   /* Abbrechen MUSS durchgereicht werden.

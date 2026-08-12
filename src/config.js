@@ -1560,6 +1560,38 @@ export const CONFIG = {
     // Aufstieg; bei 3 wäre er eine Aussage darüber, wer am meisten Werbung
     // erträgt.
     maxPerRun: 1,
+
+    /* ================================================================== *
+     *  ZWISCHENSPOT — Werbung zwischen zwei Runden
+     *
+     *  Kommt beim Druck auf „Nochmal", also NACH einer Runde und VOR der
+     *  nächsten. Nicht beim Erscheinen des Game-Over-Bildschirms: dort will
+     *  man erst seine Meter sehen, und ein Spot, der einem das Ergebnis
+     *  wegnimmt, ist der sicherste Weg zu einer schlechten Bewertung.
+     *
+     *  DIE SPERRE IST DER EIGENTLICHE PUNKT.
+     *
+     *  Wer viermal in zwanzig Sekunden stirbt — und das passiert in diesem
+     *  Spiel ständig, gerade am Anfang —, bekäme sonst vier Spots in zwanzig
+     *  Sekunden. Das ist der Moment, in dem Leute das Spiel schliessen und
+     *  nicht wiederkommen; die Portale werten so etwas auch selbst ab.
+     *
+     *  Deshalb: mindestens 90 Sekunden zwischen zwei Spots, gerechnet ab dem
+     *  ENDE des letzten. Die Sperre gilt für ALLE Spots gemeinsam — auch für
+     *  den belohnten, mit dem man weiterspielt. Wer eben einen gesehen hat,
+     *  um weiterzumachen, bekommt danach nicht sofort noch einen.
+     * ================================================================== */
+    zwischenspot: {
+      an: true,
+      /* Sekunden zwischen zwei Spots, ab dem Ende des vorigen. */
+      mindestAbstand: 90,
+      /* Nach der allerersten Runde noch keiner.
+       *
+       * Die erste Runde ist der Eindruck, über den jemand entscheidet, ob er
+       * bleibt. Wer dort schon eine Werbung sieht, bevor er das Spiel
+       * überhaupt verstanden hat, ist weg. */
+      abRunde: 2,
+    },
     // Unverwundbarkeit nach dem Weiterspielen. Länger als bei der Banane,
     // weil an der Todesstelle bereits alles voller Objekte ist.
     invulnerableTime: 3.0,
