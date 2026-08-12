@@ -1270,6 +1270,27 @@ export const CONFIG = {
        *
        * `pegel` bleibt als Ausnahmefach: traegt man dort ein Gebiet ein,
        * gilt der Wert nur fuer dieses. Absichtlich leer. */
+      /* WELCHES TONFORMAT AUSGELIEFERT WIRD.
+       *
+       * 'mp3'  = nur MP3 im Paket. Spielt JEDER Browser, auch iOS vor 17.
+       * 'ogg'  = nur Ogg.
+       * 'auto' = beide Formate liegen bei, der Browser wählt.
+       *
+       * Stand auf 'auto', und beides wurde mitgeliefert — die Musik lag also
+       * doppelt im Paket und machte allein 54 von 63 MB aus. Ein Browser lädt
+       * aber immer nur EINES davon; die zweite Fassung ist reiner Ballast auf
+       * dem Weg zum Portal.
+       *
+       * Jetzt nur MP3. Nicht Ogg, obwohl es etwas kleiner wäre: MP3 spielt
+       * wirklich überall, Ogg fehlt auf älteren iPhones. Bei einem Format ist
+       * die verlässlichere Wahl die richtige.
+       *
+       * ACHTUNG: Dieser Wert und das, was `npm run prep:musik` erzeugt,
+       * gehören zusammen. Steht hier 'mp3', im Ordner liegen aber nur .ogg,
+       * ist das Spiel STUMM — und zwar lautlos, weil `<audio>` einen 404
+       * nicht meldet. `npm run paket` prüft das jetzt mit. */
+      format: 'mp3',
+
       grundPegel: 0.55,
       pegel: {},
       // Ueberblendung beim Gebietswechsel (Sekunden).

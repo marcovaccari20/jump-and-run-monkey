@@ -998,7 +998,7 @@ export class Game {
      * Die goldene Wand wird als Sonderstufe eingehängt (PlantWall.
      * sonderStufe). Damit wechselt in einem Zug auch die Musik: Game meldet
      * jeden Frame `klang.atmo(wall.stageName)`, und der Name der Sonderstufe
-     * ist 'gold' — also läuft public/musik/gold.ogg, überblendet wie jeder
+     * ist 'gold' — also läuft public/musik/gold.mp3, überblendet wie jeder
      * andere Gebietswechsel auch.
      *
      * Beim Zurückkehren steht in `difficulty.elapsed` die inzwischen

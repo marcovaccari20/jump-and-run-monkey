@@ -81,7 +81,19 @@ const STUECKE = [
   { datei: 'Bonus Stage Victory.mp3', gebiet: 'gold', was: 'Gold-Gebiet, Bonus', bis: 40 },
 ];
 
-const BITRATE = '96k';
+/* Bitrate und Format über die Befehlszeile steuerbar:
+ *     npm run prep:musik -- --bitrate 64k --nur mp3
+ *
+ * 96k war für sich genommen richtig, aber BEIDE Formate zusammen machten 54
+ * von 63 MB des Portalpakets aus. Bei Hintergrundmusik, über der Spielklänge
+ * liegen, ist 64k stereo nicht vom Original zu unterscheiden — und halbiert
+ * die Grösse noch einmal. */
+const argw = (name, standard) => {
+  const i = process.argv.indexOf('--' + name);
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : standard;
+};
+const BITRATE = argw('bitrate', '96k');
+const NUR = argw('nur', 'beide'); // 'mp3' | 'ogg' | 'beide'
 const ZIEL_LUFS = -17;
 
 /* ------------------------------------------------------------------ Hilfen */
@@ -186,10 +198,11 @@ for (const s of zuTun) {
       `:measured_thresh=${gemessen.input_thresh}:offset=${gemessen.target_offset}:linear=true`
     : `loudnorm=I=${ZIEL_LUFS}:TP=-1.5:LRA=11`;
 
-  for (const [endung, args] of [
+  const formate = [
     ['ogg', ['-c:a', 'libvorbis', '-b:a', BITRATE]],
     ['mp3', ['-c:a', 'libmp3lame', '-b:a', BITRATE]],
-  ]) {
+  ].filter(([e]) => NUR === 'beide' || NUR === e);
+  for (const [endung, args] of formate) {
     const ziel = join(ZIEL, `${s.gebiet}.${endung}`);
     if (existsSync(ziel)) unlinkSync(ziel);
     lauf([
@@ -210,8 +223,9 @@ for (const s of zuTun) {
     ]);
   }
 
-  const o = kb(join(ZIEL, `${s.gebiet}.ogg`));
-  const m = kb(join(ZIEL, `${s.gebiet}.mp3`));
+  // Nur das messen, was in diesem Lauf auch geschrieben wurde.
+  const o = NUR === 'mp3' ? 0 : kb(join(ZIEL, `${s.gebiet}.ogg`));
+  const m = NUR === 'ogg' ? 0 : kb(join(ZIEL, `${s.gebiet}.mp3`));
   const gekuerzt = s.bis ? ` (auf ${s.bis}s gekürzt)` : '';
   ergebnis.push({ ...s, laenge, ogg: o, mp3: m, lufs: gemessen?.input_i });
   console.log(

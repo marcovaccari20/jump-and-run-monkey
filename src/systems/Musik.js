@@ -99,7 +99,23 @@ export class Musik {
    * hat den saubereren Schleifenpunkt. MP3 ist der Rückfall — dafür liegt
    * jedes Stück in beiden Formaten bereit.
    */
+  /**
+   * Welche Dateiendung geladen wird.
+   *
+   * WICHTIG: „Was der Browser KANN" ist nicht dasselbe wie „was ausgeliefert
+   * WURDE". Chrome kann Ogg, also wählte diese Methode immer Ogg — auch dann,
+   * wenn im Paket nur noch MP3 liegt. Ergebnis wäre 404 auf jedes Stück, und
+   * `<audio>` meldet einen 404 nicht: das Spiel wäre einfach stumm, ohne dass
+   * irgendwo etwas danach aussieht.
+   *
+   * Deshalb entscheidet zuerst die Konfiguration (`musik.format`):
+   *   'mp3'   nur MP3 im Paket — spielt jeder Browser, auch altes iOS
+   *   'ogg'   nur Ogg im Paket
+   *   'auto'  beide Formate da, der Browser sucht sich das kleinere aus
+   */
   _formatWaehlen() {
+    const gewuenscht = this.cfg.format ?? 'auto';
+    if (gewuenscht === 'mp3' || gewuenscht === 'ogg') return gewuenscht;
     const pruef = document.createElement('audio');
     const ogg = pruef.canPlayType('audio/ogg; codecs="vorbis"');
     return ogg === 'probably' || ogg === 'maybe' ? 'ogg' : 'mp3';
