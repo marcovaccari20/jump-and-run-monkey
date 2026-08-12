@@ -101,15 +101,15 @@ export class Spawner {
      */
     this.bananasEnabled = true;
 
-    /* NACHSCHUB AUS — für den Bosskampf.
+    /* NACHSCHUB AUS — für Sturzflug und Chili-Durchflug.
      *
      * Solange dieser Schalter steht, kommt oben nichts Neues mehr herein;
      * was bereits fällt, fällt zu Ende und verlässt das Bild von selbst.
-     * Genau so ist es gemeint: der Kampf soll den Bildschirm freiräumen,
+     * Genau so ist es gemeint: beide sollen den Bildschirm freiräumen,
      * ohne dass Objekte mitten in der Luft verschwinden.
      *
-     * Der Korridor läuft dabei WEITER. Er ist die Garantie, dass es nach dem
-     * Kampf sofort wieder eine erreichbare Bahn gibt; würde er stehenbleiben,
+     * Der Korridor läuft dabei WEITER. Er ist die Garantie, dass es danach
+     * sofort wieder eine erreichbare Bahn gibt; würde er stehenbleiben,
      * stünde er beim ersten Objekt danach an einer veralteten Stelle.
      */
     this.nachschubAus = false;
@@ -169,7 +169,7 @@ export class Spawner {
     // Kurze Schonfrist zu Spielbeginn, damit man nicht sofort getroffen wird.
     this.timer = this.difficulty.spawnDelay * 1.4;
     // Ein neuer Lauf fängt immer mit Nachschub an, auch wenn der letzte
-    // mitten im Bosskampf zu Ende ging.
+    // mitten in einem Sturzflug oder Durchflug zu Ende ging.
     this.nachschubAus = false;
 
     // Bahnzähler für den Ausgleich (siehe _bahnWaehlen) — ein neuer Lauf
@@ -294,8 +294,8 @@ export class Spawner {
     );
 
     /* ------------------------------------------------------------- Spawn */
-    // Im Bosskampf steht der Takt STILL, statt weiterzulaufen: liefe er
-    // weiter, käme direkt nach dem Kampf alles Aufgestaute auf einmal.
+    // Bei abgeschaltetem Nachschub steht der Takt STILL, statt weiterzulaufen:
+    // liefe er weiter, käme danach alles Aufgestaute auf einmal.
     //
     // `nurMuenzen` ist das Gold-Gebiet: dort steht NUR dieser Zweig still,
     // die Münzen unten laufen weiter. Zwei getrennte Schalter, weil es zwei
@@ -1035,17 +1035,14 @@ export class Spawner {
     if (this.powerups.activeCount > 0) return false;
     /* NICHT, WENN DER BILDSCHIRM FREIGERÄUMT IST.
      *
-     * Diese Methode fragte `nachschubAus` als einzige nicht ab. Sie wird aus
-     * `_belohnungenPruefen` gerufen, und das steht im selben Block wie
-     * `_bossPruefen` — drei Zeilen davor. Die Belohnung fiel also ausgerechnet
-     * in dem Moment, in dem der Kampf startete, und dann in den angeblich
-     * leeren Bildschirm hinein.
+     * Diese Methode fragte `nachschubAus` als einzige nicht ab. Die Belohnung
+     * fiel dadurch auch dann, wenn der Bildschirm gerade freigeräumt sein
+     * sollte — mitten in einen Sturzflug oder Chili-Durchflug hinein.
      *
-     * Die Folgen waren beide schlimm: eine Chilischote brach den Kampf
-     * ersatzlos ab (der Boss verschwand, ohne besiegt zu sein), und eine
-     * goldene Banane startete den Goldrausch mitten im Kampf — dessen 30
-     * Sekunden liefen dann ab, während wegen `nachschubAus` gar keine Münze
-     * fallen konnte. Die Belohnung verpuffte, ohne dass man sah, warum.
+     * Besonders übel beim Gold-Gebiet: eine goldene Banane, die während eines
+     * Durchflugs eingesammelt wird, startet die 30 Sekunden, in denen wegen
+     * `nachschubAus` gar keine Münze fallen kann. Die Belohnung verpufft,
+     * ohne dass man sieht, warum.
      *
      * `nurMuenzen` gehört ebenfalls dazu: im Gold-Gebiet soll NUR Geld
      * kommen, also auch keine zweite goldene Banane. */

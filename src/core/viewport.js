@@ -32,31 +32,6 @@ export function halfWidthAt(camera, planeZ, worldY) {
 }
 
 /**
- * OBERKANTE des sichtbaren Bereichs in der Ebene z = planeZ.
- *
- * Gebraucht für den Boss: er soll oben aus dem Bild ragen, damit man die
- * Hand, mit der er sich festhält, NICHT sieht. Dafür muss man wissen, wo das
- * Bild aufhört — und zwar genau.
- *
- * NICHT über `tan(fov/2) * distanz` rechnen. Die Kamera schaut leicht nach
- * unten; die Näherung lag bei der Prüfung um rund 0.3 Einheiten daneben, und
- * genau um solche Beträge geht es hier. Deshalb dieselbe Projektionsrechnung
- * wie bei den anderen beiden Funktionen: die obere Bildkante in die Ebene
- * zurückwerfen.
- *
- * @returns {number} world-y der oberen Bildkante in dieser Ebene
- */
-export function topEdgeAt(camera, planeZ) {
-  // Mitte oben (NDC x=0, y=1) genügt: ohne Rollwinkel ist die Oberkante
-  // in der Ebene eine waagerechte Linie.
-  _p.set(0, 1, 0.5).unproject(camera);
-  _dir.copy(_p).sub(camera.position);
-  if (Math.abs(_dir.z) < 1e-9) return Infinity;
-  const t = (planeZ - camera.position.z) / _dir.z;
-  return camera.position.y + _dir.y * t;
-}
-
-/**
  * Umschliessendes Rechteck des sichtbaren Trapezes in der Ebene z = planeZ.
  * Wird zum bildfüllenden Aufziehen der Parallax-Ebenen benutzt.
  *

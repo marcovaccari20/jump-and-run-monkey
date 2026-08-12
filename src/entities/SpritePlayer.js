@@ -117,12 +117,6 @@ export class SpritePlayer {
      * Gesetzt wird der Wert von aussen (Game), siehe update(). */
     this.zielBahn = 1;
 
-    /* Zielhöhe. Im normalen Lauf immer die Starthöhe — der Affe steht fest.
-     * Der Bosskampf zieht ihn nach unten (CONFIG.boss.affeY) und danach
-     * wieder herauf; deshalb ist die Höhe ein Ziel und keine Konstante.
-     * Siehe hoeheAnsteuern(). */
-    this.zielY = this.y;
-
     /** Reiner Anzeige-Versatz zur Seite (Chili-Flug). Siehe update(). */
     this.versatzX = 0;
 
@@ -138,18 +132,6 @@ export class SpritePlayer {
     // true, solange der Zyklus im Menü läuft (siehe updateAmbient)
     this._ambient = false;
 
-    /* --- Bosskampf ----------------------------------------------------- */
-    /** @type {import('three').Texture[]} Bildfolge des Wurfs (siehe setzeWurfFrames) */
-    this.wurfFrames = [];
-    /** Breitenkorrektur, weil die Wurfbilder breiter sind als die Kletterbilder. */
-    this._wurfBreite = 1;
-    /** CONFIG.boss.wurf — kommt mit setzeWurfFrames herein. */
-    this._wurfCfg = null;
-    /** null = wirft nicht, sonst 0..1 Fortschritt der Wurfanimation. */
-    this._wurf = null;
-    this._hatGeworfen = false;
-    /** true genau in dem Frame, in dem die Banane die Hand verlässt. */
-    this._wurfEreignis = false;
     /** Welcher Bildsatz zuletzt gesetzt wurde — siehe _setFrame. */
     this._frameSatz = null;
     /** Ursprüngliches Fell, solange der Goldmodus läuft. */
@@ -230,51 +212,6 @@ export class SpritePlayer {
       this.outlineMaterial.map = texture;
       this.outlineMaterial.needsUpdate = true;
     }
-  }
-
-  /* ============================================================= Bosskampf */
-
-  /**
-   * Bildfolge für den Wurf hinterlegen.
-   *
-   * Die Wurfbilder sind BREITER als die Kletterbilder (der Arm geht zur
-   * Seite). Läge dieselbe Ebene darunter, würde der Affe während des Wurfs
-   * zusammengequetscht. Deshalb wird das Seitenverhältnis gemerkt und die
-   * Ebene für die Dauer des Wurfs in der Breite nachgezogen.
-   *
-   * @param {import('three').Texture[]} frames
-   * @param {typeof import('../config.js').CONFIG.boss.wurf} wurfCfg
-   */
-  setzeWurfFrames(frames, wurfCfg) {
-    this.wurfFrames = (frames ?? []).filter(Boolean);
-    this._wurfCfg = wurfCfg ?? this._wurfCfg;
-    if (this.wurfFrames.length === 0) return;
-    const bild = this.wurfFrames[0].image;
-    const wurfAspect = bild && bild.height ? bild.width / bild.height : null;
-    const kletterBild = this.frames[0].image;
-    const kletterAspect =
-      kletterBild && kletterBild.height ? kletterBild.width / kletterBild.height : null;
-    this._wurfBreite = wurfAspect && kletterAspect ? wurfAspect / kletterAspect : 1;
-  }
-
-  /**
-   * Wurf auslösen.
-   *
-   * @returns {boolean} false, wenn gerade schon geworfen wird oder keine
-   *   Wurfbilder da sind — der Aufrufer soll dann NICHT nachladen.
-   */
-  werfen() {
-    if (!this.alive) return false;
-    if (!this.wurfFrames?.length) return false;
-    if (this._wurf !== null) return false;
-    this._wurf = 0;
-    this._hatGeworfen = false;
-    return true;
-  }
-
-  /** true, solange die Wurfanimation läuft. */
-  get wirftGerade() {
-    return this._wurf !== null;
   }
 
   /**
@@ -381,7 +318,6 @@ export class SpritePlayer {
       this.x = start;
     }
     this.y = this.cfg.startPosition[1];
-    this.zielY = this.y;
     this.versatzX = 0;
     this.vx = 0;
     this.vy = 0;
@@ -502,38 +438,16 @@ export class SpritePlayer {
      * nichts, es kann also nichts danebengehen. */
     this.root.position.x = this.x + this.versatzX;
 
-    /* HÖHE. Im normalen Lauf ist zielY gleich der Starthöhe, der Ausdruck
-     * unten also ein Nullschritt — der Affe steht so fest wie vorher. Nur
-     * der Bosskampf setzt ein anderes Ziel; dann sinkt er weich dorthin,
-     * statt zu springen. */
-    if (Math.abs(this.zielY - this.y) > 0.001) {
-      this.y += (this.zielY - this.y) * (1 - Math.exp(-4.5 * dt));
-      if (Math.abs(this.zielY - this.y) <= 0.001) this.y = this.zielY;
-      this.root.position.y = this.y;
-    }
-
     this.speed = Math.abs(this.vx);
 
     this._animate(dt);
     this._updateInvulnerability(dt);
 
-    /* Genau ein Frame lang 'wurf' — der Aufrufer erzeugt daraufhin die
-     * Banane. Das Ereignis kommt aus _animate, weil dort der Fortschritt der
-     * Bildfolge liegt; hier wird es nur abgeholt und gelöscht. */
-    if (this._wurfEreignis) {
-      this._wurfEreignis = false;
-      return 'wurf';
-    }
+    /* Hier wurde einmal ein Ereignis 'wurf' zurückgegeben, an dem der
+     * Bosskampf die geworfene Banane erzeugte. Der Kampf ist raus, und mit
+     * ihm das Ereignis — `update` meldet jetzt nie etwas. Der Rückgabewert
+     * bleibt, damit die Aufrufer unverändert bleiben. */
     return null;
-  }
-
-  /**
-   * Zielhöhe setzen (Bosskampf).
-   *
-   * @param {number} y  World-Units; `null` heisst zurück auf die Starthöhe.
-   */
-  hoeheAnsteuern(y) {
-    this.zielY = y === null ? this.cfg.startPosition[1] : y;
   }
 
   /**
@@ -574,33 +488,6 @@ export class SpritePlayer {
       const t = this._dieTimer / sc.death.duration;
       this.pivot.position.set(0, -sc.death.drop * t * t, 0);
       return;
-    }
-
-    /* --- Wurf: hat Vorrang vor dem Kletterzyklus ---------------------- */
-    if (this._wurf !== null) {
-      const w = this._wurfCfg ?? { dauer: 0.55, loslassenBei: 8 / 12 };
-      this._wurf += dt / w.dauer;
-
-      if (!this._hatGeworfen && this._wurf >= w.loslassenBei) {
-        this._hatGeworfen = true;
-        this._wurfEreignis = true;
-      }
-
-      if (this._wurf >= 1) {
-        // Fertig: zurück auf die normale Breite und in den Kletterzyklus.
-        this._wurf = null;
-        this._hatGeworfen = false;
-        this.art.scale.x = 1;
-      } else {
-        const n = this.wurfFrames.length;
-        this._setFrame(Math.min(n - 1, Math.floor(this._wurf * n)), this.wurfFrames);
-        this.art.scale.x = this._wurfBreite;
-        // Der Kletterzyklus läuft im Hintergrund weiter, damit der Affe nach
-        // dem Wurf nicht auf einem beliebigen Bild wieder einsteigt.
-        this._phase += sc.idleCycleSpeed * TAU * dt;
-        if (this._phase > TAU) this._phase -= TAU;
-        return;
-      }
     }
 
     /* --- Kletterzyklus ------------------------------------------------- */
