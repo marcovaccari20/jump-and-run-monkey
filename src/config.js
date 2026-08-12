@@ -1777,26 +1777,18 @@ export const CONFIG = {
       frameAnzahl: 12,
     },
 
-    /* ─── MUNITION ──────────────────────────────────────────────────────
+    /* ─── KEINE MUNITION ────────────────────────────────────────────────
      *
-     * Ohne Banane kein Wurf. Damit der Kampf nicht daran scheitert, dass
-     * gerade keine fällt, kommen sie im Kampf deutlich häufiger als sonst
-     * — und man startet mit einer in der Hand. */
-    munition: {
-      startVorrat: 1,
-      maxVorrat: 3,
-      /* Sekunden zwischen zwei Nachschub-Bananen. Bei 3 s und einem Kampf
-       * von rund 25 s sind das gut acht — reichlich für drei Treffer, ohne
-       * dass man blind werfen kann. */
-      takt: 3.0,
-      /* Fallgeschwindigkeit der Sammelbananen im Kampf. Langsamer als die
-       * Geschosse, damit man sie unterscheiden kann, noch bevor man die
-       * Farbe erkennt. */
-      tempo: 3.0,
-      radius: 0.34,
-      hitRadiusFactor: 1.35, // grosszügig: sie einzusammeln soll leicht sein
-      poolSize: 6,
-    },
+     * Hier stand ein Vorrat, der aus herunterfallenden Sammelbananen
+     * aufgefüllt werden musste. Beides ist raus, und beides aus demselben
+     * Grund: im Kampf darf AUSSER den Würfen des Bosses nichts herunter-
+     * kommen. Ohne Nachschub wäre ein Vorrat aber eine Sackgasse — wer leer
+     * wäre, könnte den Kampf nicht mehr gewinnen und müsste warten, bis ihn
+     * etwas trifft.
+     *
+     * Bananen sind deshalb UNBEGRENZT. Begrenzt ist nur die Wurfrate, und
+     * die steckt schon in `wurf.dauer` + `wurf.nachladen` — das ist Timing,
+     * kein Vorrat: schneller als der Arm kann niemand werfen. */
 
     /* Belohnung fürs Gewinnen: der Goldrausch, dieselbe Wirkung wie bei der
      * goldenen Banane (siehe CONFIG.goldbanane). Der Kampf ist damit nicht

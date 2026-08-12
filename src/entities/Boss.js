@@ -237,4 +237,9 @@ export class Boss {
   get wurfY() {
     return this.y - this.hoehe * 0.25;
   }
+
+  /** Halbe Bildbreite — die Grenze, ab der er aus dem Bild ragen würde. */
+  get halbeBreite() {
+    return this.breite / 2;
+  }
 }

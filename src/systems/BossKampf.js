@@ -9,9 +9,10 @@
  *   EINFLUG   Der Boss kommt von oben herein, der Affe sitzt unten. Noch
  *             wirft keiner.
  *   KAMPF     Der Boss wandert quer und wirft Bananen; getroffen zu werden
- *             wirkt wie ein Stein. Nebenher fallen Sammelbananen als
- *             Munition. Auf Tipp/Leertaste wirft der Affe senkrecht nach
- *             oben. Drei Treffer.
+ *             wirkt wie ein Stein. AUSSER seinen Würfen fällt nichts —
+ *             keine Steine, keine Münzen, keine Sammelbananen. Auf
+ *             Tipp/Leertaste wirft der Affe senkrecht nach oben, und zwar
+ *             so oft er will: Bananen sind unbegrenzt. Drei Treffer.
  *   ENDE      Der Boss kippt weg, der Affe steigt wieder auf Normalhöhe,
  *             der Nachschub geht an, der Goldrausch beginnt.
  *
@@ -31,6 +32,7 @@ import { Bossbanane } from '../entities/Bossbanane.js';
 import { Wurfbanane } from '../entities/Wurfbanane.js';
 import { Pool } from '../entities/Pool.js';
 import { circleOverlap } from './CollisionSystem.js';
+import { halfWidthAt } from '../core/viewport.js';
 
 export const BossPhase = {
   AUS: 'aus',
@@ -46,7 +48,6 @@ export class BossKampf {
    * @param {typeof import('../config.js').CONFIG.boss} cfg
    * @param {{
    *   arten: Map<string, {frames: import('three').Texture[], wurf: import('three').Texture|null}>,
-   *   munition: import('three').Texture|null,
    *   spielerWurf: import('three').Texture|null,
    * }} bilder
    * @param {{klang:object, ui:object, onTreffer:Function, onEnde:Function, onSieg:Function}} umgebung
@@ -55,6 +56,10 @@ export class BossKampf {
     this.scene = scene;
     this.cfg = cfg;
     this.bilder = bilder;
+    /* Die Kamera, um auszurechnen, wieviel auf SEINER Höhe sichtbar ist.
+     * Das ist nicht dasselbe wie die Bewegungsgrenze des Affen: die gilt
+     * weit unten im Bild, der Boss hängt weit oben. */
+    this.camera = umgebung.camera ?? null;
     this.klang = umgebung.klang;
     this.ui = umgebung.ui;
     this.onTreffer = umgebung.onTreffer ?? (() => {});
@@ -85,14 +90,12 @@ export class BossKampf {
       );
     }
 
-    /* Munition: die Sammelbananen, die im Kampf herunterkommen. Eigener
-     * Pool statt der Spawner-Bananen — die gehorchen der Korridor-Logik,
-     * die hier nicht gilt. */
-    this.munition = new Pool(cfg.munition.poolSize, (i) => {
-      const b = new Bossbanane(i, { ...cfg.munition }, bilder.munition ?? null);
-      scene.add(b.mesh);
-      return b;
-    });
+    /* KEINE MUNITION MEHR.
+     *
+     * Hier lag ein zweiter Pool mit Sammelbananen, die im Kampf herunter-
+     * fielen und den Wurfvorrat auffüllten. Beides ist raus: im Kampf soll
+     * ausser den Würfen des Bosses NICHTS herunterkommen, und Bananen sind
+     * unbegrenzt. Siehe wurfAnfordern(). */
 
     /* Die vom Affen geworfenen Bananen. */
     this.wuerfe = new Pool(cfg.wurf.poolSize, (i) => {
@@ -107,9 +110,6 @@ export class BossKampf {
     this._aktiveGeschosse = null;
 
     this._nachladen = 0;
-    this._munitionsUhr = 0;
-    /** Wieviele Bananen der Affe gerade in der Hand hat. */
-    this.vorrat = 0;
   }
 
   get aktiv() {
@@ -146,8 +146,6 @@ export class BossKampf {
     this.phase = BossPhase.WARNUNG;
     this._uhr = 0;
     this._nachladen = 0;
-    this._munitionsUhr = this.cfg.munition.takt;
-    this.vorrat = this.cfg.munition.startVorrat;
 
     /* KAMPFHÖHE AUS DER BILDOBERKANTE, nicht aus einer festen Zahl.
      *
@@ -168,6 +166,24 @@ export class BossKampf {
      * Game aufruft (Tests). 6.8 ist die gemessene Oberkante bei fov 46. */
     const oben = world?.sichtbarObenY ?? 6.8;
     this._kampfY = oben + (this.cfg.ueberstand - 0.5) * this.boss.hoehe;
+
+    /* WIE WEIT DARF ER ZUR SEITE — so weit, dass er ganz im Bild bleibt.
+     *
+     * Vorher lief er bis an `world.bounds.maxX`. Das ist die Grenze für den
+     * AFFEN, gemessen weit unten im Bild; der Boss hängt aber oben, wo das
+     * Bild schmaler ist, und ist viel breiter als der Affe. Gemessen im
+     * Hochformat: der Gorilla ist 3.68 breit, auf seiner Höhe sind ±3.18
+     * sichtbar, und er lief bis ±2.65 — er hing also um 1.31 Einheiten aus
+     * dem Bild, gut ein Drittel von ihm. Auf dem Bildschirmfoto war das
+     * sofort zu sehen.
+     *
+     * Jetzt wird auf SEINER Höhe gemessen und seine halbe Bildbreite
+     * abgezogen. Bleibt dabei zu wenig übrig, gewinnt die Sichtbarkeit —
+     * lieber ein Boss, der eine engere Bahn zieht, als einer, der halb
+     * abgeschnitten ist. Dass er trotzdem alle drei Bahnen bedroht,
+     * garantiert `_geschossAbwerfen`: der Wurf rastet auf die nächste Bahn. */
+    const halb = this.camera ? halfWidthAt(this.camera, 0.35, this._kampfY) : (world?.bounds?.maxX ?? 3);
+    this._randX = Math.max(0.3, halb - this.boss.halbeBreite);
 
     /* Über dem Bildrand parken; der Einflug holt ihn herunter. */
     this.boss.starten(0, this._kampfY + this.boss.hoehe * 1.6);
@@ -195,15 +211,24 @@ export class BossKampf {
     this.boss = null;
     for (const p of this._geschosse.values()) p.releaseAll((g) => g.despawn());
     this._aktiveGeschosse = null;
-    this.munition.releaseAll((b) => b.despawn());
     this.wuerfe.releaseAll((b) => b.despawn());
-    this.vorrat = 0;
     player?.hoeheAnsteuern?.(null);
     this.klang?.boss?.(false);
   }
 
   /**
    * Wurf anfordern (Tipp/Klick/Leertaste).
+   *
+   * BANANEN SIND UNBEGRENZT. Es gab hier einen Vorrat, der aus herunter-
+   * fallenden Sammelbananen aufgefüllt werden musste — das ist raus, und
+   * zwar aus zwei Gründen, die zusammengehören: im Kampf soll AUSSER den
+   * Würfen des Bosses nichts herunterkommen, und ohne Nachschub wäre ein
+   * Vorrat eine Sackgasse. Wer keine Banane mehr hätte, könnte den Kampf
+   * nicht mehr gewinnen und müsste warten, bis ihn etwas trifft.
+   *
+   * Begrenzt bleibt nur die WURFRATE (`nachladen`) — die ergibt sich aus der
+   * Wurfanimation und ist kein Vorrat, sondern Timing. Schneller als der Arm
+   * kann niemand werfen.
    *
    * Die Banane entsteht NICHT hier, sondern wenn der Arm gestreckt ist —
    * SpritePlayer meldet das als Ereignis 'wurf'. Sonst sähe es aus, als
@@ -212,12 +237,7 @@ export class BossKampf {
   wurfAnfordern(player) {
     if (this.phase !== BossPhase.KAMPF) return false;
     if (this._nachladen > 0) return false;
-    if (this.vorrat <= 0) {
-      this.ui?.toast?.('Keine Banane!', 'warn');
-      return false;
-    }
     if (!player?.werfen?.()) return false;
-    this.vorrat--;
     this._nachladen = this.cfg.wurf.dauer + this.cfg.wurf.nachladen;
     return true;
   }
@@ -248,11 +268,11 @@ export class BossKampf {
     this._uhr += dt;
     this._nachladen = Math.max(0, this._nachladen - dt);
 
-    /* Der Boss fährt die volle Feldbreite ab — nicht nur die Bahnen.
-     * Stünde er nur auf Bahnen, wüsste man sofort, wo man sicher ist. So
-     * muss man ihn lesen. */
-    const minX = world.bounds.minX;
-    const maxX = world.bounds.maxX;
+    /* Er fährt seine eigene Spanne ab — die, in der er ganz sichtbar bleibt
+     * (siehe `_randX` in starten). Stünde er nur auf Bahnen, wüsste man
+     * sofort, wo man sicher ist; so muss man ihn lesen. */
+    const maxX = this._randX ?? world.bounds.maxX;
+    const minX = -maxX;
 
     switch (this.phase) {
       case BossPhase.WARNUNG:
@@ -281,8 +301,7 @@ export class BossKampf {
 
       case BossPhase.KAMPF: {
         const wirft = this.boss.update(dt, minX, maxX);
-        if (wirft) this._geschossAbwerfen();
-        this._munitionSchritt(dt, minX, maxX);
+        if (wirft) this._geschossAbwerfen(world.bahnX);
         break;
       }
 
@@ -305,10 +324,56 @@ export class BossKampf {
 
   /* ------------------------------------------------------------- Geschosse */
 
-  _geschossAbwerfen() {
+  /**
+   * Der Boss wirft. Die Banane rastet auf die NÄCHSTE BAHN ein.
+   *
+   * Zwei Gründe, und beide zählen:
+   *
+   * ERSTENS FAIRNESS. Der Affe steht immer auf einer Bahn — er kann gar
+   * nicht dazwischen stehenbleiben. Eine Banane, die zwischen zwei Bahnen
+   * herunterkommt, trifft deshalb nie und ist reine Deko; eine, die knapp
+   * neben einer Bahn liegt, trifft, ohne dass man es kommen sieht. Auf der
+   * Bahn ist beides eindeutig: sie ist entweder auf deiner Spur oder nicht.
+   *
+   * ZWEITENS REICHWEITE. Der Gorilla ist so breit, dass er nur die mittleren
+   * Einheiten abfahren kann, ohne aus dem Bild zu ragen (siehe `_randX`).
+   * Ohne Einrasten wären die äusseren Bahnen dauerhaft sicher und der ganze
+   * Kampf hiesse "stell dich nach links".
+   *
+   * NICHT die NÄCHSTE Bahn, sondern die ANTEILIG passende.
+   *
+   * „Nächste Bahn" war der erste Versuch und ergab beim Gorilla 15 Würfe auf
+   * die Mitte gegen 2 links und 1 rechts — bei einer Patrouille von ±1.34
+   * und Bahnen bei ±2.20 ist die Mitte fast immer die nächste. Aussen stand
+   * man praktisch sicher.
+   *
+   * Deshalb wird seine Position ANTEILIG auf die Bahnen abgebildet: ganz
+   * links in seiner Spanne heisst linke Bahn, ganz rechts heisst rechte
+   * Bahn, unabhängig davon, wie weit er tatsächlich ausschwingt. Vorhersehbar
+   * bleibt es trotzdem — man sieht an seiner Stelle in der Spanne, wohin der
+   * nächste Wurf geht.
+   *
+   * @param {number[]} bahnX
+   */
+  _geschossAbwerfen(bahnX) {
     const g = this._aktiveGeschosse?.acquire();
     if (!g) return;
-    g.spawn(this.boss.x, this.boss.wurfY);
+    let x = this.boss.x;
+    if (bahnX?.length) {
+      const spanne = this._randX || 1;
+      // 0 .. 1 innerhalb seiner Patrouille
+      const t = Math.max(0, Math.min(1, (x / spanne + 1) / 2));
+      /* GLEICHE DRITTEL, nicht runden.
+       *
+       * Mit Math.round(t * (n-1)) bekommt die MITTLERE Bahn die halbe Spanne
+       * und jede äussere nur ein Viertel — gemessen 55 % / 18 % / 28 % beim
+       * Gorilla. Die Mitte wäre damit dauerhaft die gefährlichste Bahn, und
+       * das ist eine Regel, die niemand ausgesprochen hat. Mit floor auf n
+       * gleich grosse Abschnitte bekommt jede Bahn genau ein Drittel. */
+      const i = Math.min(bahnX.length - 1, Math.floor(t * bahnX.length));
+      x = bahnX[i];
+    }
+    g.spawn(x, this.boss.wurfY);
     this.klang?.effekt?.('sturz');
   }
 
@@ -336,65 +401,6 @@ export class BossKampf {
         this.onTreffer();
       }
     }
-  }
-
-  /* -------------------------------------------------------------- Munition */
-
-  /**
-   * Nachschub abwerfen UND die schon fallenden weiterbewegen.
-   *
-   * Beides in einer Methode, weil das Fallen sonst nirgends passierte: es
-   * stand zuerst in einer eigenen `_munitionFallen`, die niemand rief — die
-   * Bananen wären auf ihrer Abwurfhöhe stehen geblieben.
-   */
-  _munitionSchritt(dt, minX, maxX) {
-    for (const b of this.munition.active) if (b.active) b.update(dt);
-
-    this._munitionsUhr -= dt;
-    if (this._munitionsUhr > 0) return;
-    this._munitionsUhr = this.cfg.munition.takt;
-    if (this.vorrat >= this.cfg.munition.maxVorrat) return;
-    const b = this.munition.acquire();
-    if (!b) return;
-    /* Über die Feldbreite verteilt, mit Abstand zum Rand — man soll sie
-     * holen können, ohne in die Ecke gedrängt zu werden. */
-    const spanne = maxX - minX;
-    /* Von der Abwurfhöhe des Bosses, nicht aus dem Nichts: die Munition
-     * soll aussehen, als käme sie aus demselben Geschehen. */
-    b.spawn(minX + spanne * (0.15 + Math.random() * 0.7), this._kampfY);
-  }
-
-  /**
-   * Einsammeln prüfen. Wird von Game gerufen, weil dort schon die
-   * Einsammel-Rückmeldungen sitzen (Klang, Anzeige).
-   * @returns {number} wieviele in diesem Bild eingesammelt wurden
-   */
-  munitionEinsammeln(player, world) {
-    if (!this.aktiv) return 0;
-    const unten = world.bounds.minY - 1.5;
-    let genommen = 0;
-    // RÜCKWÄRTS, weil release() swap-remove benutzt (siehe Pool.js).
-    for (let i = this.munition.active.length - 1; i >= 0; i--) {
-      const b = this.munition.active[i];
-      if (!b.active) continue;
-      if (b.y < unten) {
-        b.despawn();
-        this.munition.release(b);
-        continue;
-      }
-      if (
-        player?.alive &&
-        circleOverlap(b.x, b.y, b.hitRadius, player.x, player.y, player.hitRadius)
-      ) {
-        b.despawn();
-        this.munition.release(b);
-        if (this.vorrat < this.cfg.munition.maxVorrat) {
-          this.vorrat++;
-          genommen++;
-        }
-      }
-    }
-    return genommen;
   }
 
   /* ----------------------------------------------------------- Eigene Würfe */
@@ -447,9 +453,7 @@ export class BossKampf {
     this.boss = null;
     for (const p of this._geschosse.values()) p.releaseAll((g) => g.despawn());
     this._aktiveGeschosse = null;
-    this.munition.releaseAll((b) => b.despawn());
     this.wuerfe.releaseAll((b) => b.despawn());
-    this.vorrat = 0;
     player?.hoeheAnsteuern?.(null);
     this.klang?.boss?.(false);
     this.onSieg();

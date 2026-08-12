@@ -1268,12 +1268,13 @@ export class Game {
           b,
           {
             arten,
-            munition: t.get(this.cfg.banana.bild) ?? null,
             spielerWurf: t.get(this.cfg.banana.bild) ?? null,
           },
           {
             klang: this.klang,
             ui: this.ui,
+            // Für die Sichtbarkeitsrechnung auf Boss-Höhe (siehe _randX).
+            camera: this.camera,
             // Ein Bossgeschoss wirkt wie ein Stein — über Leben und Tod
             // entscheidet weiter genau eine Stelle.
             onTreffer: () => this._onRockHit(null),
@@ -2286,9 +2287,6 @@ export class Game {
     this._sturzflugSchritt(dt);
     this.sturzflug?.update(dt, this.player, world);
     this.bossKampf?.update(dt, this.player, world);
-    if (this.bossKampf?.munitionEinsammeln(this.player, world)) {
-      this.klang.effekt('banane');
-    }
 
     /* NACHSCHUB: EINE Stelle entscheidet.
      *
