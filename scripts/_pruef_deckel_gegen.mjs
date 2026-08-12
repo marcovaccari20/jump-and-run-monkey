@@ -90,6 +90,10 @@ async function echteGroessteSpriteBreite(cfg) {
   return { max, wer };
 }
 
+/* Die ECHTE Sprite-Breite ist der Vorgabewert — kopflos liefert
+ * groessteSpriteBreite() nur 1.480 statt 1.788 (siehe Teil 1). */
+const ECHT_BREITE = (await echteGroessteSpriteBreite(CONFIG.rock)).max;
+
 /* ------------------------------------------------ Spielfeld wie Game.js */
 function spielfeld(aspect, charId, { deckel = true, eng = false, spriteBreite = null } = {}) {
   const charCfg = CONFIG.characters.list[charId];
@@ -105,7 +109,7 @@ function spielfeld(aspect, charId, { deckel = true, eng = false, spriteBreite = 
   const base = CONFIG.world;
   const affenHoehe = (pCfg.startPosition ?? CONFIG.player.startPosition)[1];
   const half = halfWidthAt(camera, 0, affenHoehe);
-  const sb = spriteBreite ?? groessteSpriteBreite(CONFIG.rock);
+  const sb = spriteBreite ?? ECHT_BREITE;
   const rand = Math.max(halbeAffenBreite(charId, pCfg), sb / 2);
   const limit = Math.max(0.9, half - rand);
 
@@ -469,6 +473,68 @@ if (TEIL === '3') {
         `  ${charId.padEnd(7)} ${name.padEnd(8)} ${hf.toFixed(3).padStart(8)} ` +
         `${luecke.toFixed(3).padStart(14)} ${(tr / laeufe).toFixed(2).padStart(8)} ` +
         `${(getr ? (erst / getr).toFixed(1) + ' s' : '   –').padStart(11)}  ${nie}/${laeufe}`,
+      );
+    }
+  }
+}
+
+/* ================================================================ TEIL 4
+ * Lueckengarantie MIT dem echten Deckel: gibt es je einen Frame, in dem
+ * ALLE Bahnen auf Spielerhoehe belegt sind? (Das ist die Frage, die
+ * fairness.mjs im Querformat mit den FALSCHEN Bahnen stellt.)
+ */
+if (TEIL === '4') {
+  const sekunden = Number(arg('sekunden', 300));
+  const laeufe = Number(arg('laeufe', 6));
+  console.log(`TEIL 4 — Ist immer eine Bahn frei?  (${laeufe} x ${sekunden}s, alle Affen)`);
+  console.log('  Affe    Format    Bahnen   engster Moment (freie Bahnen)   Frames ohne freie Bahn');
+  for (const charId of ['braun', 'weiss', 'orange']) {
+    for (const [name, a] of FORMATE) {
+      let minFrei = 99;
+      let ohne = 0;
+      let framesGes = 0;
+      for (let i = 0; i < laeufe; i++) {
+        const echterZufall = Math.random;
+        Math.random = rng(3000 + i * 17);
+        try {
+          const world = spielfeld(a, charId);
+          const char = CONFIG.characters.list[charId];
+          const pCfg = world._pCfg;
+          const difficulty = new DifficultyCurve(CONFIG.difficulty);
+          difficulty.setRockMix(CONFIG.rock.mix);
+          const spawner = new Spawner({ add() {} }, CONFIG, difficulty, world, null);
+          spawner.bananasEnabled = false;
+          spawner.setSpieler(pCfg);
+          spawner.reset();
+          const py = pCfg.startPosition[1];
+          const ignoreR = char.ignoreRockRadius ?? 0;
+          const frames = Math.round(sekunden / DT);
+          for (let f = 0; f < frames; f++) {
+            difficulty.update(DT);
+            spawner.hazardLook = stufeBei(difficulty.elapsed).hazard;
+            spawner.update(DT, false, difficulty.scrollSpeed);
+            if (difficulty.elapsed < 3) continue;
+            framesGes++;
+            let frei = 0;
+            for (const bx of world.bahnX) {
+              let belegt = false;
+              for (const r of spawner.rocks.active) {
+                if (!r.active || r.radius <= ignoreR) continue;
+                const R = pCfg.hitRadius + r.hitRadius;
+                const dx = r.x - bx;
+                const dy = r.y - py;
+                if (dx * dx + dy * dy < R * R) { belegt = true; break; }
+              }
+              if (!belegt) frei++;
+            }
+            if (frei < minFrei) minFrei = frei;
+            if (frei === 0) ohne++;
+          }
+        } finally { Math.random = echterZufall; }
+      }
+      console.log(
+        `  ${charId.padEnd(7)} ${name.padEnd(8)} ${String(3).padStart(6)}   ` +
+        `${String(minFrei).padStart(22)}   ${String(ohne).padStart(10)} / ${framesGes}`,
       );
     }
   }

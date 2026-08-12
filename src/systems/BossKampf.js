@@ -146,6 +146,8 @@ export class BossKampf {
     this.phase = BossPhase.WARNUNG;
     this._uhr = 0;
     this._nachladen = 0;
+    /** true = die Zeit war um, er ist nicht besiegt worden (keine Belohnung). */
+    this._aufgeben = false;
 
     /* KAMPFHÖHE AUS DER BILDOBERKANTE, nicht aus einer festen Zahl.
      *
@@ -163,8 +165,14 @@ export class BossKampf {
      *     Mitte = Oberkante + (ueberstand - 0.5) * Bildhöhe
      */
     /* Der Rückfallwert ist nur für den Fall, dass jemand dieses System ohne
-     * Game aufruft (Tests). 6.8 ist die gemessene Oberkante bei fov 46. */
-    const oben = world?.sichtbarObenY ?? 6.8;
+     * Game aufruft (Tests).
+     *
+     * ER STAND AUF 6.8 UND DAS WAR FALSCH — das war meine Schätzung über
+     * `tan(fov/2) * distanz`, die die Neigung der Kamera nicht kennt.
+     * Gemessen sind es 4.96 in der Ebene des Bosses. Mit 6.8 hätte der
+     * Gorilla auf y = 5.75 gehangen, seine Unterkante bei 3.65 — komplett
+     * über dem Bildrand, also unsichtbar. */
+    const oben = world?.sichtbarObenY ?? 4.96;
     this._kampfY = oben + (this.cfg.ueberstand - 0.5) * this.boss.hoehe;
 
     /* WIE WEIT DARF ER ZUR SEITE — so weit, dass er ganz im Bild bleibt.
@@ -182,7 +190,9 @@ export class BossKampf {
      * lieber ein Boss, der eine engere Bahn zieht, als einer, der halb
      * abgeschnitten ist. Dass er trotzdem alle drei Bahnen bedroht,
      * garantiert `_geschossAbwerfen`: der Wurf rastet auf die nächste Bahn. */
-    const halb = this.camera ? halfWidthAt(this.camera, 0.35, this._kampfY) : (world?.bounds?.maxX ?? 3);
+    const halb = this.camera
+      ? halfWidthAt(this.camera, this.cfg.ebeneZ ?? 0.35, this._kampfY)
+      : (world?.bounds?.maxX ?? 3);
     this._randX = Math.max(0.3, halb - this.boss.halbeBreite);
 
     /* Über dem Bildrand parken; der Einflug holt ihn herunter. */
@@ -302,6 +312,16 @@ export class BossKampf {
       case BossPhase.KAMPF: {
         const wirft = this.boss.update(dt, minX, maxX);
         if (wirft) this._geschossAbwerfen(world.bahnX);
+        /* ZEITLIMIT. Ohne es bleibt ein Spieler, der nur ausweicht und nie
+         * wirft, beliebig lange im Kampf — und sammelt dort gefahrlos
+         * Höhenmeter, weil ausser dem Boss nichts fällt. Begründung samt
+         * Messwerten bei CONFIG.boss.maxSekunden. */
+        if (this._uhr >= this.cfg.maxSekunden) {
+          this._aufgeben = true;
+          this.phase = BossPhase.ENDE;
+          this._uhr = 0;
+          this.ui?.toast?.('Er zieht ab', 'revive');
+        }
         break;
       }
 
@@ -456,7 +476,12 @@ export class BossKampf {
     this.wuerfe.releaseAll((b) => b.despawn());
     player?.hoeheAnsteuern?.(null);
     this.klang?.boss?.(false);
-    this.onSieg();
+    /* Der Goldrausch ist die Belohnung fürs BESIEGEN. Zieht der Boss nach
+     * Ablauf der Zeit von selbst ab, hat niemand etwas gewonnen — dann gibt
+     * es ihn auch nicht. Sonst wäre Nichtstun die beste Taktik: abwarten,
+     * 45 Sekunden gefahrlos klettern, Goldrausch kassieren. */
+    if (!this._aufgeben) this.onSieg();
+    this._aufgeben = false;
     this.onEnde();
   }
 }

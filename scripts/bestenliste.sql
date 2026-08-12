@@ -135,8 +135,24 @@ language plpgsql
 immutable
 as $$
 declare
-  tempo_start   constant numeric := 3.8;   -- difficulty.tempo.start
-  tempo_max     constant numeric := 16.0;  -- difficulty.tempo.max
+  /* DIESE ZWEI WAREN VERALTET, UND DAS TRAF ECHTE SPIELER.
+   *
+   * Sie sind Kopien aus CONFIG.difficulty.tempo und liefen ihr davon:
+   * `start` stand auf 3.8, während die Konfiguration längst 4.18 sagt,
+   * `max` auf 16.0 gegen tatsächlich 14.3.
+   *
+   * Der zu KLEINE Startwert ist der gefährliche von beiden: die Schranke lag
+   * dadurch bis etwa t = 1341 s rund 1.8 % UNTER der Höhe, die ein ehrlicher
+   * Lauf zwangsläufig erreicht — der Server hätte also gültige Ergebnisse
+   * als Betrug abgewiesen. Genau derselbe Fehler wie damals bei der
+   * Lebenszeichen-Zählung, nur an einer anderen Konstante.
+   *
+   * Der zu GROSSE Höchstwert war die andere Richtung: er machte die Decke
+   * für lange Läufe unnötig hoch.
+   *
+   * Wer hier etwas ändert, muss `npm run punkte-grenze` laufen lassen. */
+  tempo_start   constant numeric := 4.18;  -- difficulty.tempo.start
+  tempo_max     constant numeric := 14.3;  -- difficulty.tempo.max
   scroll_anteil constant numeric := 0.42;  -- difficulty.tempo.scrollAnteil
   pro_wand      constant numeric := 1.25;  -- difficulty.proWand
   sek_pro_wand  constant numeric := 132;   -- difficulty.sekundenProWand

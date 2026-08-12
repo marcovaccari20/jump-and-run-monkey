@@ -211,11 +211,11 @@ export class Klang {
    * seine Musik nicht verlieren.
    */
   boss(an) {
-    // Der Bosskampf ist raus — die Methode bleibt als No-op stehen, damit
-    // ein vergessener Aufruf nicht abstürzt.
-    void an;
-    return;
-    /* eslint-disable no-unreachable */
+    /* WIEDER ANGESCHLOSSEN. Hier stand ein `return;` aus der Zeit, als der
+     * Bosskampf ausgebaut war — die Methode war ein stiller No-op. Der neue
+     * Kampf rief sie brav auf, und es passierte nichts; public/musik/boss.ogg
+     * lag die ganze Zeit da und wurde nie gespielt. Genau deshalb hielt ich
+     * das Stück für ungenutzt. */
     this._bossWunsch = an === true;
     if (!this.bereit || !this.musik) return;
     if (an) this.musik.bossAn();

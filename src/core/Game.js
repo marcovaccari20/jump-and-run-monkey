@@ -680,9 +680,14 @@ export class Game {
      * die über volle fünf Sekunden zu strecken hiesse, eine Flammenanimation
      * zu zeigen, während sich die Wand kaum bewegt. Deshalb wird die Dauer
      * so gekürzt, dass mindestens `tempoMin`-faches Tempo herauskommt. */
-    const dauerGebiet = this.cfg.difficulty.sekundenProWand;
-    const imGebiet = this.difficulty.elapsed % dauerGebiet;
-    const restGebiet = dauerGebiet - imGebiet;
+    /* Der Rest bis zur ECHTEN Gebietsgrenze.
+     *
+     * Hier stand `elapsed % sekundenProWand`, also ein 132-Sekunden-Raster
+     * ab null. Die Gebiete liegen aber bei 55 + 132·k, seit Gebiet 1 nur
+     * 100 Meter lang ist — das Raster passte damit auf keine einzige echte
+     * Grenze. Der Chili-Flug endete dadurch verlässlich mitten im Gebiet,
+     * obwohl er ausdrücklich ins nächste bringen soll. */
+    const restGebiet = this._gebietsZeit().rest;
 
     /* DIE STRECKE STEHT ZUERST FEST, DANN ERST DIE DAUER.
      *
@@ -706,7 +711,7 @@ export class Game {
      * einer kurzen Reststrecke fliegt er einfach weiter ins nächste Gebiet
      * hinein, statt langsamer zu werden. */
     const strecke = Math.max(
-      restGebiet + dauerGebiet * c.einstieg,
+      restGebiet + this._gebietsZeit().dauer * c.einstieg,
       c.minSekunden * c.tempoFaktor,
     );
 
@@ -1008,6 +1013,20 @@ export class Game {
      * weiter. */
     this.wall.sonderStufe(b.gebiet, this.difficulty.elapsed);
 
+    /* WAS SCHON IN DER LUFT IST, MUSS AUCH WEG.
+     *
+     * Der Spawner räumt seine eigenen Pools (goldrauschSetzen), aber ein
+     * bereits gestarteter Sturzflug und ein laufender Bosskampf gehören ihm
+     * nicht. Beide kennen weder `_goldRest` noch die Sonderstufe und würden
+     * im Gold-Gebiet fröhlich weiter angreifen — in dem Gebiet, dessen ganzer
+     * Sinn ist, dass nichts passieren kann. Ein Vogel, der einen dort
+     * umbringt, ist der Bruch eines Versprechens.
+     *
+     * Der Bosskampf wird abgebrochen, nicht gewonnen: eine Belohnung gibt es
+     * nur fürs Besiegen. */
+    this.sturzflug?.abbrechen();
+    this.bossKampf?.abbrechen(this.player);
+
     if (this._goldFrames) {
       this.player.fellWechseln?.(this._goldFrames);
       return;
@@ -1114,8 +1133,14 @@ export class Game {
       this._sturzUhr = 0;
       return;
     }
-    const stages = this.cfg.wall.stages;
-    const dauer = stages.length > 1 ? stages[1].afterSeconds - stages[0].afterSeconds : 132;
+    /* Die Länge des GERADE LAUFENDEN Gebiets, nicht die von Gebiet 1.
+     *
+     * Hier stand `stages[1].afterSeconds - stages[0].afterSeconds`. Das war
+     * die Länge des ERSTEN Gebiets, und seit das nur noch 55 statt 132
+     * Sekunden dauert, teilte sich jedes Gebiet seine Angriffe in die ersten
+     * 55 Sekunden auf — danach 77 Sekunden Ruhe. Im Gold-Gebiet fiel das
+     * besonders auf: es liegt genau in diesem dichten Anfangsbereich. */
+    const dauer = this._gebietsZeit().dauer;
     const abschnitt = dauer / (n + 1);
     // Streuung, sonst kommt er immer an derselben Stelle im Gebiet.
     this._sturzUhr = abschnitt * (0.7 + Math.random() * 0.6);
@@ -1124,8 +1149,24 @@ export class Game {
   /** Zählt die Uhr herunter und löst aus, wenn nichts anderes läuft. */
   _sturzflugSchritt(dt) {
     if (this._sturzUhr <= 0) return;
-    // Ein laufender Sturzflug oder Chili-Flug darf keinen zweiten anstossen.
-    if (this.sturzflug?.aktiv || this._chiliFlug !== null) return;
+    /* Ein laufender Sturzflug, Chili-Flug ODER BOSSKAMPF darf keinen
+     * anstossen.
+     *
+     * Der Bosskampf fehlte hier. Gemessen liefen Vogelwarnung und Sturz 1.6
+     * Sekunden lang mitten im Kampf — und das war kein Randfall: `_sturzUhr`
+     * wird beim Gebietswechsel gestellt, also in genau dem Block, in dem auch
+     * der Boss ausgelöst wird. Ab etwa Gebiet 5 liegt die erste Sturzflugzeit
+     * regelmässig innerhalb der 13 bis 25 Sekunden, die ein Kampf dauert.
+     *
+     * Das `return` steht VOR dem Herunterzählen, die Uhr steht also während
+     * des Kampfes still. Genau richtig: liefe sie weiter, käme direkt nach
+     * dem Kampf der aufgestaute Angriff. */
+    if (this.sturzflug?.aktiv || this._chiliFlug !== null || this.bossKampf?.aktiv) return;
+    /* UND NICHT IM GOLD-GEBIET. Dort steht ausdrücklich, dass nur Münzen
+     * kommen — ein Vogel, der einen dort umbringt, ist der Bruch eines
+     * Versprechens. Gemessen wurde das Gold-Gebiet zu 100 % von Angriffen
+     * getroffen, weil es genau in den dichten Anfang eines Gebiets fällt. */
+    if (this._goldRest > 0) return;
     this._sturzUhr -= dt;
     if (this._sturzUhr > 0) return;
     this._sturzUhr = 0;
@@ -1213,7 +1254,9 @@ export class Game {
     if (gebiet - this._letzterBossGebiet < b.mindestAbstandGebiete) return;
     // Nicht mitten in etwas anderem, das den Bildschirm beansprucht.
     if (this.bossKampf?.aktiv || this.sturzflug?.aktiv || this._chiliFlug !== null) return;
-    if (this._goldRest > 0) return;
+    // Nicht im Gold-Gebiet: dort soll nur Geld fallen, und ein Kampf würde
+    // die 30 Sekunden verbrauchen, ohne dass eine einzige Münze käme.
+    if (this._goldRest > 0 || this.wall.inSonderStufe) return;
     if (Math.random() >= b.chanceProGebiet) return;
 
     this._letzterBossGebiet = gebiet;
@@ -1232,6 +1275,8 @@ export class Game {
     if (!this.states.is(GameState.PLAYING)) return false;
 
     const b = this.cfg.boss;
+    // Merken, für welchen Lauf dieser Kampf gedacht war.
+    const marke = this._laufNummer;
 
     if (!this.bossKampf) {
       this._bossLaedt = true;
@@ -1293,6 +1338,10 @@ export class Game {
           const tex = t.get(p);
           if (tex) wurfFrames.push(tex);
         }
+        /* Merken, NICHT nur setzen: `_buildPlayer` wirft den Affen bei jedem
+         * Fell- und Charakterwechsel weg und baut ihn neu. Von dort werden
+         * sie wieder angelegt. */
+        this._wurfFrames = wurfFrames;
         this.player.setzeWurfFrames?.(wurfFrames, b.wurf);
       } catch (fehler) {
         console.error('[Boss] konnte nicht geladen werden:', fehler);
@@ -1300,7 +1349,11 @@ export class Game {
       } finally {
         this._bossLaedt = false;
       }
+      /* NACH dem Laden nochmal prüfen — und zwar auch, ob es noch DERSELBE
+       * Lauf ist. „PLAYING und lebendig" allein genügt nicht: nach Tod und
+       * „Nochmal" trifft beides wieder zu, nur eben auf einen anderen Lauf. */
       if (!this.states.is(GameState.PLAYING) || !this.player.alive) return false;
+      if (marke !== this._laufNummer) return false;
     }
 
     if (!this.bossKampf.bereit) {
@@ -1408,6 +1461,24 @@ export class Game {
      * mit braunem Fell — und beim weissen wäre es noch auffälliger, weil
      * seine Folge nur acht Bilder hat statt zwölf. */
     this._chiliFrames = null;
+
+    /* DIE WURFBILDER GEHÖREN EBENFALLS ZUM AFFEN — und mussten hierher.
+     *
+     * Sie wurden bisher genau einmal gesetzt, beim erstmaligen Laden des
+     * Bosskampfs. `_buildPlayer` erzeugt aber bei JEDEM Fell- und
+     * Charakterwechsel ein neues `SpritePlayer`-Objekt, und dessen
+     * `wurfFrames` ist leer. Danach stieg `werfen()` still aus: 181
+     * Wurfversuche, null Würfe. Wer nach dem ersten Bosskampf einmal die
+     * Fellfarbe wechselte, konnte für den Rest der Sitzung keinen Boss mehr
+     * besiegen — und weil der Kampf nur durch den Tod des Bosses endet, lief
+     * er dann bis zum eigenen Tod weiter.
+     *
+     * Dieselbe Klasse Fehler wie bei den Flugbildern eine Zeile darüber:
+     * alles, was am Affen hängt, muss dort wieder angelegt werden, wo der
+     * Affe entsteht. */
+    if (this._wurfFrames?.length) {
+      this.player.setzeWurfFrames?.(this._wurfFrames, this.cfg.boss.wurf);
+    }
 
     // Die seitlichen Grenzen hängen am Trefferradius — nach einem Wechsel neu
     // rechnen, sonst gälte bis zum nächsten Resize das alte Band.
@@ -1702,6 +1773,15 @@ export class Game {
   /* ============================================================ Ablauf */
 
   _startRun() {
+    /* Marke des Laufs. Sie zählt bei JEDEM Start hoch — auch ohne
+     * Bestenliste, die sie bisher als einzige stellte.
+     *
+     * Sie ist die Antwort auf „gehört dieses Ergebnis noch zu diesem Lauf?".
+     * Der Bosskampf lädt beim ersten Mal rund 74 Bilder nach; stirbt man
+     * währenddessen und drückt „Nochmal", startete der Kampf danach im NEUEN
+     * Lauf, bei null Metern im ersten Gebiet. Nachgestellt mit künstlich
+     * verzögertem Laden: ausgelöst in Lauf A, gestartet in Lauf B. */
+    this._laufNummer++;
     this.score.reset();
     this.difficulty.reset();
     this.player.reset(this.worldView.bahnX);
@@ -1761,7 +1841,9 @@ export class Game {
     this._affenSchritt = 0;
     this._affenTimer = 6 + Math.random() * 4;
     if (this.bestenliste.weltweit) {
-      const marke = ++this._laufNummer;
+      // Die Marke steht schon (oben in _startRun) — hier NICHT nochmal
+      // hochzählen, sonst zeigen die beiden Prüfungen auf verschiedene Läufe.
+      const marke = this._laufNummer;
       this.bestenliste.laufStarten().then((id) => {
         // Nur übernehmen, wenn inzwischen kein neuer Lauf begonnen hat.
         if (marke === this._laufNummer) this._weltLauf = id;
@@ -2017,6 +2099,21 @@ export class Game {
         break;
     }
 
+    /* DIE MUSIK BRAUCHT JEDEN FRAME, NICHT NUR IM SPIEL.
+     *
+     * Diese Zeile stand in `_updatePlaying` und lief damit nur im Zustand
+     * PLAYING. Sie kümmert sich aber um den Schleifenpunkt — die Stücke sind
+     * nicht als Schleife komponiert, `el.loop` ist aus, und ohne diesen Ruf
+     * läuft ein Stück einfach aus.
+     *
+     * Gemessen: das Hauptmenü wurde nach 154.8 Sekunden stumm, der
+     * Game-Over-Screen schon nach 20.8 (wenn man im kurzen Eiszeit-Stück
+     * starb). Ausgerechnet dort steht die Namenseingabe für die Bestenliste
+     * — man tippt seinen Namen in die Stille. In der Pause dasselbe.
+     *
+     * Hier hinter dem `switch` läuft sie in JEDEM Zustand. */
+    this.klang.musikUpdate();
+
     this._updateStats(dt);
     this.renderer.render(this.scene, this.camera);
   }
@@ -2224,10 +2321,9 @@ export class Game {
       // Und ob diesmal ein Boss kommt.
       this._bossPruefen();
     }
-    /* Kümmert sich um den Schleifenpunkt der Musik. Hier stand vorher ein
-     * Zufallstakt für einzelne Vogelrufe — die gehörten zu den prozeduralen
-     * Atmosphären und sind mit ihnen weg. */
-    this.klang.musikUpdate();
+    /* Der Schleifenpunkt der Musik wird jetzt in `_tick` versorgt, also in
+     * JEDEM Zustand — hier lief er nur im Spiel, und Menü, Pause und
+     * Game-Over-Screen wurden nach ein bis zweieinhalb Minuten stumm. */
     this._affenRuf(dt);
 
     /* Lebenszeichen an die Weltliste.
@@ -2334,6 +2430,47 @@ export class Game {
    * aktuellen Tempo — die Anzeige läuft dadurch minimal vor, was der
    * ehrlichere Fehler ist: sie verspricht nie mehr Strecke, als kommt.
    */
+  /**
+   * WANN ENDET DAS AKTUELLE GEBIET, und wie lang ist es?
+   *
+   * EINE Quelle für alle, die das wissen müssen. Vorher rechnete es jeder
+   * für sich, und zwei davon rechneten falsch:
+   *
+   *   - Der Chili-Durchflug nahm `elapsed % sekundenProWand` (132). Die
+   *     echten Grenzen liegen aber bei 55 + 132·k, seit Gebiet 1 nur noch
+   *     100 Meter lang ist. Der Flug endete dadurch mitten im Gebiet statt
+   *     im nächsten — bei jedem Chili, nicht nur in Randfällen.
+   *   - Die Sturzflug-Uhr nahm die Länge von GEBIET 1 (jetzt 55 s) als Mass
+   *     für jedes Gebiet. Alle Angriffe drängten sich dadurch in die ersten
+   *     55 Sekunden jedes Gebiets, danach war 77 Sekunden Ruhe.
+   *
+   * Nach dem letzten Gebiet läuft die Liste zyklisch weiter; dann zählt
+   * `stageLoopSeconds`, nicht die längst überschrittene Startsekunde.
+   *
+   * @returns {{ende:number, dauer:number, rest:number}} Sekunden
+   */
+  _gebietsZeit() {
+    const stages = this.cfg.wall.stages;
+    const t = this.difficulty.elapsed;
+    const letzte = stages[stages.length - 1];
+
+    if (t >= letzte.afterSeconds) {
+      const takt = this.cfg.wall.stageLoopSeconds;
+      const seitLetzter = t - letzte.afterSeconds;
+      const runde = Math.floor(seitLetzter / takt) + 1;
+      const ende = letzte.afterSeconds + runde * takt;
+      return { ende, dauer: takt, rest: ende - t };
+    }
+
+    // Index über die Zeit bestimmen, nicht über wall.stageIndex: der hängt
+    // während einer Sonderstufe (Gold) auf -1.
+    let i = 0;
+    for (let k = 0; k < stages.length; k++) if (t >= stages[k].afterSeconds) i = k;
+    const ende = stages[Math.min(i + 1, stages.length - 1)].afterSeconds;
+    const dauer = ende - stages[i].afterSeconds;
+    return { ende, dauer, rest: Math.max(0, ende - t) };
+  }
+
   _zeigeNaechstesGebiet() {
     const stages = this.cfg.wall.stages;
     const t = this.difficulty.elapsed;
@@ -2581,7 +2718,21 @@ export class Game {
      * Das Spielfeld rückt dadurch auf breiten Schirmen in die Mitte. Der
      * Affe, die Objekte und die Wand behalten ihre Grösse — nur die Strecke,
      * die er zwischen den Bahnen zurücklegt, ist überall dieselbe. */
-    const halbFeld = Math.min(view.bounds.maxX, base.bahnDeckel ?? Infinity);
+    /* Der Deckel aus den Massen DIESES Affen.
+     *
+     * Bedingung: zwischen zwei Bahnen darf kein sicherer Ort entstehen, also
+     * muss der Bahnabstand kleiner sein als die Summe der beiden
+     * Gefahrenzonen. Mit dem festen Wert aus der Konfiguration war er für den
+     * weissen Affen (halber Trefferradius) viel zu weit — er war dadurch auf
+     * jedem Format ab 3:4 wieder unverwundbar, genau der Fehler, gegen den
+     * der Deckel gebaut wurde. Begründung samt Zahlen bei
+     * CONFIG.world.bahnDeckel. */
+    const rObjekt =
+      Math.max(...this.cfg.rock.types.map((t) => t.radius)) * this.cfg.rock.hitRadiusFactor;
+    const rAffe = this.player?.hitRadius ?? this.cfg.player.hitRadius;
+    const deckel = Math.min(base.bahnDeckel ?? Infinity, 2 * (rAffe + rObjekt));
+
+    const halbFeld = Math.min(view.bounds.maxX, deckel);
     view._halbFeld = halbFeld;
     view.bahnX = base.bahnen.map((anteil) => anteil * halbFeld);
 
@@ -2590,8 +2741,14 @@ export class Game {
      * Der Boss hängt absichtlich darüber hinaus — man soll die Hand, mit der
      * er sich festhält, NICHT sehen. Dafür braucht BossKampf die echte
      * Oberkante; `bounds.maxY` ist sie NICHT, das ist die Bewegungsgrenze des
-     * Affen (2.7 gegenüber tatsächlich rund 6.8). */
-    view.sichtbarObenY = topEdgeAt(this.camera, 0);
+     * Affen (2.7 gegenüber tatsächlich rund 5.05).
+     *
+     * IN DER EBENE DES BOSSES gemessen, nicht bei z = 0. Der Boss liegt auf
+     * z = 0.35 (Boss.js), also näher an der Kamera, und dort ist das Bild
+     * etwas kleiner: 4.955 statt 5.051. Mit der falschen Ebene sass er 0.096
+     * zu hoch und der Überstand war 27.3 % statt der verlangten 25 %. Klein,
+     * aber die Formel gibt vor, genau zu sein — dann soll sie es auch sein. */
+    view.sichtbarObenY = topEdgeAt(this.camera, this.cfg.boss?.ebeneZ ?? 0);
 
     /* WAS SCHON FÄLLT, MUSS MITWANDERN.
      *

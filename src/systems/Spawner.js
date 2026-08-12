@@ -957,6 +957,23 @@ export class Spawner {
   powerupWerfen(art) {
     if (!this.powerups) return false;
     if (this.powerups.activeCount > 0) return false;
+    /* NICHT, WENN DER BILDSCHIRM FREIGERÄUMT IST.
+     *
+     * Diese Methode fragte `nachschubAus` als einzige nicht ab. Sie wird aus
+     * `_belohnungenPruefen` gerufen, und das steht im selben Block wie
+     * `_bossPruefen` — drei Zeilen davor. Die Belohnung fiel also ausgerechnet
+     * in dem Moment, in dem der Kampf startete, und dann in den angeblich
+     * leeren Bildschirm hinein.
+     *
+     * Die Folgen waren beide schlimm: eine Chilischote brach den Kampf
+     * ersatzlos ab (der Boss verschwand, ohne besiegt zu sein), und eine
+     * goldene Banane startete den Goldrausch mitten im Kampf — dessen 30
+     * Sekunden liefen dann ab, während wegen `nachschubAus` gar keine Münze
+     * fallen konnte. Die Belohnung verpuffte, ohne dass man sah, warum.
+     *
+     * `nurMuenzen` gehört ebenfalls dazu: im Gold-Gebiet soll NUR Geld
+     * kommen, also auch keine zweite goldene Banane. */
+    if (this.nachschubAus || this.nurMuenzen) return false;
     const p = this.powerups.acquire();
     if (!p) return false;
 

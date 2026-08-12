@@ -143,6 +143,30 @@ export const CONFIG = {
      *
      *  Der Wert begrenzt die HALBE Feldbreite und damit zugleich den Abstand
      *  zweier benachbarter Bahnen (bei [-1,0,1] sind beide gleich).
+     *
+     *  ─────────────────────────────────────────────────────────────────
+     *  ER WIRD GERECHNET, NICHT FESTGESCHRIEBEN — und das ist der Kern.
+     *
+     *  Hier stand fest 2.2. Die Bedingung „zwischen zwei Bahnen darf kein
+     *  sicherer Ort liegen" heisst aber:
+     *
+     *      Bahnabstand  <=  2 * (Trefferradius Affe + Trefferradius Objekt)
+     *
+     *  und der Trefferradius des Affen ist JE CHARAKTER verschieden:
+     *
+     *      braun / orange   hitRadius 0.42  ->  hoechstens 2.113
+     *      weiss            hitRadius 0.21  ->  hoechstens 1.693
+     *
+     *  Mit festen 2.2 war der Deckel für alle drei zu weit — und für den
+     *  weissen Affen so deutlich, dass der ursprüngliche Fehler bei ihm
+     *  vollständig zurückkam: gemessen 0.00 Treffer je Minute über dreimal
+     *  600 Sekunden auf jedem Format ab 3:4, während derselbe Affe auf einem
+     *  schmalen Handy 18.63 kassiert. Ausgerechnet der teuerste Charakter
+     *  (1000 Münzen) war auf dem PC unverwundbar.
+     *
+     *  `bahnDeckel` ist deshalb nur noch die OBERGRENZE für den Fall, dass
+     *  die Rechnung einmal einen unsinnig grossen Wert liefert. Gerechnet
+     *  wird in Game._updateWorldBounds aus den Massen des gewählten Affen.
      * ================================================================== */
     bahnDeckel: 2.2,
 
@@ -1681,6 +1705,14 @@ export const CONFIG = {
      * er auf dem sichtbaren Körper sitzt (Boss.trefferMitte). */
     ueberstand: 0.25,
 
+    /* Die z-Ebene, in der der Boss liegt (Boss.js setzt sie auf denselben
+     * Wert). Sie steht hier, weil ZWEI Stellen sie brauchen: das Bild selbst
+     * und die Rechnung, wo das Bild oben aufhört. Standen sie getrennt, wäre
+     * die eine irgendwann verschoben und die andere nicht — genau so entstand
+     * der Fehler, dass mit z = 0 gerechnet wurde, während der Boss auf 0.35
+     * hing. */
+    ebeneZ: 0.35,
+
     /* Trefferkreis des Bosses als Anteil seiner Bildhöhe. Deutlich kleiner
      * als er aussieht: getroffen wird der Rumpf, nicht die ausgestreckten
      * Gliedmassen. */
@@ -1690,6 +1722,25 @@ export const CONFIG = {
      * sonst zählen zwei Bananen dicht hintereinander doppelt. */
     treffer: 3,
     trefferPause: 0.5,
+
+    /* ZEITLIMIT — und das ist kein Komfortwert, sondern eine Bremse gegen
+     * unbegrenzte Punkte.
+     *
+     * Der Kampf endete zuerst AUSSCHLIESSLICH mit dem Tod des Bosses. Wer
+     * nur auswich und nie warf, blieb dadurch beliebig lange darin: gemessen
+     * 70 Sekunden ohne einen Treffer, dabei +127 Höhenmeter, und der
+     * Nachschub war die ganze Zeit abgeschaltet. Kopflos bis 600 Sekunden
+     * geprüft — der Kampf lief immer noch. Das ist ein gefahrloser
+     * Punkteautomat: klettern zählt weiter, aber ausser dem Boss kann einen
+     * nichts treffen, und der Boss trifft einen guten Spieler nie.
+     *
+     * Nach 45 Sekunden zieht er deshalb ab. Das ist reichlich — ein
+     * gewonnener Kampf dauert gemessen 13 bis 25 Sekunden. Wer in 45
+     * Sekunden keine drei Treffer landet, wollte es nicht.
+     *
+     * Aufgeben ist keine Strafe, aber auch keine Belohnung: der Goldrausch
+     * bleibt aus (siehe BossKampf._beenden). */
+    maxSekunden: 45,
 
     /* ─── DIE STEIGERUNG ────────────────────────────────────────────────
      *

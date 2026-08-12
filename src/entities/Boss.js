@@ -79,7 +79,9 @@ export class Boss {
     );
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
-    this.mesh.position.z = 0.35;
+    // Aus der Konfiguration, weil auch Game damit rechnet, wo das Bild oben
+    // aufhört (CONFIG.boss.ebeneZ). Zwei getrennte Zahlen liefen auseinander.
+    this.mesh.position.z = cfg.ebeneZ ?? 0.35;
 
     this.x = 0;
     this.y = 0;
