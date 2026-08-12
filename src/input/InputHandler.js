@@ -217,8 +217,20 @@ export class InputHandler {
 
         this._touch.active = true;
         this._anyPressed = true;
-        base.style.left = `${t.clientX - radius}px`;
-        base.style.bottom = `${window.innerHeight - t.clientY - radius}px`;
+        /* GEGEN DIE EIGENE FLÄCHE RECHNEN, NICHT GEGEN DAS FENSTER.
+         *
+         * `clientX/clientY` sind Fensterkoordinaten, `base` sitzt aber in
+         * #touch-layer — und der liegt seit der Bühne nicht mehr am
+         * Fensterrand, sondern in einer mittigen Säule. Am Handy fällt das
+         * nicht auf (dort IST die Säule das Fenster); auf einem 1920er Schirm
+         * sässe der Joystick um die halbe Rahmenbreite daneben, also rund
+         * 650 Bildpunkte vom Finger entfernt. */
+        const flaeche = base.offsetParent ?? base.parentElement;
+        const r = flaeche
+          ? flaeche.getBoundingClientRect()
+          : { left: 0, bottom: window.innerHeight };
+        base.style.left = `${t.clientX - r.left - radius}px`;
+        base.style.bottom = `${r.bottom - t.clientY - radius}px`;
         base.classList.add('joystick--active');
         e.preventDefault();
         break;

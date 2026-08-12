@@ -303,6 +303,21 @@ export class PlantWall {
       else layer.beginFade(texture, stage.tint);
     }
 
+    /* DEN RAHMEN NEBEN DER BÜHNE MITFÄRBEN.
+     *
+     * Auf breiten Schirmen läuft das Spiel als mittige Säule; links und
+     * rechts steht dieselbe Wand, unscharf und abgedunkelt (#app::before in
+     * style.css). Ohne diese Zeile bliebe der Rahmen für immer grün, während
+     * im Bild längst Lava oder Eis liegt.
+     *
+     * Genommen wird die UNSCHARFE Fassung: sie ist kleiner, wird ohnehin
+     * geladen, und der Browser hat sie im Zwischenspeicher, sobald die Stufe
+     * im Spiel steht. Es kommt also kein einziger Download dazu. */
+    const rahmen = stage.far ?? stage.near;
+    if (rahmen && typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--wand-bild', `url(${rahmen})`);
+    }
+
     if (immediate) {
       this._fading = false;
       this._fadeTimer = 0;

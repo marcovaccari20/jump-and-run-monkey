@@ -26,6 +26,38 @@ export const CONFIG = {
       position: [0, 1.9, 11.5], // leicht oberhalb der Wandmitte
       lookAt: [0, 0.35, 0], //    Blick leicht nach unten auf die Wand
     },
+
+    /* HÖCHSTES SEITENVERHÄLTNIS DER SPIELFLÄCHE (Breite geteilt durch Höhe).
+     *
+     * Das Spiel hat drei Bahnen, und ihr Abstand ist nach oben gedeckelt
+     * (world.bahnDeckel) — sonst entstünde dazwischen ein Platz, auf dem
+     * einen nichts treffen kann. Die Kamera wuchs aber ungebremst mit der
+     * Fensterbreite mit. Gemessen war vom sichtbaren Bild bespielt:
+     *
+     *     Handy 390x844     100 %
+     *     Portal 800x600     36 %
+     *     PC 16:9            26 %
+     *     PC 2:1             23 %
+     *
+     * Drei Viertel des Schirms waren Wand, auf der nie etwas passiert.
+     *
+     * DIE LEINWAND IST DER EINZIGE HEBEL. Bei einer Perspektivkamera gilt
+     * sichtbare Breite = sichtbare Höhe x Seitenverhältnis; weder Bildwinkel
+     * noch Kameraabstand ändern daran etwas, beide skalieren beide Achsen
+     * zugleich. Ein Zoom mit derselben Wirkung hätte die Vorwarnzeit für
+     * fallende Objekte von 0.46 s auf 0.10 s gedrückt — die Kommentare bei
+     * `difficulty` nennen 0.22 s "unspielbar". Also wird die FLÄCHE schmaler
+     * statt die Sicht enger.
+     *
+     * 0.5625 ist 9:16 und keine neue Zahl: genau dieses Format ist die
+     * Grundlage, aus der world.bahnDeckel hergeleitet wurde. Damit füllt der
+     * braune Affe die Säule zu 100 % aus, der weisse (halber Trefferradius,
+     * also engerer Deckel) zu 86 %.
+     *
+     * Grösser heisst mehr Bild und mehr Leerlauf: 0.60 -> 98 %, 0.65 -> 87 %,
+     * 0.75 -> 79 %. Die Zahl geht als CSS-Variable an #buehne. */
+    maxSeitenverhaeltnis: 0.5625,
+
     // Renderer
     antialias: true,
     maxPixelRatio: 2, // auf Retina/Mobile nicht über 2 gehen (Performance)
@@ -1604,8 +1636,16 @@ export const CONFIG = {
      * ================================================================== */
     zwischenspot: {
       an: true,
-      /* Sekunden zwischen zwei Spots, ab dem Ende des vorigen. */
-      mindestAbstand: 90,
+      /* Sekunden zwischen zwei Spots, ab dem Ende des vorigen.
+       *
+       * 180 STATT 90 — nicht aus Rücksicht, sondern weil 90 nicht ging.
+       *
+       * GameMonetize erzwingt den Abstand selbst: im ausgelieferten SDK steht
+       * `midroll: 180000`. Wer früher fragt, bekommt keinen Spot und auch
+       * keine Meldung — es passiert einfach nichts. Mit 90 fragte das Spiel
+       * also zuverlässig mitten in die Sperre hinein und bekam ein stilles
+       * Nein. Das ist der Grund, warum "der Spot kam nicht von alleine". */
+      mindestAbstand: 180,
       /* Nach der allerersten Runde noch keiner.
        *
        * Die erste Runde ist der Eindruck, über den jemand entscheidet, ob er

@@ -11,6 +11,31 @@
   </head>
   <body>
     <div id="app">
+      <!--
+        BÜHNE — der Ausschnitt, in dem das Spiel wirklich stattfindet.
+
+        Das Spiel hat DREI Bahnen, und ihr Abstand ist nach oben begrenzt
+        (CONFIG.world.bahnDeckel): sonst entstünde zwischen zwei Bahnen ein
+        Platz, auf dem einen nichts treffen kann. Die Kamera wuchs aber
+        ungebremst mit der Fensterbreite mit. Gemessen war auf dem Handy
+        100 % der sichtbaren Breite bespielt, im Portalrahmen 800x600 noch
+        36 %, auf 16:9 nur 26 %, auf 2:1 nur 23 % — der Rest war Wand, auf
+        der nie etwas passiert.
+
+        Die Bühne deckelt deshalb das Seitenverhältnis der LEINWAND. Das ist
+        der einzige Hebel, den es gibt: bei einer Perspektivkamera ist
+        sichtbare Breite = sichtbare Höhe x Seitenverhältnis, und dieses
+        Verhältnis lässt sich weder über den Bildwinkel noch über den
+        Kameraabstand ändern — beide skalieren beide Achsen gemeinsam.
+        Durchgerechnet hätte ein Zoom mit derselben Wirkung die Vorwarnzeit
+        für fallende Objekte von 0.46 s auf 0.10 s gedrückt; die
+        Konfiguration nennt selbst 0.22 s "unspielbar".
+
+        Links und rechts steht deshalb kein schwarzer Balken, sondern die
+        Wand des aktuellen Gebiets, unscharf und abgedunkelt (#app::before).
+        Der Rahmen färbt sich damit mit — grün, Eis, Lava.
+      -->
+      <div id="buehne">
       <!-- WebGL-Canvas wird hier hineingehängt -->
       <div id="viewport"></div>
 
@@ -312,6 +337,7 @@
         <!-- Virtueller Joystick wird hier eingehängt -->
         <div id="touch-layer"></div>
       </div>
+      </div><!-- /#buehne -->
     </div>
 
     <script type="module" src="/src/main.js"></script>

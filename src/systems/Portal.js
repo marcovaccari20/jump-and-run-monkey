@@ -31,6 +31,27 @@
  * beide Portale hochladen kann, statt zwei getrennte zu pflegen.
  */
 
+/* ===================================================================== *
+ *  ZAHLEN, DIE DAS GAMEMONETIZE-SDK VORGIBT
+ *
+ *  Beide stammen NICHT aus einer Doku, sondern aus dem ausgelieferten
+ *  Skript selbst: api.gamemonetize.com/sdk.js ist verschleiert, seine
+ *  Zeichenkettentabelle hex-kodiert. Entschluesselt steht dort woertlich
+ *  `preroll:!0, midroll:180000` — beim Laden laeuft ein Spot, und
+ *  zwischen zwei Spots liegen mindestens 180 Sekunden.
+ * ===================================================================== */
+
+/** Mindestabstand zwischen zwei Spots, vom Portal erzwungen. */
+const SPERRE_MS = 180000;
+
+/* Ab dieser Dauer gilt ein Spot als WIRKLICH gelaufen.
+ *
+ * Zwischen SDK_GAME_PAUSE und SDK_GAME_START liegt bei einem echten Spot
+ * die Laufzeit des Videos. Kommt gar keiner, folgt SDK_GAME_START fast
+ * unmittelbar. 2 Sekunden trennen beides sicher: kuerzer ist kein Spot,
+ * und der kuerzeste ausgelieferte liegt bei 5 Sekunden. */
+const MIN_SPOTDAUER = 2000;
+
 /** Lädt ein Skript und gibt auf, wenn es zu lange dauert. */
 function skriptLaden(url, timeoutMs) {
   return new Promise((resolve, reject) => {
@@ -269,6 +290,15 @@ export class GameMonetize {
     this.cfg = cfg;
     this.bereit = false;
     this._offen = null;
+    /** Zeitpunkt von SDK_GAME_PAUSE — siehe _ereignis. 0 = kein Spot offen. */
+    this._spotBegann = 0;
+    /* Wann zuletzt ein Spot ANGEFORDERT wurde.
+     *
+     * Beim Laden zeigt das Portal selbst schon einen (im SDK steht
+     * `preroll: !0`). Der Zähler startet deshalb NICHT bei null, sondern
+     * jetzt — sonst fragt das Spiel Sekunden später zum zweiten Mal und
+     * bekommt vom SDK ein stilles Nein. */
+    this._letzterSpot = Date.now();
   }
 
   async init() {
@@ -290,13 +320,69 @@ export class GameMonetize {
     }
   }
 
+  /**
+   * DIESES SDK KENNT KEINE BELOHNTE WERBUNG.
+   *
+   * Hier stand eine Abfrage auf `SDK_REWARDED_WATCH_COMPLETE`. Dieses
+   * Ereignis gibt es nicht — nachgewiesen, nicht vermutet: die
+   * Zeichenkettentabelle von api.gamemonetize.com/sdk.js ist verschleiert
+   * (hex-kodiert), entschlüsselt enthält sie genau
+   *
+   *   SDK_READY, SDK_ERROR, SDK_BLOCKED, SDK_GAME_DATA_READY,
+   *   SDK_GAME_START, SDK_GAME_PAUSE, SDK_SHOW_BANNER, SDK_IMPLEMENTED,
+   *   SDK_WHITELABEL, SDK_TESTING_ENABLED, SDK_OPTIONS
+   *
+   * und das Wort "reward" KEIN EINZIGES MAL. Das SDK kann showBanner(),
+   * pauseGame(), resumeGame() — mehr nicht.
+   *
+   * Die Folge war im Spiel sichtbar, aber nicht als Fehler erkennbar: der
+   * Spot lief, danach kam `SDK_GAME_START`, der alte Code meldete
+   * "abgebrochen", und der Spieler landete ohne Weiterleben im
+   * Game-Over-Screen. Genau die Beschwerde "ich drücke Werbung ansehen und es
+   * passiert nichts".
+   *
+   * WAS STATTDESSEN GEZÄHLT WIRD: das Paar aus Anhalten und Weiterlaufen.
+   * `SDK_GAME_PAUSE` heisst "ein Spot beginnt", `SDK_GAME_START` heisst "er
+   * ist vorbei". Kam beides und lag genug Zeit dazwischen, hat der Spieler
+   * wirklich etwas gesehen — dann ist die Belohnung verdient.
+   *
+   * DIE ZEITSCHWELLE IST DER KERN, nicht Feinschliff. Ohne sie wäre jedes
+   * sofortige `SDK_GAME_START` ein Freifahrtschein — und genau das schickt
+   * das SDK, wenn wegen der Dreiminutensperre gar kein Spot kommt. Das
+   * Weiterleben gäbe es dann geschenkt, und zwar immer.
+   */
   _ereignis(event) {
     const name = event?.name;
+
+    /* NUR ZÄHLEN, SOLANGE WIR SELBST GEFRAGT HABEN.
+     *
+     * Am lebenden SDK nachgesehen: `onPauseGame()` und `onResumeGame()` sind
+     * die öffentlichen Methoden — und sie FEUERN SDK_GAME_PAUSE bzw.
+     * SDK_GAME_START selbst. Unsere eigenen Spielmeldungen erzeugen also
+     * exakt die Ereignisse, an denen hier ein Spot erkannt wird.
+     *
+     * Ohne diese Schranke wäre die Kette: Spieler stirbt -> spielStop()
+     * -> SDK_GAME_PAUSE -> `_spotBegann` gesetzt. Er liest in Ruhe den
+     * Game-Over-Schirm, drückt nach zehn Sekunden "Werbung ansehen", es
+     * kommt gar kein Spot, das SDK meldet sofort SDK_GAME_START — und die
+     * Zeitprüfung sähe zehn Sekunden und schenkte ihm das Weiterleben.
+     * Jedes Mal. */
     if (!this._offen) return;
-    if (name === 'SDK_REWARDED_WATCH_COMPLETE') this._offen('belohnt');
-    // Der Spot ist zu Ende — belohnt oder nicht, das Spiel geht weiter.
-    else if (name === 'SDK_GAME_START') this._offen('abgebrochen');
-    else if (name === 'SDK_ERROR') this._offen('fehler');
+
+    if (name === 'SDK_GAME_PAUSE') {
+      this._spotBegann = Date.now();
+      return;
+    }
+
+    if (name === 'SDK_GAME_START') {
+      const gelaufen =
+        this._spotBegann > 0 && Date.now() - this._spotBegann >= MIN_SPOTDAUER;
+      this._spotBegann = 0;
+      this._offen(gelaufen ? 'belohnt' : 'fehler');
+    } else if (name === 'SDK_ERROR' || name === 'SDK_BLOCKED') {
+      this._spotBegann = 0;
+      this._offen('fehler');
+    }
   }
 
   /* GameMonetize hat KEINEN Spielerspeicher.
@@ -310,30 +396,76 @@ export class GameMonetize {
 
   ladenStart() {}
   ladenFertig() {}
+
+  /* DAS SDK WILL WISSEN, WANN GESPIELT WIRD — und es hat Methoden dafür.
+   *
+   * Hier stand `window.sdk?.showBanner && null;`, also eine Zeile, die nichts
+   * tut, und darunter ein leeres spielStop(). Ohne diese Meldungen legt das
+   * Portal seine eigenen Spots blind, und die Einreichung prüft, ob beides
+   * kommt.
+   *
+   * DIE METHODEN HEISSEN `onPauseGame` UND `onResumeGame`, nicht
+   * `pauseGame`/`resumeGame`. Beides steht in der Zeichenkettentabelle, aber
+   * am lebenden Objekt existieren nur die `on`-Fassungen — die anderen sind
+   * SDK-intern. Am echten `window.sdk` nachgesehen:
+   *
+   *   showBanner, onPauseGame, onResumeGame, play, customLog, openConsole
+   *
+   * Ein Aufruf von `pauseGame()` wäre stillschweigend wirkungslos gewesen.
+   *
+   * WÄHREND EINES SPOTS WIRD NICHTS GEMELDET. Beide Methoden feuern ihr
+   * eigenes Ereignis (SDK_GAME_PAUSE bzw. SDK_GAME_START), und genau die
+   * wertet `_ereignis` aus. Eine Meldung mitten in einer laufenden
+   * Werbeanfrage würde diese sofort beenden. */
   spielStart() {
+    if (this._offen) return;
     try {
-      window.sdk?.showBanner && null; // Banner nur über werbung(), nicht hier
+      window.sdk?.onResumeGame?.('spiel laeuft', 'success');
     } catch {
-      /* egal */
+      /* Das SDK darf uns nicht mit ins Verderben reissen. */
     }
   }
-  spielStop() {}
 
+  spielStop() {
+    if (this._offen) return;
+    try {
+      window.sdk?.onPauseGame?.('spiel pausiert', 'success');
+    } catch {
+      /* dito */
+    }
+  }
+
+  /**
+   * Gibt es überhaupt einen Spot zu holen?
+   *
+   * DIE SPERRE DES PORTALS WIRD MITGEFÜHRT. Im SDK steht `midroll: 180000` —
+   * drei Minuten Mindestabstand zwischen zwei Spots, vom Portal erzwungen.
+   * Fragt man früher, passiert schlicht NICHTS: kein Spot, keine Meldung,
+   * kein Fehler. Für den Spieler sah das aus wie ein kaputter Knopf.
+   *
+   * Mit dieser Abfrage verschwindet der Knopf "Werbung ansehen" stattdessen
+   * (Game._continueAvailable fragt ads.isReady()), solange die Sperre läuft.
+   * Ein Angebot, das nicht eingelöst werden kann, ist schlimmer als keines.
+   */
   hatWerbung() {
-    return this.bereit;
+    return this.bereit && Date.now() - this._letzterSpot >= SPERRE_MS;
   }
 
   werbung() {
-    if (!this.bereit) return Promise.resolve('fehler');
+    if (!this.hatWerbung()) return Promise.resolve('fehler');
+    this._letzterSpot = Date.now();
     return new Promise((resolve) => {
       let erledigt = false;
       const einmal = (wert) => {
         if (erledigt) return;
         erledigt = true;
         this._offen = null;
+        this._spotBegann = 0;
         clearTimeout(uhr);
         resolve(wert);
       };
+      // Sauber anfangen: was vorher an Pausen kam, gehört nicht zu DIESEM Spot.
+      this._spotBegann = 0;
       this._offen = einmal;
 
       // Sicherheitsnetz: antwortet das SDK gar nicht, hängt sonst der
@@ -435,8 +567,16 @@ export class AutoPortal {
   hatWerbung() {
     return this.inner.hatWerbung();
   }
-  werbung() {
-    return this.inner.werbung();
+  /* DIE WERBEART MUSS DURCH.
+   *
+   * Hier stand `werbung() { return this.inner.werbung(); }` — ohne
+   * Parameter. Game meldet aber ausdruecklich 'midgame' fuer den
+   * Zwischenspot; verschluckt an dieser Stelle, kam beim Portal der
+   * Standardwert 'rewarded' an. Das ist eine Falschangabe gegenueber dem
+   * Portal, das beide verschieden abrechnet — genau davor warnt der
+   * Kommentar bei CrazyGames.werbung(). */
+  werbung(art) {
+    return this.inner.werbung(art);
   }
   abbrechen() {
     this.inner.abbrechen();

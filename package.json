@@ -21,7 +21,8 @@
     "video:frames2": "node scripts/video-frames.mjs",
     "prep:sturz": "node scripts/prepare-sturzflug.mjs",
     "prep:weiss": "node scripts/prepare-weiss.mjs",
-    "pruef:bilder": "node scripts/pruef-bilder.mjs"
+    "pruef:bilder": "node scripts/pruef-bilder.mjs",
+    "pruef:werbung": "node scripts/pruef-werbung.mjs"
   },
   "type": "module",
   "dependencies": {

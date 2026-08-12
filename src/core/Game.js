@@ -206,12 +206,34 @@ export class Game {
 
   _buildRenderer() {
     const { render } = this.cfg;
+
+    /* Das Hoechstverhaeltnis der Buehne an das Stylesheet weiterreichen.
+     *
+     * Die Zahl steht in CONFIG.render.maxSeitenverhaeltnis und NUR dort; CSS
+     * rechnet die Saeulenbreite daraus (min(100vw, 100dvh * verhaeltnis)).
+     * Zwei Quellen fuer dieselbe Zahl waeren eine sichere Stelle, an der
+     * spaeter jemand nur eine von beiden aendert. */
+    document.documentElement.style.setProperty(
+      '--buehne-verhaeltnis',
+      String(render.maxSeitenverhaeltnis),
+    );
     this.renderer = new WebGLRenderer({
       antialias: render.antialias,
       powerPreference: 'high-performance',
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, render.maxPixelRatio));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    /* AN DER BÜHNE MESSEN, NICHT AM FENSTER.
+     *
+     * Seit die Leinwand auf breiten Schirmen als schmale Säule läuft (siehe
+     * #buehne in style.css), sind Fenster und Spielfläche zwei verschiedene
+     * Dinge. Bliebe hier window.innerWidth stehen, zeichnete der Renderer in
+     * Fensterbreite, während das Element nur einen Bruchteil davon einnimmt —
+     * das Bild wäre quer gestaucht.
+     *
+     * Es gibt genau drei solcher Stellen (hier, _buildScene, _onResize), und
+     * alle drei holen sich das Mass aus derselben Methode. */
+    const { breite, hoehe } = this._buehnenMass();
+    this.renderer.setSize(breite, hoehe);
     this.renderer.setClearColor(render.clearColor, 1);
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -223,9 +245,10 @@ export class Game {
     this.scene = new Scene();
 
     const cam = render.camera;
+    const mass = this._buehnenMass();
     this.camera = new PerspectiveCamera(
       cam.fov,
-      window.innerWidth / window.innerHeight,
+      mass.breite / mass.hoehe,
       cam.near,
       cam.far,
     );
@@ -563,6 +586,17 @@ export class Game {
     this._wireStates();
 
     window.addEventListener('resize', this._onResize);
+
+    /* DIE BÜHNE SELBST BEOBACHTEN, nicht nur das Fenster.
+     *
+     * Ihre Breite hängt an `100dvh` — und die ändert sich am Handy, wenn die
+     * Adressleiste ein- oder ausfährt, ohne dass ein `resize` kommt. Ohne
+     * diesen Beobachter bliebe die Leinwand dann in der alten Breite stehen
+     * und das Bild wäre quer verzerrt, bis man das Gerät dreht. */
+    if (typeof ResizeObserver === 'function' && this.viewport) {
+      this._buehnenWacht = new ResizeObserver(() => this._onResize());
+      this._buehnenWacht.observe(this.viewport);
+    }
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         // Im Hintergrund automatisch pausieren — sonst läuft man beim
@@ -2483,12 +2517,32 @@ export class Game {
     );
   }
 
+  /**
+   * Die Masse der BÜHNE — nicht die des Fensters.
+   *
+   * Auf breiten Schirmen läuft das Spiel als mittige Säule (siehe #buehne in
+   * style.css und die Begründung in index.html). Fenster und Spielfläche sind
+   * damit zwei verschiedene Dinge, und alle drei Stellen, die eine Grösse
+   * brauchen — Renderer, Kamera, Resize —, holen sie hier.
+   *
+   * Gerechnet wird NICHT selbst, sondern beim Element abgelesen: die Breite
+   * steht in CSS (`min(100vw, 100dvh * verhaeltnis)`), und CSS weiss besser,
+   * wie hoch das Fenster nach Abzug der Browserleisten wirklich ist. Bleibt
+   * das Element noch ungelayoutet (0), fällt es aufs Fenster zurück.
+   *
+   * Mindestens 1: eine 0 würde camera.aspect auf NaN setzen, und danach ist
+   * die ganze Szene unsichtbar — auch nachdem das Fenster wieder da ist.
+   */
+  _buehnenMass() {
+    const el = this.viewport;
+    return {
+      breite: Math.max(1, el?.clientWidth || window.innerWidth),
+      hoehe: Math.max(1, el?.clientHeight || window.innerHeight),
+    };
+  }
+
   _onResize() {
-    // Mindestens 1px: ein verstecktes bzw. noch nicht gelayoutetes Fenster
-    // liefert 0 und würde camera.aspect auf NaN setzen — danach ist die
-    // gesamte Szene unsichtbar, auch nachdem das Fenster wieder da ist.
-    const w = Math.max(1, window.innerWidth);
-    const h = Math.max(1, window.innerHeight);
+    const { breite: w, hoehe: h } = this._buehnenMass();
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     /* Auch hier: die beiden Messungen unten rechnen mit der WELTMATRIX, und

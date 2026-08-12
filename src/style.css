@@ -61,6 +61,77 @@ body {
 #app {
   position: fixed;
   inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--green-deep, #06210f);
+}
+
+/* --------------------------------------------------------------- Rahmen
+ *
+ * Die Fläche NEBEN der Bühne. Sie zeigt die Wand des aktuellen Gebiets —
+ * unscharf, dunkel und leicht vergrössert. Damit liest sich der Rand als
+ * Tiefenunschärfe und nicht als schwarzer Balken, und er wechselt die Farbe
+ * mit dem Gebiet.
+ *
+ * Das Bild kommt über `--wand-bild`; PlantWall setzt die Variable bei jedem
+ * Stufenwechsel. Fehlt sie (Ladephase), bleibt der einfarbige Untergrund
+ * stehen — es blitzt nichts auf. */
+#app::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--wand-bild, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(28px) brightness(0.32) saturate(0.85);
+  transform: scale(1.12);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Vignette darüber: zieht den Blick zur Bühne und verdeckt die harte Kante,
+ * die die Unschärfe am Bildrand hinterlässt. */
+#app::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0) 35%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------------- Bühne
+ *
+ * Breite = min(Fensterbreite, Fensterhöhe x Höchstverhältnis). Auf dem Handy
+ * greift der Deckel nie (dort ist das Fenster ohnehin schmaler); am PC macht
+ * er aus dem breiten Bild eine Säule, in der die drei Bahnen die ganze
+ * Breite ausfüllen.
+ *
+ * `--buehne-verhaeltnis` setzt Game aus CONFIG.render.maxSeitenverhaeltnis —
+ * die Zahl steht damit genau einmal im Projekt.
+ *
+ * `container-type: size` ist KEIN Beiwerk: neun Stellen in dieser Datei
+ * rechnen in vw/vh, und vw bleibt die FENSTERbreite. Ohne Container-Einheiten
+ * bekäme eine 608 px breite Säule auf einem 1920er Schirm eine 154 px grosse
+ * Überschrift (aus clamp(2.1rem, 8cqw, 4.2rem)). Die betroffenen Stellen
+ * rechnen deshalb in cqw/cqh. */
+#buehne {
+  position: relative;
+  z-index: 2;
+  height: 100vh;
+  height: 100dvh;
+  width: min(100vw, calc(100vh * var(--buehne-verhaeltnis, 0.5625)));
+  width: min(100vw, calc(100dvh * var(--buehne-verhaeltnis, 0.5625)));
+  overflow: hidden;
+  container-type: size;
+  /* Weicher Schlagschatten statt harter Kante — die Säule wirkt dadurch wie
+   * ein beleuchteter Ausschnitt und nicht wie ein beschnittenes Bild. */
+  box-shadow: 0 0 70px 12px rgba(0, 0, 0, 0.55);
 }
 
 #viewport,
@@ -379,7 +450,7 @@ body {
 
 .logo {
   margin: 0;
-  font-size: clamp(2.1rem, 8vw, 4.2rem);
+  font-size: clamp(2.1rem, 8cqw, 4.2rem);
   font-weight: 900;
   letter-spacing: 0.06em;
   line-height: 0.94;
@@ -406,7 +477,7 @@ body {
 
 .headline {
   margin: 0;
-  font-size: clamp(1.8rem, 6vw, 3rem);
+  font-size: clamp(1.8rem, 6cqw, 3rem);
   font-weight: 900;
   letter-spacing: 0.04em;
   color: var(--leaf-bright);
@@ -634,6 +705,16 @@ body {
   color: var(--text-dim);
   font-style: italic;
   text-align: left;
+
+  /* ÜBER ALLE DREI SPALTEN.
+   *
+   * Ein Listeneintrag ist ein Raster aus `1.9rem 1fr auto` (Rang, Name,
+   * Höhe). Der Platzhalter für die leere Liste besteht aber nur aus EINEM
+   * Element und landete damit in der ersten Spalte — 30 Bildpunkte breit.
+   * Der Satz "Noch keine Einträge — sei der Erste." brach dort Wort für
+   * Wort um und sah aus wie ein Anzeigefehler, ausgerechnet beim allerersten
+   * Blick ins Spiel. */
+  grid-column: 1 / -1;
 }
 
 /* ------------------------------------------------------------------- Hints */
@@ -694,7 +775,7 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
 }
 
 .hud__score-value {
-  font-size: clamp(1.6rem, 5vw, 2.4rem);
+  font-size: clamp(1.6rem, 5cqw, 2.4rem);
   font-weight: 900;
   line-height: 1;
   color: var(--leaf-bright);
@@ -803,7 +884,7 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
 
 .hud__toast {
   align-self: center;
-  margin-top: 14vh;
+  margin-top: 14cqh;
   padding: 10px 22px;
   border-radius: var(--radius);
   background: rgba(8, 24, 12, 0.78);
@@ -870,7 +951,7 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
 .bosswarnung img {
   display: block;
   /* Am Handy hochkant ist die Breite knapp — deshalb beides begrenzen. */
-  width: min(46vw, 240px);
+  width: min(46cqw, 240px);
   height: auto;
   filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.55));
 }
@@ -923,7 +1004,7 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
 
 .result {
   margin: 0;
-  font-size: clamp(2.6rem, 11vw, 4.6rem);
+  font-size: clamp(2.6rem, 11cqw, 4.6rem);
   font-weight: 900;
   line-height: 1;
   color: var(--leaf-bright);
@@ -990,7 +1071,7 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  width: min(320px, 76vw);
+  width: min(320px, 76cqw);
 }
 
 .loader__bar {
@@ -1198,7 +1279,7 @@ body.is-coarse .joystick {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  width: min(78vw, 22rem);
+  width: min(78cqw, 22rem);
   aspect-ratio: 4 / 3;
   padding: 16px;
   border: 2px dashed rgba(255, 255, 255, 0.22);
@@ -1208,7 +1289,7 @@ body.is-coarse .joystick {
 
 .ad-box__count {
   margin: 0;
-  font-size: clamp(2.4rem, 10vw, 3.8rem);
+  font-size: clamp(2.4rem, 10cqw, 3.8rem);
   font-weight: 900;
   line-height: 1;
   color: var(--banana);
