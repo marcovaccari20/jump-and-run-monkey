@@ -63,6 +63,21 @@ const LO = 7;
 const HI = 22;
 const SPERRE = 0.3;
 
+/* WIE VIELE PIXEL DIE KANTE EINGEZOGEN WIRD.
+ *
+ * Gemessen an den fertigen Bildern, Helligkeit nach Tiefe vom Rand:
+ *
+ *     Tiefe        1     2     3     4
+ *     Wurf       233   222   177   148     <- heller Saum
+ *     Klettern   108   101   100   100     <- sauber
+ *
+ * Der Saum reicht also drei Pixel tief, bevor die Helligkeit auf den Wert
+ * des Fells fällt. Mit einer einzigen Erosionsrunde blieb er sichtbar; drei
+ * nehmen ihn weg. Bei 706 Pixeln Figurhöhe sind drei Pixel unter einem
+ * halben Prozent — man sieht die Figur nicht kleiner werden, aber den
+ * weissen Umriss ist man los. */
+const EROSION = 3;
+
 function finden(datei) {
   for (const o of QUELLEN) {
     const p = join(o, datei);
@@ -131,6 +146,84 @@ async function freistellen(datei) {
     if (y < h - 1) stapel[sp++] = i + w;
   }
 
+  /* KANTE EINEN PIXEL EINZIEHEN, DANN WEICH AUSLAUFEN LASSEN.
+   *
+   * Das Herausrechnen unten greift nur bei TEILWEISE durchsichtigen Pixeln.
+   * Die äusserste Pixelreihe bekommt aber schon volle Deckkraft, obwohl sie
+   * in Wirklichkeit halb Hintergrund ist: der Alphakeil (7..22) ist steil,
+   * und ein halb bedecktes Pixel liegt farblich längst über der oberen
+   * Schwelle. Diese Reihe behält damit ihr Weiss — vor der grünen Wand ein
+   * heller Umriss um den ganzen Affen.
+   *
+   * Erosion nimmt genau diese Reihe weg (Minimum über die vier Nachbarn),
+   * die anschliessende Glättung gibt der neuen Kante einen weichen Verlauf,
+   * damit sie nicht ausgestanzt wirkt. Dasselbe Vorgehen wie bei den
+   * Charakterbildern (scripts/prepare-characters.mjs). */
+  let erodiert = alpha;
+  for (let runde = 0; runde < EROSION; runde++) {
+    const naechste = new Float32Array(n);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        let m = erodiert[i];
+        if (x > 0) m = Math.min(m, erodiert[i - 1]);
+        if (x < w - 1) m = Math.min(m, erodiert[i + 1]);
+        if (y > 0) m = Math.min(m, erodiert[i - w]);
+        if (y < h - 1) m = Math.min(m, erodiert[i + w]);
+        naechste[i] = m;
+      }
+    }
+    erodiert = naechste;
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      let s = erodiert[i] * 4;
+      let z = 4;
+      if (x > 0) { s += erodiert[i - 1]; z++; }
+      if (x < w - 1) { s += erodiert[i + 1]; z++; }
+      if (y > 0) { s += erodiert[i - w]; z++; }
+      if (y < h - 1) { s += erodiert[i + w]; z++; }
+      alpha[i] = s / z;
+    }
+  }
+
+  /* EINGESCHLOSSENE HINTERGRUNDFLÄCHEN.
+   *
+   * Die Flutung erreicht nur, was vom Bildrand aus zusammenhängt. Hält der
+   * Affe den Arm vom Körper weg, entsteht dazwischen ein LOCH, das von
+   * aussen nicht erreichbar ist — es blieb deckend weiss stehen und war vor
+   * der grünen Wand als heller Fleck mitten in der Figur zu sehen.
+   *
+   * Nach Grösse unterschieden: ein echtes Loch ist gross, eines aus
+   * Bildrauschen klein und soll zugehen. */
+  const MIN_LUECKE = Math.max(300, Math.round(n * 0.0004));
+  const gesehen = new Uint8Array(n);
+  for (let start = 0; start < n; start++) {
+    if (gesehen[start] || hg[start] || alpha[start] >= SPERRE) continue;
+    const gruppe = [];
+    const st = [start];
+    gesehen[start] = 1;
+    while (st.length) {
+      const i = st.pop();
+      gruppe.push(i);
+      const x = i % w;
+      const y = (i / w) | 0;
+      const nb = [];
+      if (x > 0) nb.push(i - 1);
+      if (x < w - 1) nb.push(i + 1);
+      if (y > 0) nb.push(i - w);
+      if (y < h - 1) nb.push(i + w);
+      for (const j of nb) {
+        if (!gesehen[j] && !hg[j] && alpha[j] < SPERRE) {
+          gesehen[j] = 1;
+          st.push(j);
+        }
+      }
+    }
+    if (gruppe.length >= MIN_LUECKE) for (const i of gruppe) hg[i] = 1;
+  }
+
   const rgba = Buffer.alloc(n * 4);
   let minX = w;
   let maxX = -1;
@@ -140,9 +233,26 @@ async function freistellen(datei) {
     const p = i * ch;
     const q = i * 4;
     const a = hg[i] ? alpha[i] : 1;
-    rgba[q] = data[p];
-    rgba[q + 1] = data[p + 1];
-    rgba[q + 2] = data[p + 2];
+
+    /* DAS WEISS AUS DEM RAND HERAUSRECHNEN.
+     *
+     * Ein halbdurchsichtiges Randpixel ist eine Mischung aus Fell und
+     * Hintergrund:  gesehen = a * fell + (1-a) * weiss.  Speichert man
+     * `gesehen` unverändert, bleibt der Weissanteil im Pixel stehen — vor
+     * der grünen Wand sah man einen hellen Saum um den ganzen Affen.
+     *
+     * Aufgelöst: fell = (gesehen - (1-a) * weiss) / a. Unter einem Zehntel
+     * Deckkraft wird nicht gerechnet, dort teilt man durch fast null. */
+    if (a > 0.1 && a < 0.98) {
+      for (let k = 0; k < 3; k++) {
+        const rein = (data[p + k] - (1 - a) * bg[k]) / a;
+        rgba[q + k] = Math.max(0, Math.min(255, Math.round(rein)));
+      }
+    } else {
+      rgba[q] = data[p];
+      rgba[q + 1] = data[p + 1];
+      rgba[q + 2] = data[p + 2];
+    }
     rgba[q + 3] = Math.round(a * 255);
     if (a > 0.1) {
       const x = i % w;

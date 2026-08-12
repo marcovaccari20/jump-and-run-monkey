@@ -84,9 +84,30 @@ const BOSSE = [
    * zur Wurfanimation des SPIELERS verarbeitet. */
 ];
 
-/* Schwellen des Alphakeils, in Helligkeitsstufen Abstand zum Hintergrund. */
-const LO = 7;
-const HI = 22;
+/* Schwellen des Alphakeils, in Helligkeitsstufen Abstand zum Hintergrund.
+ *
+ * WAREN 7 UND 22 — VIEL ZU NIEDRIG, und das sah man im Spiel.
+ *
+ * Der Gorilla wirft im Video einen weichen SCHATTEN auf den grauen
+ * Hintergrund. Der ist dunkler als der Hintergrund, lag also über der alten
+ * Schwelle und wurde als Motiv behandelt: neben dem Arm stand ein grauer
+ * Streifen im Bild, in mehreren Bildern der Folge, und er wanderte mit.
+ *
+ * Gemessen an Bild 0 (Hintergrund 123), nur graue Pixel, Abstand zum
+ * Hintergrund:
+ *
+ *     Körper    Helligkeit  5..58    ->  Abstand >= 65
+ *     Schatten  Helligkeit 65..149   ->  Abstand <= 58
+ *
+ * Dazwischen liegt ein Tal: die Abstände 10 bis 50 machen zusammen nur rund
+ * 1.8 % aller grauen Pixel aus, ab 55 steigt es steil an. Die Schwelle
+ * gehört genau dorthin. 42 bis 64 lässt dem Schatten keinen Platz mehr und
+ * nimmt vom Fell nichts weg, was man sähe.
+ *
+ * NEBENWIRKUNG, DIE ERWÜNSCHT IST: der helle Ast am oberen Rand fällt damit
+ * ebenfalls weg. Er sollte ohnehin über dem Bildrand liegen. */
+const LO = 42;
+const HI = 64;
 /* Ab diesem Alpha gilt ein Pixel beim Fluten als undurchlässig. */
 const SPERRE = 0.3;
 
@@ -194,6 +215,45 @@ async function freistellen(datei) {
     if (y < h - 1) stapel[sp++] = i + w;
   }
 
+  /* EINGESCHLOSSENE HINTERGRUNDFLÄCHEN.
+   *
+   * Die Flutung oben erreicht nur, was vom Bildrand aus zusammenhängt. Hält
+   * der Gorilla den Arm über den Kopf (Bild 22, das Ausholen), entsteht
+   * zwischen Arm, Kopf und Körper ein LOCH, das vom Rand aus nicht
+   * erreichbar ist. Es bleibt dadurch voll deckend stehen — im Spiel ein
+   * heller grauer Fleck mitten in der Figur, den man vor der grünen Wand
+   * sofort sieht.
+   *
+   * Unterschieden wird nach Grösse: ein echtes Loch ist gross, ein Loch aus
+   * Bildrauschen klein und soll zugehen. Dieselbe Rechnung wie in
+   * scripts/prepare-boss.mjs — sie fehlte hier schlicht. */
+  const MIN_LUECKE = Math.max(300, Math.round(n * 0.0004));
+  const gesehen = new Uint8Array(n);
+  for (let start = 0; start < n; start++) {
+    if (gesehen[start] || hg[start] || alpha[start] >= SPERRE) continue;
+    const gruppe = [];
+    const st = [start];
+    gesehen[start] = 1;
+    while (st.length) {
+      const i = st.pop();
+      gruppe.push(i);
+      const x = i % w;
+      const y = (i / w) | 0;
+      const nb = [];
+      if (x > 0) nb.push(i - 1);
+      if (x < w - 1) nb.push(i + 1);
+      if (y > 0) nb.push(i - w);
+      if (y < h - 1) nb.push(i + w);
+      for (const j of nb) {
+        if (!gesehen[j] && !hg[j] && alpha[j] < SPERRE) {
+          gesehen[j] = 1;
+          st.push(j);
+        }
+      }
+    }
+    if (gruppe.length >= MIN_LUECKE) for (const i of gruppe) hg[i] = 1;
+  }
+
   const rgba = Buffer.alloc(n * 4);
   let minX = w;
   let maxX = -1;
@@ -203,9 +263,28 @@ async function freistellen(datei) {
     const p = i * ch;
     const q = i * 4;
     const a = hg[i] ? alpha[i] : 1;
-    rgba[q] = data[p];
-    rgba[q + 1] = data[p + 1];
-    rgba[q + 2] = data[p + 2];
+
+    /* DIE HINTERGRUNDFARBE AUS DEM RAND HERAUSRECHNEN.
+     *
+     * Ein halbdurchsichtiges Randpixel ist im Video eine MISCHUNG aus Fell
+     * und Hintergrund:  gesehen = a * fell + (1-a) * hintergrund.
+     * Speichert man `gesehen` unverändert und setzt nur das Alpha, bleibt
+     * der Hintergrundanteil im Pixel stehen — vor einer grünen Wand sieht
+     * man dann einen grauen Saum um die Figur.
+     *
+     * Nach `fell` aufgelöst:  fell = (gesehen - (1-a) * hintergrund) / a.
+     * Unter einem Zehntel Deckkraft wird nicht mehr gerechnet: dort teilt
+     * man durch fast null und verstärkt nur noch das Rauschen. */
+    if (a > 0.1 && a < 0.98) {
+      for (let k = 0; k < 3; k++) {
+        const rein = (data[p + k] - (1 - a) * bg[k]) / a;
+        rgba[q + k] = Math.max(0, Math.min(255, Math.round(rein)));
+      }
+    } else {
+      rgba[q] = data[p];
+      rgba[q + 1] = data[p + 1];
+      rgba[q + 2] = data[p + 2];
+    }
     rgba[q + 3] = Math.round(a * 255);
     if (a > 0.1) {
       const x = i % w;

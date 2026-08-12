@@ -1300,6 +1300,32 @@ export const CONFIG = {
        * endlos weiter. Ohne ihn wäre die Musik nach einer halben Stunde
        * unhörbar schnell. */
       tempoProGebiet: 0.032,
+
+      /* ─── BOSSMUSIK ───────────────────────────────────────────────────
+       *
+       * Dieser Block war mit dem alten Bosskampf entfernt worden, während
+       * Musik.js seine drei Methoden dafür behielt (`bossAn`, `bossAus`,
+       * `_bossSchleife`) — sie lesen alle `cfg.boss`.
+       *
+       * Solange `Klang.boss()` ein stiller No-op war, fiel das nicht auf.
+       * Seit die Methode wieder angeschlossen ist, STÜRZT das Spiel beim
+       * Kampfende ab: `bossAus` greift auf `b.fade` eines undefinierten
+       * Objekts zu. Gefunden beim Aufnehmen des Kampfes — im ersten Test
+       * war der Ton nie freigeschaltet, `bereit` also falsch, und die
+       * Methode stieg vorher aus. Genau die Art Fehler, die nur auftritt,
+       * wenn wirklich jemand spielt.
+       *
+       * Die Werte sind die von damals; public/musik/boss.ogg und .mp3
+       * liegen unverändert auf der Platte. */
+      boss: {
+        datei: 'boss', // public/musik/boss.ogg bzw. .mp3
+        pegel: 0.62, // etwas lauter als die Gebietsmusik (0.55)
+        schleifeVon: 10.5,
+        schleifeBis: 45.0,
+        // Ein- und Ausblenden beim Wechsel von und zur Gebietsmusik.
+        fade: 1.2,
+      },
+
       tempoMax: 1.35,
       /* Wie lange das neue Tempo braucht (Sekunden). Ein Sprung mitten im
        * Takt ist deutlich hörbar; über die Wechselblende hinweg fällt die
