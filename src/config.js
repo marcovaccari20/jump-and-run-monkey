@@ -1633,9 +1633,14 @@ export const CONFIG = {
      * kann niemand vergessen, sie vor dem Hochladen zurückzustellen. */
     provider: import.meta.env?.VITE_ZIEL === 'playstore' ? 'none' : 'auto',
 
-    /* Von GameMonetize beim Einreichen vergeben. Ohne sie wird das SDK gar
-     * nicht erst geladen — es lädt zwar, liefert aber nie einen Spot. */
-    gameMonetizeId: '',
+    /* Von GameMonetize beim Anlegen des Spiels vergeben.
+     *
+     * SIE MUSS DRIN STEHEN, BEVOR MAN EINREICHT. Ist sie leer, überspringt
+     * Portal.js die Anbindung komplett (`if (!this.cfg.gameMonetizeId)`) und
+     * `api.gamemonetize.com/sdk.js` wird nie angefordert. Das Portal prüft
+     * beim Einreichen aber, ob sein SDK eingebaut ist — genau daran ist der
+     * erste Upload gescheitert. */
+    gameMonetizeId: '8xm1lwmqdvr54tcjyi0t91qn87yzipz7',
 
     // Wie lange auf ein fremdes SDK gewartet wird, bevor ohne es gestartet
     // wird. Lieber ohne Werbung spielen als vor einem schwarzen Bild warten.
