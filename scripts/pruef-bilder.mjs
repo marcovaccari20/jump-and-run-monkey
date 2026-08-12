@@ -77,6 +77,25 @@ if (CONFIG.goldbanane?.framePath) {
   pruefe('Goldfell', folge(CONFIG.goldbanane.framePath, CONFIG.goldbanane.frameAnzahl));
 }
 
+/* --- Bosskampf ---------------------------------------------------------- *
+ *
+ * Dieselbe Falle wie beim Goldfell, nur mit doppelt so vielen Bildern: die
+ * beiden Bildfolgen kommen aus Videos (scripts/prepare-bosskampf.mjs), und
+ * wer dort BILDER von 30 auf etwas anderes stellt, ohne die Konfiguration
+ * nachzuziehen, bekommt einen Boss, der stillsteht oder ruckelt — ohne eine
+ * einzige Fehlermeldung.
+ */
+if (CONFIG.boss?.arten) {
+  for (const art of CONFIG.boss.arten) {
+    pruefe(`Boss ${art.id}`, folge(art.framePath, art.frameAnzahl));
+  }
+  // Die Wurfbildfolge des Affen — sie lag lange ungenutzt herum und wird
+  // seit dem neuen Bosskampf wieder wirklich abgespielt.
+  if (CONFIG.boss.wurf?.framePath) {
+    pruefe('Affe Wurf', folge(CONFIG.boss.wurf.framePath, CONFIG.boss.wurf.frameAnzahl));
+  }
+}
+
 /* --- Zu VIELE Bilder sind auch ein Fehler ------------------------------- */
 
 /* Nicht nur fehlende Bilder zählen. Liegt in einem Ordner mehr, als
@@ -90,6 +109,10 @@ const ueberzaehlig = [
   ...Object.entries(CONFIG.chili.frames).map(([id, m]) => [`Chili ${id}`, m, CONFIG.chili.frameAnzahl[id]]),
   ...(CONFIG.goldbanane?.framePath
     ? [['Goldfell', CONFIG.goldbanane.framePath, CONFIG.goldbanane.frameAnzahl]]
+    : []),
+  ...(CONFIG.boss?.arten ?? []).map((a) => [`Boss ${a.id}`, a.framePath, a.frameAnzahl]),
+  ...(CONFIG.boss?.wurf?.framePath
+    ? [['Affe Wurf', CONFIG.boss.wurf.framePath, CONFIG.boss.wurf.frameAnzahl]]
     : []),
 ];
 for (const [titel, muster, n] of ueberzaehlig) {
@@ -105,6 +128,12 @@ const einzeln = [
   CONFIG.goldbanane?.bild,
   CONFIG.chili?.bild,
   CONFIG.sturzflug?.warnung?.bild,
+  // Die Wand des Gold-Gebiets steht NICHT in CONFIG.wall.stages und wäre
+  // deshalb von keiner anderen Prüfung erfasst.
+  CONFIG.goldbanane?.gebiet?.near,
+  CONFIG.goldbanane?.gebiet?.far,
+  // Die Geschosse der beiden Boss-Ausführungen.
+  ...(CONFIG.boss?.arten ?? []).map((a) => a.wurf?.bild),
 ].filter((p) => typeof p === 'string');
 if (einzeln.length) pruefe('Power-up-Bilder', einzeln);
 

@@ -23,6 +23,7 @@ import { Player } from '../entities/Player.js';
 import { SpritePlayer } from '../entities/SpritePlayer.js';
 import { groessteSpriteBreite, hazardSpriteUrls } from '../entities/Rock.js';
 import { Sturzflug } from '../systems/Sturzflug.js';
+import { BossKampf } from '../systems/BossKampf.js';
 import { Tempolinien } from '../entities/Tempolinien.js';
 import { PlantWall } from '../world/PlantWall.js';
 import { DifficultyCurve } from '../systems/DifficultyCurve.js';
@@ -49,7 +50,7 @@ import { recolorFrames } from './recolor.js';
 import { InputHandler } from '../input/InputHandler.js';
 import { DebugOverlay } from '../ui/DebugOverlay.js';
 import { UI } from '../ui/UI.js';
-import { halfWidthAt } from './viewport.js';
+import { halfWidthAt, topEdgeAt } from './viewport.js';
 
 export class Game {
   /**
@@ -119,6 +120,15 @@ export class Game {
     this._goldRest = 0;
     /** @type {import('three').Texture[]|null} goldenes Fell, erst bei Bedarf geladen */
     this._goldFrames = null;
+
+    /* --- Bosskampf ---------------------------------------------------- *
+     * Wird erst beim ersten Mal geladen (rund 800 KB Bildfolgen für beide
+     * Ausführungen) — bis Gebiet 3 ist dafür reichlich Zeit. */
+    /** @type {import('../systems/BossKampf.js').BossKampf|null} */
+    this.bossKampf = null;
+    this._bossLaedt = false;
+    /** Gebietsnummer des letzten Kampfes; hält den Mindestabstand ein. */
+    this._letzterBossGebiet = -99;
 
     /** @type {import('../systems/Sturzflug.js').Sturzflug|null} */
     this.sturzflug = null;
@@ -457,6 +467,16 @@ export class Game {
     const textureUrls = [];
     for (const stage of this.cfg.wall.stages) textureUrls.push(stage.near, stage.far);
 
+    /* Die Wand des Gold-Gebiets gehört MIT VORGELADEN, obwohl sie nicht in
+     * cfg.wall.stages steht.
+     *
+     * Sie kommt unangekündigt — in der Sekunde, in der jemand die goldene
+     * Banane erwischt. Nachzuladen hiesse: der Umschwung passiert, und die
+     * Wand kommt eine halbe Sekunde später. Zwei Bilder mehr im Vorlauf sind
+     * der bessere Tausch. */
+    const goldGebiet = this.cfg.goldbanane.gebiet;
+    if (goldGebiet) textureUrls.push(goldGebiet.near, goldGebiet.far);
+
     // Nur die Frames laden, die der Zyklus wirklich benutzt — im Ordner
     // liegen alle 20 aus dem Spritesheet.
     const frameUrls = spriteMode
@@ -715,6 +735,7 @@ export class Game {
     this.spawner.bananas.releaseAll((b) => b.despawn());
     this.spawner.coins?.releaseAll?.((m) => m.despawn());
     this.sturzflug?.abbrechen();
+    this.bossKampf?.abbrechen(this.player);
 
     this.ui.toast('Feuer frei!', 'banana');
     this.klang.effekt('chili');
@@ -970,8 +991,22 @@ export class Game {
   _goldmodusStarten() {
     const b = this.cfg.goldbanane;
     this._goldRest = b.sekunden;
-    this.ui.toast(`Goldrausch! ${b.muenzFaktor}× Münzen`, 'banana');
+    this.ui.toast('Gold-Gebiet!', 'banana');
     this.klang.effekt('banane');
+
+    /* INS GOLD-GEBIET WECHSELN.
+     *
+     * Die goldene Wand wird als Sonderstufe eingehängt (PlantWall.
+     * sonderStufe). Damit wechselt in einem Zug auch die Musik: Game meldet
+     * jeden Frame `klang.atmo(wall.stageName)`, und der Name der Sonderstufe
+     * ist 'gold' — also läuft public/musik/gold.ogg, überblendet wie jeder
+     * andere Gebietswechsel auch.
+     *
+     * Beim Zurückkehren steht in `difficulty.elapsed` die inzwischen
+     * verstrichene Zeit; die Wand landet also dort, wo sie ohne den
+     * Abstecher auch stünde — 30 Sekunden weiter, notfalls ein Gebiet
+     * weiter. */
+    this.wall.sonderStufe(b.gebiet, this.difficulty.elapsed);
 
     if (this._goldFrames) {
       this.player.fellWechseln?.(this._goldFrames);
@@ -1007,7 +1042,9 @@ export class Game {
     if (this._goldRest <= 0) {
       this._goldRest = 0;
       this.player.fellWechseln?.(null);
-      this.ui.toast('Goldrausch vorbei', 'revive');
+      // Zurück in die reguläre Reihe — Wand und Musik zugleich.
+      this.wall.sonderStufe(null, this.difficulty.elapsed);
+      this.ui.toast('Gold-Gebiet vorbei', 'revive');
     }
   }
 
@@ -1022,6 +1059,13 @@ export class Game {
   _goldmodusAus() {
     this._goldRest = 0;
     this.player?.fellWechseln?.(null);
+    /* Und aus dem Gold-GEBIET heraus, nicht nur aus dem Goldfell.
+     *
+     * Dieselbe Falle wie oben, nur eine Ebene höher: wer beim Abbruch die
+     * Sonderstufe stehen lässt, spielt den Rest der Runde vor goldener Wand
+     * mit Goldmusik — und weil die Sonderstufe die Zeitsteuerung aussetzt,
+     * käme nie wieder ein Gebietswechsel. */
+    this.wall?.sonderStufe?.(null, this.difficulty?.elapsed ?? 0);
   }
 
   /** Münzfaktor dieses Augenblicks — 1 normal, 3 im Goldrausch. */
@@ -1150,6 +1194,119 @@ export class Game {
     const los = this.sturzflug.starten(this.worldView, staerke, this.player.cfg?.moveSpeed ?? this.cfg.player.moveSpeed);
     if (los) this._sturzImGebiet++;
     return los;
+  }
+
+  /* ========================================================== Bosskampf */
+
+  /**
+   * Beim Gebietswechsel würfeln, ob ein Boss kommt.
+   *
+   * ZUFÄLLIG UND NICHT NACH PLAN — der Schreck ist der halbe Boss. Ein
+   * fester Takt („jedes vierte Gebiet") wäre nach zwei Runden durchschaut.
+   * Zwei Bedingungen zähmen den Zufall: nicht vor Gebiet `abGebiet`, und
+   * nicht zu dicht hintereinander (`mindestAbstandGebiete`).
+   */
+  _bossPruefen() {
+    const b = this.cfg.boss;
+    const gebiet = this._gebietWechsel + 1;
+    if (gebiet < b.abGebiet) return;
+    if (gebiet - this._letzterBossGebiet < b.mindestAbstandGebiete) return;
+    // Nicht mitten in etwas anderem, das den Bildschirm beansprucht.
+    if (this.bossKampf?.aktiv || this.sturzflug?.aktiv || this._chiliFlug !== null) return;
+    if (this._goldRest > 0) return;
+    if (Math.random() >= b.chanceProGebiet) return;
+
+    this._letzterBossGebiet = gebiet;
+    this.bossStarten(); // ohne await, siehe dort
+  }
+
+  /**
+   * Bosskampf auslösen. Lädt beim ersten Mal die Bildfolgen nach.
+   *
+   * BEWUSST OHNE await AUFGERUFEN — der Lauf soll nicht auf das Netz warten.
+   * Kommen die Bilder zu spät, fällt dieser eine Kampf eben aus. Dasselbe
+   * Vorgehen wie beim Sturzflug, und aus demselben Grund.
+   */
+  async bossStarten() {
+    if (this.bossKampf?.aktiv || this._bossLaedt) return false;
+    if (!this.states.is(GameState.PLAYING)) return false;
+
+    const b = this.cfg.boss;
+
+    if (!this.bossKampf) {
+      this._bossLaedt = true;
+      try {
+        /* Alles auf einmal anfordern: die Bildfolgen beider Ausführungen,
+         * ihre Geschosse, die Sammelbanane und die Wurfbilder des Affen. */
+        const pfade = [];
+        for (const art of b.arten) {
+          for (let i = 0; i < art.frameAnzahl; i++) {
+            pfade.push(art.framePath.replace('{n}', String(i).padStart(2, '0')));
+          }
+          pfade.push(art.wurf.bild);
+        }
+        for (let i = 0; i < b.wurf.frameAnzahl; i++) {
+          pfade.push(b.wurf.framePath.replace('{n}', String(i).padStart(2, '0')));
+        }
+        pfade.push(this.cfg.banana.bild);
+
+        const t = await this._loader.loadTexturesParallel([...new Set(pfade)], 'Boss…');
+
+        const arten = new Map();
+        for (const art of b.arten) {
+          const frames = [];
+          for (let i = 0; i < art.frameAnzahl; i++) {
+            const p = art.framePath.replace('{n}', String(i).padStart(2, '0'));
+            const tex = t.get(p);
+            if (tex) frames.push(tex);
+          }
+          if (frames.length) arten.set(art.id, { frames, wurf: t.get(art.wurf.bild) ?? null });
+        }
+
+        this.bossKampf = new BossKampf(
+          this.scene,
+          b,
+          {
+            arten,
+            munition: t.get(this.cfg.banana.bild) ?? null,
+            spielerWurf: t.get(this.cfg.banana.bild) ?? null,
+          },
+          {
+            klang: this.klang,
+            ui: this.ui,
+            // Ein Bossgeschoss wirkt wie ein Stein — über Leben und Tod
+            // entscheidet weiter genau eine Stelle.
+            onTreffer: () => this._onRockHit(null),
+            onSieg: () => this._goldmodusStarten(),
+            onEnde: () => {},
+          },
+        );
+
+        /* Die Wurfbilder an den Affen geben. Die Maschinerie dafür sitzt
+         * schon in SpritePlayer (setzeWurfFrames/werfen) — sie stammt aus
+         * dem alten Adlerkampf und wartete seither auf jemanden, der sie
+         * füttert. */
+        const wurfFrames = [];
+        for (let i = 0; i < b.wurf.frameAnzahl; i++) {
+          const p = b.wurf.framePath.replace('{n}', String(i).padStart(2, '0'));
+          const tex = t.get(p);
+          if (tex) wurfFrames.push(tex);
+        }
+        this.player.setzeWurfFrames?.(wurfFrames, b.wurf);
+      } catch (fehler) {
+        console.error('[Boss] konnte nicht geladen werden:', fehler);
+        return false;
+      } finally {
+        this._bossLaedt = false;
+      }
+      if (!this.states.is(GameState.PLAYING) || !this.player.alive) return false;
+    }
+
+    if (!this.bossKampf.bereit) {
+      console.warn('[Boss] keine einzige Bildfolge geladen — Kampf fällt aus.');
+      return false;
+    }
+    return this.bossKampf.starten(this.player, this.worldView);
   }
 
   /**
@@ -1566,6 +1723,11 @@ export class Game {
      * Und: die Gebietszählung fängt bei 0 an, also muss auch die Liste der
      * Sturzflug-Zaehler leer sein. */
     this.sturzflug?.abbrechen();
+    this.bossKampf?.abbrechen(this.player);
+    // Auch der Boss-Mindestabstand gehört zum Lauf: sonst käme im neuen
+    // Lauf erst dann wieder einer, wenn die Gebietszählung den Stand des
+    // ALTEN Laufs eingeholt hat.
+    this._letzterBossGebiet = -99;
     this._sturzUhr = 0;
     this._sturzImGebiet = 0;
     this._goldmodusAus();
@@ -1742,6 +1904,7 @@ export class Game {
     this.player.reset(this.worldView.bahnX);
     // Der Sturzflug gehört zum Lauf, nicht zum Menü.
     this.sturzflug?.abbrechen();
+    this.bossKampf?.abbrechen(this.player);
     this._goldmodusAus();
     /* Auch der Chili-Flug. Er verstellt zwei Dinge, die `player.reset()` NICHT
      * anfasst: den Bildwinkel der Kamera und die Tempolinien. Ein Tabwechsel
@@ -2032,7 +2195,19 @@ export class Game {
      * nach dem letzten Gebiet geht es zyklisch bei 0 weiter, und ein
      * index-basiertes Tempo fiele dort mitten im schwersten Abschnitt auf
      * Normaltempo zurück. */
-    if (this.wall.stageName !== this._letztesGebiet) {
+    /* DAS GOLD-GEBIET ZÄHLT NICHT ALS GEBIETSWECHSEL.
+     *
+     * An diesem Block hängt alles, was „ein neues Gebiet" bedeutet:
+     * Musiktempo, Sturzflug-Kontingent, die Prüfung auf goldene Banane und
+     * Chili, der Bananenzähler. Der Abstecher ins Gold-Gebiet und zurück
+     * würde hier ZWEI Wechsel auslösen — das Musiktempo spränge um zwei
+     * Stufen, und die Belohnungsprüfung liefe mitten im Goldrausch erneut,
+     * was eine zweite goldene Banane hätte fallen lassen können.
+     *
+     * Solange die Sonderstufe läuft, bleibt `_letztesGebiet` deshalb auf dem
+     * Gebiet stehen, aus dem man gekommen ist. Beim Zurückkehren wird nur
+     * dann gezählt, wenn sich das ECHTE Gebiet inzwischen geändert hat. */
+    if (!this.wall.inSonderStufe && this.wall.stageName !== this._letztesGebiet) {
       if (this._letztesGebiet !== null) this._gebietWechsel++;
       this._letztesGebiet = this.wall.stageName;
       this.klang.tempo(this._musikTempo());
@@ -2045,7 +2220,8 @@ export class Game {
       this._belohnungenPruefen();
       // Gelbe Banane: hoechstens eine je Gebiet (siehe CONFIG.banana).
       this.spawner.neuesGebiet();
-
+      // Und ob diesmal ein Boss kommt.
+      this._bossPruefen();
     }
     /* Kümmert sich um den Schleifenpunkt der Musik. Hier stand vorher ein
      * Zufallstakt für einzelne Vogelrufe — die gehörten zu den prozeduralen
@@ -2082,11 +2258,14 @@ export class Game {
       this._wischUhrLaufen(dt, world);
     }
 
-    /* ---- Chili: Tipp/Klick wird nicht mehr gebraucht -------------------- *
-     * Der Bananenwurf gehoerte zum geloeschten Bosskampf. Der Tipp
-     * wird trotzdem abgeholt, damit er sich nicht aufstaut und im Menü
-     * plötzlich zündet. */
-    this.input.consumeTipp?.();
+    /* ---- Tipp/Klick/Leertaste: der Bananenwurf --------------------------- *
+     * Er wird IMMER abgeholt, auch ausserhalb des Kampfes — sonst staut sich
+     * ein Tipp auf und zündet später im Menü. Gebraucht wird er nur im
+     * Kampf; `wurfAnfordern` prüft das selbst. */
+    const tipp = this.input.consumeTipp?.();
+    if (tipp && this.bossKampf?.kaempft && this.player.alive) {
+      this.bossKampf.wurfAnfordern(this.player);
+    }
 
     /* ---- Entities ----------------------------------------------------- */
     const spielerEreignis = this.player.update(
@@ -2096,19 +2275,31 @@ export class Game {
       world.bahnX,
     );
 
+    /* Die Banane verlässt die Hand — der Affe meldet das genau ein Bild
+     * lang, wenn der Arm gestreckt ist. Erst dann fliegt sie los; früher
+     * sähe es aus, als fiele sie aus dem Ärmel. */
+    if (spielerEreignis === 'wurf') this.bossKampf?.bananeLoslassen(this.player);
+
     this.spawner.update(dt, this.player.revives > 0, base);
     // Kampf und Sturzflug NACH dem Spieler: beide prüfen gegen dessen
     // frische Position.
     this._sturzflugSchritt(dt);
     this.sturzflug?.update(dt, this.player, world);
+    this.bossKampf?.update(dt, this.player, world);
+    if (this.bossKampf?.munitionEinsammeln(this.player, world)) {
+      this.klang.effekt('banane');
+    }
 
     /* NACHSCHUB: EINE Stelle entscheidet.
      *
-     * Sturzflug und Chili-Durchflug raeumen beide den Bildschirm frei.
-     * Setzte jedes den Schalter selbst, schaltete das eine ihn beim
-     * Aufraeumen wieder ein, waehrend das andere noch laeuft. Deshalb wird
-     * er hier jeden Frame aus beiden Zustaenden gebildet. */
-    this.spawner.nachschubAus = (this.sturzflug?.aktiv ?? false) || this._chiliFlug !== null;
+     * Bosskampf, Sturzflug und Chili-Durchflug raeumen alle drei den
+     * Bildschirm frei. Setzte jedes den Schalter selbst, schaltete das eine
+     * ihn beim Aufraeumen wieder ein, waehrend das andere noch laeuft.
+     * Deshalb wird er hier jeden Frame aus allen Zustaenden gebildet. */
+    this.spawner.nachschubAus =
+      (this.sturzflug?.aktiv ?? false) ||
+      (this.bossKampf?.aktiv ?? false) ||
+      this._chiliFlug !== null;
 
     this._goldmodusSchritt(dt);
     this.spawner.goldrauschSetzen(this._goldRest > 0);
@@ -2128,8 +2319,9 @@ export class Game {
     if (!this.player.alive) {
       this._deathTimer -= dt;
       if (this._deathTimer <= 0) {
-        // Sonst liefe der Sturzflug über den Game-Over-Screen weiter.
+        // Sonst liefen Sturzflug und Bosskampf über den Game-Over-Screen weiter.
         this.sturzflug?.abbrechen();
+        this.bossKampf?.abbrechen(this.player);
         this.states.transitionTo(GameState.GAME_OVER);
       }
     }
@@ -2361,18 +2553,47 @@ export class Game {
     );
     const limit = Math.max(0.9, half - halbeBreite);
 
-    const altesFeld = view.bounds.maxX;
+    /* Die BISHERIGE Bahnbreite, nicht die bisherige Feldbreite.
+     *
+     * Hier stand `view.bounds.maxX`. Seit der Bahnabstand gedeckelt wird
+     * (siehe unten), sind das zwei verschiedene Dinge: auf einem breiten
+     * Schirm ist das Feld 9.05 breit, die Bahnen liegen aber bei 2.2. Die
+     * Streckung unten würde dann mit 2.2/9.05 rechnen und jedes fallende
+     * Objekt beim kleinsten Anlass quer über den Schirm ziehen. */
+    const altesFeld = view._halbFeld ?? view.bounds.maxX;
 
     view.bounds.minX = Math.max(base.bounds.minX, -limit);
     view.bounds.maxX = Math.min(base.bounds.maxX, limit);
     view.bounds.minY = base.bounds.minY;
     view.bounds.maxY = base.bounds.maxY;
 
-    /* Die vier Bahnen aus den Anteilen. Hängen am tatsächlichen Feld, nicht
-     * an festen Weltkoordinaten — im Hochformat ist es weniger als halb so
-     * breit wie im Querformat. */
-    const halbFeld = view.bounds.maxX;
+    /* Die Bahnen aus den Anteilen. Hängen am tatsächlichen Feld, nicht an
+     * festen Weltkoordinaten — im Hochformat ist es weniger als halb so
+     * breit wie im Querformat.
+     *
+     * ABER GEDECKELT. Ungedeckelt wächst der Bahnabstand linear mit der
+     * Bildbreite, während der Trefferradius gleich bleibt: auf einem
+     * 16:9-Schirm klaffen zwischen zwei Bahnen 6.2 Einheiten, in denen
+     * NICHTS fallen kann. Ein Spieler, der dort hin und her pendelt, ist
+     * unverwundbar — gemessen zehn von zehn Läufen über 15 Minuten ohne
+     * einen Treffer, während derselbe Spieler auf dem Handy nach zwei
+     * Sekunden stirbt. Die ausführliche Begründung samt Zahlen steht bei
+     * CONFIG.world.bahnDeckel.
+     *
+     * Das Spielfeld rückt dadurch auf breiten Schirmen in die Mitte. Der
+     * Affe, die Objekte und die Wand behalten ihre Grösse — nur die Strecke,
+     * die er zwischen den Bahnen zurücklegt, ist überall dieselbe. */
+    const halbFeld = Math.min(view.bounds.maxX, base.bahnDeckel ?? Infinity);
+    view._halbFeld = halbFeld;
     view.bahnX = base.bahnen.map((anteil) => anteil * halbFeld);
+
+    /* Wo hört das Bild oben auf?
+     *
+     * Der Boss hängt absichtlich darüber hinaus — man soll die Hand, mit der
+     * er sich festhält, NICHT sehen. Dafür braucht BossKampf die echte
+     * Oberkante; `bounds.maxY` ist sie NICHT, das ist die Bewegungsgrenze des
+     * Affen (2.7 gegenüber tatsächlich rund 6.8). */
+    view.sichtbarObenY = topEdgeAt(this.camera, 0);
 
     /* WAS SCHON FÄLLT, MUSS MITWANDERN.
      *

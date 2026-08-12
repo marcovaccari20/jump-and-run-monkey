@@ -105,6 +105,47 @@ export const CONFIG = {
      * Die Werte sind ANTEILE der nutzbaren Halbbreite, keine
      * Weltkoordinaten. ±1.0 heisst: bis in die Ecke. */
     bahnen: [-1, 0, 1],
+
+    /* ================================================================== *
+     *  OBERGRENZE FÜR DEN BAHNABSTAND — der Handy/PC-Unterschied
+     *
+     *  DAS PROBLEM. `bahnen` sind Anteile der Feldbreite, und die Feldbreite
+     *  hängt am Seitenverhältnis. Gemessen (scripts/_pcvshandy.mjs):
+     *
+     *      9:19.5 Handy   Bahnabstand 1.61
+     *      9:16   Handy               2.13
+     *      16:9   Laptop              8.31      ← fünfmal so weit
+     *
+     *  Gefährlich ist ein Bereich von `spieler.hitRadius + objekt.hitRadius`
+     *  um jede Bahn, beim braunen Affen und einem grossen Objekt 1.06. Zwei
+     *  Nachbarbahnen decken also 2.11 Einheiten ab. Solange sie NÄHER
+     *  beieinander liegen, gibt es zwischen ihnen keinen sicheren Ort.
+     *
+     *  Bei 8.31 Abstand bleiben 6.2 Einheiten dazwischen frei. Wer auf dem
+     *  PC dauernd links/rechts drückt, steht damit fast nur noch zwischen
+     *  den Bahnen — und dort fällt nichts. Gemessen: ab 3:4 aufwärts zehn von
+     *  zehn Läufen über 15 Minuten OHNE EINEN EINZIGEN TREFFER. Auf dem Handy
+     *  stirbt derselbe Spieler nach zwei Sekunden.
+     *
+     *  WARUM NICHT EINFACH SCHNELLER LAUFEN. Naheliegend wäre, `moveSpeed`
+     *  mit der Feldbreite mitwachsen zu lassen, damit ein Bahnwechsel überall
+     *  gleich lange dauert. Das behebt es NICHT: die Lücke zwischen den
+     *  Bahnen bliebe 6.2 Einheiten breit, der Spieler wäre nur schneller
+     *  darin unterwegs. Der Anteil sicherer Zeit bleibt derselbe.
+     *
+     *  DIE LÖSUNG ist deshalb geometrisch: der Bahnabstand wird gedeckelt.
+     *  2.2 entspricht einem 9:16-Handy — dem Gerät, für das das Spiel gebaut
+     *  ist. Auf schmaleren Handys ändert sich gar nichts (dort ist das Feld
+     *  ohnehin enger). Auf breiten Bildschirmen rücken die Bahnen zusammen
+     *  und liegen mittig; der Rest der Breite bleibt Wand. Das ist genau das
+     *  „automatisch anpassen je nach Handy oder PC", nur andersherum als man
+     *  zuerst denkt: nicht das Handy aufblasen, sondern den PC bändigen.
+     *
+     *  Der Wert begrenzt die HALBE Feldbreite und damit zugleich den Abstand
+     *  zweier benachbarter Bahnen (bei [-1,0,1] sind beide gleich).
+     * ================================================================== */
+    bahnDeckel: 2.2,
+
     // Höhe, auf der Steine/Bananen erzeugt werden.
     // MUSS über der sichtbaren Oberkante liegen, und zwar mindestens um den
     // grössten Steinradius (0.62): sonst ploppt der Stein sichtbar ins Bild,
@@ -314,8 +355,8 @@ export const CONFIG = {
      */
     list: {
       standard: { id: 'standard', label: 'Standard', filter: 'none', kosten: 0 },
-      grau: { id: 'grau', label: 'Grau', filter: 'saturate(0.12)', kosten: 20 },
-      rot: { id: 'rot', label: 'Rot', filter: 'hue-rotate(-28deg) saturate(1.9)', kosten: 20 },
+      grau: { id: 'grau', label: 'Grau', filter: 'saturate(0.12)', kosten: 200 },
+      rot: { id: 'rot', label: 'Rot', filter: 'hue-rotate(-28deg) saturate(1.9)', kosten: 200 },
 
       /* GRÜN braucht einen kräftigeren Umriss: vor der grünen Wand geht es
        * sonst unter. Der Umriss ist genau dafür da (CONFIG.sprite.outline),
@@ -326,20 +367,20 @@ export const CONFIG = {
         label: 'Grün',
         filter: 'hue-rotate(72deg) saturate(1.3)',
         outline: { opacity: 0.72, scale: 1.1 },
-        kosten: 20,
+        kosten: 200,
       },
-      blau: { id: 'blau', label: 'Blau', filter: 'hue-rotate(160deg) saturate(1.5)', kosten: 20 },
+      blau: { id: 'blau', label: 'Blau', filter: 'hue-rotate(160deg) saturate(1.5)', kosten: 200 },
       violett: {
         id: 'violett',
         label: 'Violett',
         filter: 'hue-rotate(215deg) saturate(1.5)',
-        kosten: 20,
+        kosten: 200,
       },
       pink: {
         id: 'pink',
         label: 'Pink',
         filter: 'hue-rotate(280deg) saturate(1.8) brightness(1.08)',
-        kosten: 20,
+        kosten: 200,
       },
     },
   },
@@ -387,7 +428,7 @@ export const CONFIG = {
       weiss: {
         id: 'weiss',
         // Der Flinke. Halb so grosse Hitbox, aber keine Wiederbelebung.
-        kosten: 100,
+        kosten: 1000,
         label: 'Weisser Affe',
         blurb: 'Halb so gross und flinker. Keine Bananen, keine zweite Chance.',
         preview: '/characters/white.webp',
@@ -438,7 +479,7 @@ export const CONFIG = {
       orange: {
         id: 'orange',
         // Der Schwere. Kleine Steine prallen ab — die teuerste Fähigkeit.
-        kosten: 150,
+        kosten: 1500,
         label: 'Oranger Affe',
         blurb: 'Dick und langsam — die kleinsten Steine prallen an ihm ab.',
         preview: '/characters/orange.webp',
@@ -502,7 +543,17 @@ export const CONFIG = {
      * Kontinuierlich gerechnet, nicht in Stufen: sonst spränge die
      * Schwierigkeit mitten in eine fallende Welle hinein.
      * ------------------------------------------------------------------ */
-    sekundenProWand: 132, // MUSS zum Abstand in CONFIG.wall.stages passen (dort 132 s)
+    /* Abstand zweier Wandwechsel — MUSS zum Abstand in CONFIG.wall.stages
+     * passen, dort stehen ab Gebiet 2 durchgehend 132 s.
+     *
+     * GEBIET 1 IST DIE AUSNAHME: es endet nach 55 s (= 100 Höhenmeter) statt
+     * nach 132. Es ist der Einstieg, und 132 Sekunden erste Wand sind zu viel,
+     * bevor überhaupt etwas passiert. Die Härtekurve läuft davon unberührt
+     * weiter — sie ist stetig, kennt keine Stufen und liest die Gebietsliste
+     * gar nicht. Praktisch heisst das nur: der Sprung von Gebiet 1 auf 2 ist
+     * kleiner als die üblichen +25 % (nämlich +9.8 %), ab Gebiet 2 stimmt der
+     * Takt wieder. Genau richtig für ein Einstiegsgebiet. */
+    sekundenProWand: 132,
     proWand: 1.25, // +25 % je Wand
 
     /* Wie sich die Härte auf die zwei Stellschrauben verteilt: dieser Anteil
@@ -1318,7 +1369,26 @@ export const CONFIG = {
    *  Affen sind ausdrücklich gleich stark, nur anders.
    * ================================================================== */
   coin: {
-    poolSize: 6,
+    /* 20 STATT 6 — VORSORGE FÜRS GOLD-GEBIET, kein behobener Fehler.
+     *
+     * Ehrlich gemessen, nachdem ich mich zuerst selbst hereingelegt hatte:
+     * im Gold-Gebiet fällt alle 0.88 s eine Münze, und es sind dabei nur
+     * RUND VIER gleichzeitig unterwegs (Flugzeit knapp 3 s bei Anfangstempo,
+     * später weniger, weil alles schneller fällt). Sechs Plätze hätten also
+     * gereicht.
+     *
+     * Trotzdem 20, und zwar wegen der Art des Fehlers: läuft der Pool leer,
+     * steigt `_spawnCoin` STILL aus (`if (!coin) return`) — keine Warnung,
+     * kein Protokolleintrag, nur weniger Münzen als gedacht. Bei vier von
+     * sechs belegten Plätzen ist der Abstand zum stillen Ausfall zu klein;
+     * ein langsamerer Fall oder ein kürzerer Takt genügte. Ein Pool-Platz
+     * ist ein Mesh und kostet praktisch nichts.
+     *
+     * (Die Fehlmessung, die mich zuerst auf „nur 5 statt 34 Münzen" brachte,
+     * zählte Münz-OBJEKTE statt Abwürfe — bei einem Pool wird dasselbe
+     * Objekt wiederverwendet, mehr als `poolSize` verschiedene kann es gar
+     * nicht geben. Der Goldregen war die ganze Zeit richtig.) */
+    poolSize: 20,
     // Bild aus scripts/prepare-hazards.mjs (nur die KLEINSTE der drei
     // gelieferten Münzen, ausdrücklicher Wunsch).
     bild: '/hazards/muenze.webp',
@@ -1343,10 +1413,15 @@ export const CONFIG = {
     pendelWeite: 0.28,
     pendelTempo: 2.2,
 
-    /* Wie viele Münzen ein Gebiet hergibt. Bei 132 s je Wand sind 3 Stück
-     * etwa alle 40 Sekunden eine. Der weisse Affe kostet damit rund
-     * 33 Gebiete — das ist Absicht: er soll ein Ziel sein, keine Formalität. */
-    proGebiet: 3,
+    /* Wie viele Münzen ein Gebiet hergibt.
+     *
+     * ALLES MAL ZEHN — Münzen wie Preise. Der Aufwand für einen Affen bleibt
+     * damit exakt derselbe (rund 33 Gebiete für den weissen), aber die Zahlen
+     * fühlen sich nach mehr an: "30 gesammelt" liest sich besser als "3", und
+     * "1000" ist ein Ziel, "100" ist Kleingeld.
+     *
+     * Bei 132 s je Wand kommt jetzt etwa alle 4 Sekunden eine. */
+    proGebiet: 30,
   },
 
   /* ================================================================== *
@@ -1492,15 +1567,241 @@ export const CONFIG = {
     abGebiet: 2,
     jedesXteGebiet: { min: 2, max: 3 },
 
-    /* Der Goldrausch. 30 Sekunden, dreifacher Münzwert — und vor allem
-     * VIEL MEHR Münzen: normal kommen rund drei je Gebiet (alle 40 s), im
-     * Goldrausch mindestens fünf in 30 Sekunden. */
+    /* ─── DAS GOLD-GEBIET ───────────────────────────────────────────────
+     *
+     * Wer die goldene Banane erwischt, kommt für 30 Sekunden in ein eigenes
+     * Gebiet: goldene Wand, eigenes Musikstück, der Affe selbst golden — und
+     * es fallen NUR NOCH MÜNZEN. Danach geht es dort weiter, wo man war.
+     *
+     * Es ist kein Gebiet aus CONFIG.wall.stages und darf keines werden: die
+     * Liste läuft nach Spielzeit ab, das Gold-Gebiet kommt als Belohnung.
+     * PlantWall.sonderStufe() hängt es deshalb daneben ein. */
     sekunden: 30,
+
+    /* Die Wand des Gold-Gebiets. Gleicher Aufbau wie ein Eintrag in
+     * CONFIG.wall.stages — `name` ist zugleich der Name des Musikstücks
+     * (public/musik/gold.ogg). */
+    gebiet: {
+      name: 'gold',
+      hazard: 'stein', // wird nie gebraucht: es fällt nichts Gefährliches
+      near: '/textures/stage_gold.webp',
+      far: '/textures/stage_gold_far.webp',
+    },
+
+    /* NUR MÜNZEN. Alles andere bleibt oben: keine Steine, keine Bananen,
+     * keine Sturzflüge. Das ist der ganze Reiz — dreissig Sekunden, in denen
+     * man nur einsammelt und nichts passieren kann. */
+    nurMuenzen: true,
+
+    /* FÜNFMAL SO VIELE MÜNZEN wie sonst, verteilt auf alle drei Bahnen.
+     *
+     * Der Takt ist die Menge: normal liefert ein Gebiet `coin.proGebiet` (30)
+     * Münzen auf `sekundenProWand` (132 s), also eine alle 4.4 s. Fünffach
+     * heisst eine alle 0.88 s — in 30 Sekunden rund 34 Stück. Steht 4.4/5
+     * ausgerechnet hier, weil beide Ausgangswerte an anderen Stellen stehen
+     * und sich ändern können; `npm run balance` rechnet es nach. */
+    muenzTakt: 0.88,
+
+    /* Reihum auf alle drei Bahnen, damit man quer durchs Bild sammelt statt
+     * in einer Spur stehen zu bleiben. */
+    alleBahnen: true,
+
+    /* Wert JE Münze — davon unabhängig. Das war schon immer so und bleibt:
+     * die Verfünffachung betrifft die ANZAHL („fünfmal so viele"), nicht den
+     * Wert. Beides gleichzeitig zu verfünffachen wäre das Fünfundzwanzig-
+     * fache und hätte die Preise sofort bedeutungslos gemacht. */
     muenzFaktor: 3,
-    /* Münztakt während des Goldrauschs, in Sekunden. 4.5 s ergibt bei 30 s
-     * sechs bis sieben Münzen — sicher über den geforderten fünf, auch
-     * wenn eine am Rand verlorengeht. */
-    muenzTakt: 4.5,
+  },
+
+  /* ================================================================== *
+   *  BOSSKAMPF
+   *
+   *  Zufällig, ab Gebiet 3. Ein Affe hängt von oben ins Bild, wandert quer
+   *  hin und her und wirft Bananen herunter. Drei Treffer, dann ist er tot.
+   *
+   *  ZWEI AUSFÜHRUNGEN, je aus einem gelieferten Video:
+   *    gorilla   gross, langsam, wirft GRÜNE Bananen (gross, langsam)
+   *    affe      klein, flink, wirft kleine GELBE (klein, schnell)
+   *  Welcher kommt, wird ausgewürfelt.
+   *
+   *  WIE MAN IHN TRIFFT
+   *  Während des Kampfes fallen Bananen zum Einsammeln. Wer eine hat, wirft
+   *  sie mit Tippen bzw. Leertaste SENKRECHT nach oben — in der eigenen
+   *  Bahn. Steht der Boss gerade darüber, sitzt der Treffer. Der Kampf lebt
+   *  damit vom Timing, nicht vom Zielen: man sieht ihn kommen und muss den
+   *  Moment abpassen.
+   *
+   *  ER WIRD IMMER SCHNELLER — siehe `tempo`, `frameTakt` und `druck`.
+   * ================================================================== */
+  boss: {
+    /* WANN. Nicht in den ersten beiden Gebieten: dort lernt man das Spiel,
+     * und ein Sonderzustand mit eigener Steuerung wäre da nur verwirrend. */
+    abGebiet: 3,
+
+    /* ZUFÄLLIG, NICHT NACH PLAN.
+     *
+     * Wahrscheinlichkeit je Gebietswechsel. 0.28 heisst: im Schnitt etwa
+     * jedes dritte bis vierte Gebiet einer. Ein fester Takt ("jedes vierte")
+     * wäre nach zwei Runden durchschaut, und der Schreck ist der halbe Boss.
+     *
+     * `mindestAbstand` verhindert die andere Seite des Zufalls: zwei Kämpfe
+     * direkt hintereinander. */
+    chanceProGebiet: 0.28,
+    mindestAbstandGebiete: 2,
+
+    /* Vorwarnung. Lang genug zum Lesen und um sich zu sortieren, kurz genug,
+     * dass es nicht wie ein Ladebildschirm wirkt. */
+    warnungSekunden: 2.0,
+    /* Einflug: währenddessen sinkt der Affe auf seine Kampfhöhe und der Boss
+     * kommt von oben herein. Noch wirft keiner. */
+    einflugSekunden: 1.4,
+
+    /* Kampfhöhe des Affen. Normal steht er auf -0.1; hier geht er tiefer und
+     * gewinnt damit Reaktionsweg zurück. Die Untergrenze des Feldes liegt
+     * bei -2.9 — mit -2.1 bleibt Luft, damit ihn eine tief einschlagende
+     * Banane nicht am Bildrand einklemmt. */
+    affeY: -2.1,
+
+    /* KEIN festes `bossY` mehr.
+     *
+     * Seine Höhe wird aus der BILDOBERKANTE und `ueberstand` gerechnet
+     * (BossKampf.starten), weil beide Ausführungen unterschiedlich gross
+     * sind und der Wunsch — die obere Hand liegt knapp ausserhalb — sich auf
+     * den Bildrand bezieht, nicht auf eine Weltkoordinate. Eine feste Zahl
+     * hier hätte den Gorilla samt Ast vollständig ins Bild gestellt. */
+
+    /* WIEVIEL DES BILDES OBEN ÜBER DEM RAND LIEGT (Anteil der Bildhöhe).
+     *
+     * Beide Vorlagen zeigen die Figur samt Ast bzw. hochgestrecktem Arm.
+     * Genau das soll man NICHT sehen: „er hat seine obere Hand leicht über
+     * dem Bildschirm, dass man sie nicht sieht." Ein Viertel der Bildhöhe
+     * liegt darüber — der Arm verschwindet, der Rumpf hängt sichtbar herein.
+     *
+     * Der Trefferkreis wird um denselben Betrag nach unten versetzt, damit
+     * er auf dem sichtbaren Körper sitzt (Boss.trefferMitte). */
+    ueberstand: 0.25,
+
+    /* Trefferkreis des Bosses als Anteil seiner Bildhöhe. Deutlich kleiner
+     * als er aussieht: getroffen wird der Rumpf, nicht die ausgestreckten
+     * Gliedmassen. */
+    trefferAnteil: 0.22,
+
+    /* Drei Treffer. Nach jedem blinkt er kurz und ist dabei unverwundbar —
+     * sonst zählen zwei Bananen dicht hintereinander doppelt. */
+    treffer: 3,
+    trefferPause: 0.5,
+
+    /* ─── DIE STEIGERUNG ────────────────────────────────────────────────
+     *
+     * Alles hängt an EINEM Fortschrittswert 0..1 („Druck"). Er wächst mit
+     * der Zeit und springt bei jedem kassierten Treffer. Daraus folgen
+     * seitliches Tempo und Bildtakt — und weil der Wurf an der Animation
+     * hängt (nicht an einer eigenen Uhr), wirft er automatisch häufiger,
+     * je schneller die Bilder laufen. Ein Regler, drei Wirkungen, nichts
+     * kann auseinanderlaufen. */
+    /** Nach so vielen Sekunden allein wäre der Druck bei 1. */
+    druckSekunden: 26,
+    /** Zusätzlicher Sprung je Treffer. 3 Treffer = 0.6 aus dieser Quelle. */
+    druckProTreffer: 0.2,
+
+    /** Seitliches Tempo in Einheiten/s, von träge bis hektisch. */
+    tempo: { start: 1.5, ende: 4.4 },
+    /** Bilder je Sekunde der 30er-Bildfolge — und damit der Wurftakt.
+     *  Bei 10 fps dauert ein Durchlauf 3.0 s, bei 22 fps noch 1.36 s. */
+    frameTakt: { start: 10, ende: 22 },
+
+    /* ─── DIE ZWEI AUSFÜHRUNGEN ─────────────────────────────────────────
+     *
+     * `loslassenBei` ist der Anteil der Bildfolge, an dem die Banane die
+     * Hand verlässt. Die Werte sind an den fertigen Bildern abgelesen;
+     * `npm run prep:bosskampf` schreibt seinen eigenen Messwert dazu.
+     *
+     * Beim GORILLA taugte die automatische Messung („breitestes Bild")
+     * nicht: sein Schwung ist breiter als sein Ausholen, sie zeigte auf
+     * Bild 0. Bild 23 ist der Moment, in dem der Arm über dem Kopf steht.
+     * Beim kleinen AFFEN stimmte die Messung mit dem Bild überein (Bild 4,
+     * Arm zur Seite gestreckt). */
+    arten: [
+      {
+        id: 'gorilla',
+        label: 'Gorilla',
+        framePath: '/boss/gorilla/f_{n}.webp',
+        frameAnzahl: 30,
+        hoehe: 4.2,
+        loslassenBei: 23 / 30,
+        // Grosse grüne Banane: langsam, dafür schwer auszuweichen.
+        wurf: {
+          bild: '/hazards/banane_gruen.webp',
+          radius: 0.42,
+          tempo: 5.2,
+          hitRadiusFactor: 0.84,
+          poolSize: 10,
+        },
+      },
+      {
+        id: 'affe',
+        label: 'Affe',
+        framePath: '/boss/affe/f_{n}.webp',
+        frameAnzahl: 30,
+        hoehe: 3.0,
+        loslassenBei: 4 / 30,
+        // Kleine gelbe Banane: schnell, dafür schmal.
+        wurf: {
+          bild: '/hazards/banane.webp',
+          radius: 0.24,
+          tempo: 7.0,
+          hitRadiusFactor: 0.84,
+          poolSize: 12,
+        },
+      },
+    ],
+
+    /* ─── DER WURF DES AFFEN ────────────────────────────────────────────
+     *
+     * Die Bildfolge dafür liegt bereits in public/textures/wurf (12 Bilder)
+     * und wird von SpritePlayer.setzeWurfFrames verwendet. */
+    wurf: {
+      // Anteil der Wurfanimation, bei dem die Banane die Hand verlässt.
+      // An den 12 Bildern abgelesen: ab Bild 8 ist der Arm gestreckt.
+      loslassenBei: 8 / 12,
+      dauer: 0.55, // ganze Wurfanimation
+      nachladen: 0.18, // erst danach kann erneut geworfen werden
+      tempo: 11.0, // Einheiten/s, fliegt gerade nach oben
+      radius: 0.2, // halb so gross wie die Sammelbanane
+      /* Trefferfenster. Zusammen mit `trefferAnteil` ergibt sich rund ±0.8
+       * — knapp unter dem Bahnabstand von 2.2. Man muss auf die Bahn unter
+       * ihm, aber nicht auf den Zentimeter genau. */
+      hitRadius: 0.24,
+      poolSize: 6,
+      framePath: '/textures/wurf/move_{n}.webp',
+      frameAnzahl: 12,
+    },
+
+    /* ─── MUNITION ──────────────────────────────────────────────────────
+     *
+     * Ohne Banane kein Wurf. Damit der Kampf nicht daran scheitert, dass
+     * gerade keine fällt, kommen sie im Kampf deutlich häufiger als sonst
+     * — und man startet mit einer in der Hand. */
+    munition: {
+      startVorrat: 1,
+      maxVorrat: 3,
+      /* Sekunden zwischen zwei Nachschub-Bananen. Bei 3 s und einem Kampf
+       * von rund 25 s sind das gut acht — reichlich für drei Treffer, ohne
+       * dass man blind werfen kann. */
+      takt: 3.0,
+      /* Fallgeschwindigkeit der Sammelbananen im Kampf. Langsamer als die
+       * Geschosse, damit man sie unterscheiden kann, noch bevor man die
+       * Farbe erkennt. */
+      tempo: 3.0,
+      radius: 0.34,
+      hitRadiusFactor: 1.35, // grosszügig: sie einzusammeln soll leicht sein
+      poolSize: 6,
+    },
+
+    /* Belohnung fürs Gewinnen: der Goldrausch, dieselbe Wirkung wie bei der
+     * goldenen Banane (siehe CONFIG.goldbanane). Der Kampf ist damit nicht
+     * nur eine überstandene Gefahr, sondern lohnt sich. */
+    siegGoldSekunden: 30,
   },
 
   /* ================================================================== *
@@ -2218,49 +2519,49 @@ export const CONFIG = {
         name: 'blumen',
         // Holz statt Stein: Stock (klein), Baumscheibe (mittel), Stamm (gross).
         hazard: 'holz',
-        afterSeconds: 132,
+        afterSeconds: 55,
         near: '/textures/stage2_flowers.webp',
         far: '/textures/stage2_flowers_far.webp',
       },
       {
         name: 'aeste',
         hazard: 'kokosnuss',
-        afterSeconds: 264,
+        afterSeconds: 187,
         near: '/textures/stage3_branches.webp',
         far: '/textures/stage3_branches_far.webp',
       },
       {
         name: 'pilzwald',
         hazard: 'pilz',
-        afterSeconds: 396,
+        afterSeconds: 319,
         near: '/textures/wall_mushroom.webp',
         far: '/textures/wall_mushroom_far.webp',
       },
       {
         name: 'gift',
         hazard: 'gift',
-        afterSeconds: 528,
+        afterSeconds: 451,
         near: '/textures/stage4_poison.webp',
         far: '/textures/stage4_poison_far.webp',
       },
       {
         name: 'halloween',
         hazard: 'kuerbis',
-        afterSeconds: 660,
+        afterSeconds: 583,
         near: '/textures/stage5_halloween.webp',
         far: '/textures/stage5_halloween_far.webp',
       },
       {
         name: 'wasser',
         hazard: 'meer',
-        afterSeconds: 792,
+        afterSeconds: 715,
         near: '/textures/wall_water.webp',
         far: '/textures/wall_water_far.webp',
       },
       {
         name: 'wolken',
         hazard: 'wolken',
-        afterSeconds: 924,
+        afterSeconds: 847,
         near: '/textures/stage7_clouds.webp',
         far: '/textures/stage7_clouds_far.webp',
         // Weisser Hagel vor weissen Wolken ist nicht zu sehen — und was man
@@ -2271,7 +2572,7 @@ export const CONFIG = {
       {
         name: 'eiszeit',
         hazard: 'eiszapfen',
-        afterSeconds: 1056,
+        afterSeconds: 979,
         near: '/textures/stage6_ice.webp',
         far: '/textures/stage6_ice_far.webp',
         // Gleicher Grund wie bei den Wolken: helle Zapfen vor heller Wand.
@@ -2280,14 +2581,14 @@ export const CONFIG = {
       {
         name: 'kristall',
         hazard: 'kristall',
-        afterSeconds: 1188,
+        afterSeconds: 1111,
         near: '/textures/wall_crystal.webp',
         far: '/textures/wall_crystal_far.webp',
       },
       {
         name: 'lava',
         hazard: 'feuer',
-        afterSeconds: 1320,
+        afterSeconds: 1243,
         near: '/textures/stage8_lava.webp',
         far: '/textures/stage8_lava_far.webp',
         // Feuerbälle vor einer Wand aus Feuer: die Wand muss zurücktreten,
@@ -2297,14 +2598,14 @@ export const CONFIG = {
       {
         name: 'asche',
         hazard: 'asche',
-        afterSeconds: 1452,
+        afterSeconds: 1375,
         near: '/textures/stage9_ash.webp',
         far: '/textures/stage9_ash_far.webp',
       },
       {
         name: 'schrott',
         hazard: 'metall',
-        afterSeconds: 1584,
+        afterSeconds: 1507,
         near: '/textures/stage_schrott.webp',
         far: '/textures/stage_schrott_far.webp',
         /* Die Wand ist selbst rostbraun und voller Kanten. Ohne Dämpfung
@@ -2315,7 +2616,7 @@ export const CONFIG = {
       {
         name: 'bonbon',
         hazard: 'bonbon',
-        afterSeconds: 1716,
+        afterSeconds: 1639,
         near: '/textures/stage_bonbon.webp',
         far: '/textures/stage_bonbon_far.webp',
         // Sehr helle, bunte Wand — sonst geht ein rosa Bonbon darin unter.
@@ -2324,14 +2625,14 @@ export const CONFIG = {
       {
         name: 'kakteen',
         hazard: 'kaktus',
-        afterSeconds: 1848,
+        afterSeconds: 1771,
         near: '/textures/stage_kakteen.webp',
         far: '/textures/stage_kakteen_far.webp',
       },
       {
         name: 'ruine',
         hazard: 'ruine',
-        afterSeconds: 1980,
+        afterSeconds: 1903,
         near: '/textures/stage_ruine.webp',
         far: '/textures/stage_ruine_far.webp',
         /* Die Ruinenwand ist die dunkelste im Spiel. Hier wird AUFGEHELLT,

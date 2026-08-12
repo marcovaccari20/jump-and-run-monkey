@@ -115,9 +115,16 @@ export class Spawner {
     this.nachschubAus = false;
 
     /* GOLDRAUSCH. Setzt Game über `goldrauschSetzen`, solange die goldene
-     * Banane wirkt — dann fallen Münzen im 4.5-Sekunden-Takt statt alle 44
-     * Sekunden (siehe muenzTakt). */
+     * Banane wirkt — dann fallen Münzen im 0.88-Sekunden-Takt statt alle 4.4
+     * Sekunden (siehe muenzTakt), also fünfmal so viele. */
     this.goldrausch = false;
+
+    /* GOLD-GEBIET: nur noch Münzen, keine Gefahr.
+     *
+     * Anders als `nachschubAus` (das ALLES anhält) betrifft dieser Schalter
+     * nur Steine, Bananen und Power-ups — der Münzregen ist ja gerade der
+     * Sinn der Sache. Wird zusammen mit `goldrausch` von Game gesetzt. */
+    this.nurMuenzen = false;
 
     // Wie viele gelbe Bananen in DIESEM Gebiet schon gefallen sind.
     this._bananenImGebiet = 0;
@@ -289,8 +296,14 @@ export class Spawner {
     /* ------------------------------------------------------------- Spawn */
     // Im Bosskampf steht der Takt STILL, statt weiterzulaufen: liefe er
     // weiter, käme direkt nach dem Kampf alles Aufgestaute auf einmal.
-    if (!this.nachschubAus) this.timer -= dt;
-    if (this.timer <= 0 && !this.nachschubAus) {
+    //
+    // `nurMuenzen` ist das Gold-Gebiet: dort steht NUR dieser Zweig still,
+    // die Münzen unten laufen weiter. Zwei getrennte Schalter, weil es zwei
+    // verschiedene Dinge sind — "der Bildschirm soll leer sein" (Kampf,
+    // Durchflug) und "es soll nur Münzen regnen" (Gold).
+    const gefahrAus = this.nachschubAus || this.nurMuenzen;
+    if (!gefahrAus) this.timer -= dt;
+    if (this.timer <= 0 && !gefahrAus) {
       /* WANN ÜBERHAUPT EINE GELBE BANANE FÄLLT — vier Bedingungen.
        *
        * Die letzten beiden sind neu und ausdrücklich gewünscht: nicht vor
@@ -823,7 +836,20 @@ export class Spawner {
      * Bewegungsgrenzen. Beides ist überholt, seit der Affe nur noch auf vier
      * festen Spuren steht: eine Münze zwischen zwei Spuren ist genau die
      * Sorte Belohnung, die man sieht und nicht bekommt. */
-    const x = this._naechsteBahn(this.korridor.bei(t));
+    let x = this._naechsteBahn(this.korridor.bei(t));
+
+    /* IM GOLD-GEBIET REIHUM ÜBER ALLE DREI BAHNEN.
+     *
+     * Sonst landet jede Münze auf der Bahn, die dem Korridor am nächsten
+     * liegt — und der wandert langsam. Bei einer Münze alle 0.88 Sekunden
+     * hiesse das: ein Stapel Münzen auf derselben Spur, man stellt sich
+     * einmal hin und sammelt im Stehen. Reihum verteilt muss man quer durchs
+     * Bild, und genau das soll das Gold-Gebiet sein. */
+    const bahnen = this.world.bahnX;
+    if (this.nurMuenzen && this.cfg.goldbanane.alleBahnen && bahnen?.length) {
+      this._goldBahn = ((this._goldBahn ?? -1) + 1) % bahnen.length;
+      x = bahnen[this._goldBahn];
+    }
 
     coin.spawn(x, this.world.spawnY, Math.random());
   }
@@ -961,7 +987,22 @@ export class Spawner {
   goldrauschSetzen(an) {
     if (an === this.goldrausch) return;
     this.goldrausch = an;
+    /* Im Gold-Gebiet fällt NUR NOCH Geld. Beides zusammen zu schalten ist
+     * Absicht: zwei getrennte Aufrufe von Game hätten irgendwann einen
+     * Zustand ergeben, in dem das eine an und das andere aus ist. */
+    this.nurMuenzen = an && (this.cfg.goldbanane.nurMuenzen ?? false);
     this.coinTimer = an ? 0.35 : this.muenzTakt * 0.5;
+    /* Was noch in der Luft hängt, verschwindet beim Eintritt.
+     *
+     * Sonst schlägt ein Stein, der eine Sekunde vor der goldenen Banane
+     * losgeflogen ist, IM Gold-Gebiet ein — dort, wo laut Ansage nichts
+     * passieren kann. Genau dieser eine Treffer wäre der, über den sich
+     * jeder zu Recht beschwert. */
+    if (this.nurMuenzen) {
+      this.rocks.releaseAll((r) => r.despawn());
+      this.bananas.releaseAll((b) => b.despawn());
+      this.powerups?.releaseAll?.((p) => p.despawn());
+    }
   }
 
   /** Belohnung eingesammelt -> zurück in den Pool. */

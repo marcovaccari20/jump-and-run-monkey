@@ -1,0 +1,20 @@
+[
+  {
+    "id": "gorilla",
+    "bilder": 30,
+    "kb": 395,
+    "wurfBild": 0,
+    "anteil": 0,
+    "bw": 797,
+    "bh": 910
+  },
+  {
+    "id": "affe",
+    "bilder": 30,
+    "kb": 414,
+    "wurfBild": 4,
+    "anteil": 0.13333333333333333,
+    "bw": 587,
+    "bh": 960
+  }
+]

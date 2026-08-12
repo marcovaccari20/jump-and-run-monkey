@@ -833,6 +833,25 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
   border-color: rgba(255, 243, 196, 0.55);
 }
 
+/* Bosskampf: rot, weil es die einzige Ansage ist, die eine Gefahr meldet. */
+.hud__toast--boss {
+  color: #ff6b5a;
+  border-color: rgba(255, 107, 90, 0.6);
+  background: rgba(38, 8, 8, 0.82);
+}
+
+/* „Keine Banane!" — ein Hinweis, keine Gefahr, deshalb nur gedämpft gelb. */
+.hud__toast--warn {
+  color: #ffcf6b;
+  border-color: rgba(255, 207, 107, 0.45);
+}
+
+/* Münze/Treffer: derselbe Ton wie der Münzzähler. */
+.hud__toast--coin {
+  color: var(--banana);
+  border-color: rgba(255, 210, 63, 0.45);
+}
+
 /* -------------------------------------------------------- Bosswarnung --- *
  * Das Schild liegt frei über dem Bild, nicht im Fluss des HUD: es soll den
  * Blick holen und danach spurlos verschwinden, ohne dass irgendetwas

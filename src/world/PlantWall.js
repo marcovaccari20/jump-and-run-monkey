@@ -205,6 +205,8 @@ export class PlantWall {
     }
 
     this.stageIndex = -1;
+    /** @type {object|null} Sonderstufe (Gold-Gebiet), siehe sonderStufe(). */
+    this._sonder = null;
     this._fadeTimer = 0;
     this._fading = false;
 
@@ -242,6 +244,40 @@ export class PlantWall {
     return (stages.length - 1 + extra) % stages.length;
   }
 
+  /**
+   * SONDERSTUFE — ein Gebiet, das nicht in der Reihe steht.
+   *
+   * Das Gold-Gebiet gehört nicht in `cfg.stages`: es kommt nicht nach
+   * Spielzeit, sondern weil jemand eine goldene Banane erwischt hat, und es
+   * dauert 30 Sekunden statt 132. Stünde es in der Liste, käme es irgendwann
+   * von selbst — und die Belohnung wäre keine mehr.
+   *
+   * Solange eine Sonderstufe gesetzt ist, schaltet `update` NICHT mehr nach
+   * Spielzeit weiter. Beim Zurücksetzen (`null`) wird die Stufe gewählt, die
+   * zur inzwischen verstrichenen Zeit gehört — man landet also dort, wo man
+   * ohne den Abstecher auch gewesen wäre.
+   *
+   * @param {object|null} stage Stufenobjekt wie in cfg.stages, oder null
+   * @param {number} elapsed Spielzeit, für die Rückkehr in die Reihe
+   */
+  sonderStufe(stage, elapsed = 0) {
+    if (stage) {
+      this._sonder = stage;
+      this.stageIndex = -1; // erzwingt beim Zurückkehren ein echtes Umschalten
+      this._stufeAnwenden(stage, false);
+    } else if (this._sonder) {
+      this._sonder = null;
+      const idx = this.stageIndexAt(elapsed);
+      this.stageIndex = -1;
+      this.setStage(idx, false);
+    }
+  }
+
+  /** Läuft gerade eine Sonderstufe? */
+  get inSonderStufe() {
+    return Boolean(this._sonder);
+  }
+
   /** @param {boolean} immediate ohne Überblendung (Spielstart) */
   setStage(index, immediate = false) {
     if (index === this.stageIndex) return;
@@ -249,7 +285,16 @@ export class PlantWall {
     if (!stage) return;
 
     this.stageIndex = index;
+    this._stufeAnwenden(stage, immediate);
+  }
 
+  /**
+   * Texturen einer Stufe auf die Ebenen legen.
+   *
+   * Herausgezogen aus setStage, weil die Sonderstufe dasselbe tut, aber
+   * keinen Index in cfg.stages hat.
+   */
+  _stufeAnwenden(stage, immediate) {
     for (const layer of this.layers) {
       const url = stage[layer.cfg.slot];
       const texture = this.getTexture(url);
@@ -277,7 +322,9 @@ export class PlantWall {
    *                          null = Stufe nicht anfassen (Menü)
    */
   update(dt, distance, elapsed = null) {
-    if (elapsed !== null && !this._fading) {
+    // Während einer Sonderstufe (Gold-Gebiet) hat die Spielzeit nichts zu
+    // sagen — sonst schaltete sie sofort wieder auf das reguläre Gebiet.
+    if (elapsed !== null && !this._fading && !this._sonder) {
       const want = this.stageIndexAt(elapsed);
       if (want !== this.stageIndex) this.setStage(want, false);
     }
@@ -369,13 +416,17 @@ export class PlantWall {
     }
   }
 
+  /* Die Sonderstufe hat Vorrang. Wichtig vor allem für `stageName`: daran
+   * hängt die Gebietsmusik (Game ruft `klang.atmo(wall.stageName)`), und im
+   * Gold-Gebiet soll auch das Goldstück laufen. Ohne diesen Vorrang stünde
+   * hier '-', weil `stageIndex` dann auf keine Stufe der Liste zeigt. */
   get stageName() {
-    return this.cfg.stages[this.stageIndex]?.name ?? '-';
+    return this._sonder?.name ?? this.cfg.stages[this.stageIndex]?.name ?? '-';
   }
 
   /** Welches Objekt an dieser Wand herunterfällt (CONFIG.rock.looks). */
   get stageHazard() {
-    return this.cfg.stages[this.stageIndex]?.hazard ?? 'stein';
+    return this._sonder?.hazard ?? this.cfg.stages[this.stageIndex]?.hazard ?? 'stein';
   }
 
   dispose() {

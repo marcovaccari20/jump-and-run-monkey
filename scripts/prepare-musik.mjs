@@ -31,7 +31,7 @@
  * Kodierlücke von MP3.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,11 +39,25 @@ import ffmpeg from 'ffmpeg-static';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
-const QUELLE = resolve(process.env.USERPROFILE ?? process.env.HOME ?? '', 'Desktop');
+const HEIM = process.env.USERPROFILE ?? process.env.HOME ?? '';
+/* Vorlagen liegen mal auf dem Desktop, mal im Download-Ordner — je nachdem,
+ * woher sie kamen. Beide Orte werden durchsucht, der erste Treffer gewinnt. */
+const QUELLEN = [resolve(HEIM, 'Desktop'), resolve(HEIM, 'Downloads')];
 const ZIEL = join(ROOT, 'public', 'musik');
 
+/** Sucht eine Vorlage in allen Quellordnern. `null`, wenn sie nirgends liegt. */
+function finden(datei) {
+  for (const ordner of QUELLEN) {
+    const p = join(ordner, datei);
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
 /* Zuordnung Stück -> Gebiet. Die Gebietsnamen sind die aus
- * CONFIG.wall.stages und zugleich die Dateinamen in public/musik. */
+ * CONFIG.wall.stages und zugleich die Dateinamen in public/musik.
+ * `bis` schneidet nach n Sekunden ab — für Stücke, die viel länger sind,
+ * als das Gebiet je dauert. */
 const STUECKE = [
   { datei: 'Jungle Adventure.mp3', gebiet: 'gruen', was: 'erstes Gebiet, Dschungel' },
   { datei: 'Flower Jungle.mp3', gebiet: 'blumen', was: 'zweites Gebiet, Blumen' },
@@ -57,6 +71,14 @@ const STUECKE = [
   { datei: 'Crystal Cavern.mp3', gebiet: 'kristall', was: 'Kristallhöhle' },
   { datei: 'Lava Fortress.mp3', gebiet: 'lava', was: 'Lava, Feuer' },
   { datei: 'Ash Wasteland.mp3', gebiet: 'asche', was: 'Asche' },
+  { datei: 'Rust and Neon.mp3', gebiet: 'schrott', was: 'Schrott, Rost' },
+  { datei: 'Candy Land Loop.mp3', gebiet: 'bonbon', was: 'Süssigkeiten' },
+  { datei: 'Desert of Alhambra.mp3', gebiet: 'kakteen', was: 'Kakteen, Wüste' },
+  { datei: 'Echoes of the Obsidian Cavern.mp3', gebiet: 'ruine', was: 'Ruine' },
+  /* Das Gold-Gebiet dauert 30 s. Die Vorlage ist 480 s lang — ungekürzt wären
+   * das 5,6 MB je Format für Musik, von der niemand je mehr als die erste
+   * halbe Minute hört. 40 s lassen der Schleifenblende (3 s) Luft. */
+  { datei: 'Bonus Stage Victory.mp3', gebiet: 'gold', was: 'Gold-Gebiet, Bonus', bis: 40 },
 ];
 
 const BITRATE = '96k';
@@ -122,44 +144,36 @@ const kb = (p) => Math.round(statSync(p).size / 1024);
 
 mkdirSync(ZIEL, { recursive: true });
 
-/* ERST PRÜFEN, DANN LÖSCHEN — in dieser Reihenfolge, und das ist wichtig.
+/* NUR ANFASSEN, WOFÜR EINE VORLAGE DA IST.
  *
- * Hier wurde zuerst der Altbestand gelöscht und erst danach geschaut, ob die
- * Vorlagen überhaupt da sind. Die liegen auf dem DESKTOP, also ausserhalb des
- * Projekts und nicht in Git. Auf jedem anderen Rechner — oder sobald der
- * Desktop aufgeräumt ist — hätte ein versehentliches `npm run prep:musik`
- * alle zwölf Stücke gelöscht und sich mit einem Fehler beendet. Gerettet
- * hätte nur noch Git.
+ * Früher löschte dieses Skript erst den ganzen Zielordner und schaute dann,
+ * ob die Vorlagen überhaupt existieren. Die liegen ausserhalb des Projekts
+ * und nicht in Git — ein versehentlicher Lauf ohne sie hätte alle Stücke
+ * gelöscht. Danach kam die Prüfung vorweg, aber als Alles-oder-nichts: fehlte
+ * eine einzige Vorlage, lief gar nichts mehr.
+ *
+ * Beides ist jetzt hinfällig. Jedes Stück wird einzeln betrachtet: fehlt die
+ * Vorlage, bleibt die vorhandene Ausgabe unangetastet. Gelöscht wird immer
+ * nur genau das, was im selben Durchgang neu geschrieben wird. Damit lassen
+ * sich Stücke nachtragen, ohne die schon fertigen zu gefährden.
  */
-const fehltVorab = STUECKE.filter((s) => !existsSync(join(QUELLE, s.datei)));
-if (fehltVorab.length) {
-  console.error(`Vorlagen fehlen in ${QUELLE}:`);
-  for (const s of fehltVorab) console.error(`  ${s.datei}   (für ${s.gebiet})`);
-  console.error('\nNichts gelöscht, nichts geändert. Vorlagen dorthin legen und erneut starten.');
+const vorhanden = STUECKE.map((s) => ({ ...s, quelle: finden(s.datei) }));
+const zuTun = vorhanden.filter((s) => s.quelle);
+const fehlend = vorhanden.filter((s) => !s.quelle);
+
+console.log(`Quellen: ${QUELLEN.join('  |  ')}`);
+console.log(`Ziel:    ${ZIEL}`);
+console.log(`Ziel-Lautheit ${ZIEL_LUFS} LUFS, ${BITRATE} stereo\n`);
+
+if (!zuTun.length) {
+  console.error('Keine einzige Vorlage gefunden. Nichts geändert.');
   process.exit(1);
 }
 
-// Jetzt ist der Weg frei: Altbestand weg, sonst bleiben Dateien von
-// umbenannten Stücken liegen.
-for (const f of readdirSync(ZIEL)) {
-  if (/\.(ogg|mp3)$/i.test(f)) unlinkSync(join(ZIEL, f));
-}
-
-console.log(`Quelle: ${QUELLE}`);
-console.log(`Ziel:   ${ZIEL}`);
-console.log(`Ziel-Lautheit ${ZIEL_LUFS} LUFS, ${BITRATE} stereo\n`);
-
-const fehlend = [];
 const ergebnis = [];
 
-for (const s of STUECKE) {
-  const quelle = join(QUELLE, s.datei);
-  if (!existsSync(quelle)) {
-    fehlend.push(s.datei);
-    console.log(`  FEHLT   ${s.gebiet.padEnd(10)} ${s.datei}`);
-    continue;
-  }
-
+for (const s of zuTun) {
+  const quelle = s.quelle;
   const laenge = dauer(quelle);
   const gemessen = messen(quelle);
 
@@ -176,11 +190,15 @@ for (const s of STUECKE) {
     ['ogg', ['-c:a', 'libvorbis', '-b:a', BITRATE]],
     ['mp3', ['-c:a', 'libmp3lame', '-b:a', BITRATE]],
   ]) {
+    const ziel = join(ZIEL, `${s.gebiet}.${endung}`);
+    if (existsSync(ziel)) unlinkSync(ziel);
     lauf([
       '-i',
       quelle,
       // `-vn` wirft die Bildspur weg — nötig für das .mp4, schadet sonst nicht.
       '-vn',
+      // Kürzen nur, wenn für dieses Stück verlangt.
+      ...(s.bis ? ['-t', String(s.bis)] : []),
       '-af',
       filter,
       '-ar',
@@ -188,16 +206,17 @@ for (const s of STUECKE) {
       '-ac',
       '2',
       ...args,
-      join(ZIEL, `${s.gebiet}.${endung}`),
+      ziel,
     ]);
   }
 
   const o = kb(join(ZIEL, `${s.gebiet}.ogg`));
   const m = kb(join(ZIEL, `${s.gebiet}.mp3`));
+  const gekuerzt = s.bis ? ` (auf ${s.bis}s gekürzt)` : '';
   ergebnis.push({ ...s, laenge, ogg: o, mp3: m, lufs: gemessen?.input_i });
   console.log(
     `  ok      ${s.gebiet.padEnd(10)} ${String(Math.round(laenge)).padStart(3)}s  ` +
-      `${String(o).padStart(4)} KB ogg / ${String(m).padStart(4)} KB mp3   ${s.was}`,
+      `${String(o).padStart(4)} KB ogg / ${String(m).padStart(4)} KB mp3   ${s.was}${gekuerzt}`,
   );
 }
 
@@ -214,7 +233,13 @@ if (ergebnis.length) {
   }
 }
 if (fehlend.length) {
-  console.log(`\nFEHLENDE VORLAGEN (${fehlend.length}):`);
-  for (const f of fehlend) console.log('  ' + f);
-  process.exit(1);
+  console.log(`\nOhne Vorlage, deshalb übersprungen (${fehlend.length}):`);
+  for (const f of fehlend) {
+    const da = existsSync(join(ZIEL, `${f.gebiet}.ogg`));
+    console.log(`  ${f.gebiet.padEnd(10)} ${f.datei}   ${da ? '— fertige Datei bleibt liegen' : '— FEHLT AUCH IM SPIEL'}`);
+  }
+  // Kein Abbruch: Übersprungene Stücke sind der Normalfall, sobald die
+  // Vorlagen aufgeräumt sind. Nur wenn eines im Spiel fehlt, ist es ein Fehler.
+  const echtWeg = fehlend.filter((f) => !existsSync(join(ZIEL, `${f.gebiet}.ogg`)));
+  if (echtWeg.length) process.exit(1);
 }

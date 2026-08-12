@@ -58,6 +58,9 @@ const BACKGROUNDS = [
   'stage_bonbon',
   'stage_kakteen',
   'stage_ruine',
+  // Das Gold-Gebiet. Kein gewöhnliches Gebiet der Reihe nach, sondern der
+  // Bonus, in den die goldene Banane für 30 Sekunden versetzt.
+  'stage_gold',
 ].map((name) => ({ src: `${name}.png`, out: `${name}.webp` }));
 
 /* Kletter-Frames: bereits freigestellte Einzelbilder aus den Bewegungsvideos.
