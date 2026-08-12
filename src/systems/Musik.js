@@ -60,6 +60,168 @@ function blendkurve(von, bis, n = 32) {
 }
 
 export class Musik {
+  /**
+   * @param {typeof import('../config.js').CONFIG.klang.musik} cfg
+   * @param {AudioContext} ctx
+   * @param {AudioNode} ziel Mischpult (der Master von Klang)
+   */
+  constructor(cfg, ctx, ziel) {
+    this.cfg = cfg;
+    this.ctx = ctx;
+    this.ziel = ziel;
+
+    /** @type {Map<string, {a: object, b: object, gain: GainNode}>} */
+    this._gebiete = new Map();
+    /** Gerade laufendes Gebiet. */
+    this._aktuell = null;
+    /* Abspieler, deren play() der Browser abgelehnt hat. Die nächste echte
+     * Nutzereingabe holt sie über `freischalten()` nach. */
+    this._schuldig = new Set();
+    /* Abspieler, die schon einmal aus einer Geste heraus liefen. Safari
+     * verlangt das PRO Element. */
+    this._freigeschaltet = new Set();
+    this._endung = this._formatWaehlen();
+
+    /* Abspieltempo. Steigt mit jedem Gebiet (siehe CONFIG.klang.musik.
+     * tempoProGebiet). Wird hier gemerkt, weil neu angelegte Abspieler es
+     * sofort brauchen — ein Gebiet, das erst spät zum ersten Mal auftaucht,
+     * liefe sonst wieder auf 1.0, mitten im schnellsten Abschnitt. */
+    this._tempo = 1;
+    /** Läuft gerade eine Tempoblende? (id des setInterval) */
+    this._tempoUhr = 0;
+
+  }
+
+  /**
+   * Welches Format der Browser mag.
+   *
+   * Vorbis in OGG ist überall ausser auf sehr alten Apple-Geräten dabei und
+   * hat den saubereren Schleifenpunkt. MP3 ist der Rückfall — dafür liegt
+   * jedes Stück in beiden Formaten bereit.
+   */
+  _formatWaehlen() {
+    const pruef = document.createElement('audio');
+    const ogg = pruef.canPlayType('audio/ogg; codecs="vorbis"');
+    return ogg === 'probably' || ogg === 'maybe' ? 'ogg' : 'mp3';
+  }
+
+  /**
+   * ÜBER `assetUrl`, NICHT als roher Pfad.
+   *
+   * Hier stand `${this.cfg.ordner}${gebiet}.${endung}` und ergab
+   * `/musik/gruen.ogg` — einen ABSOLUTEN Pfad. Die Portale liefern das Spiel
+   * aber aus einem Unterordner aus, und dort zeigt ein führender Schrägstrich
+   * auf die Wurzel der Portalseite. Ergebnis wäre gewesen: auf CrazyGames und
+   * GameMonetize überhaupt keine Musik, ohne eine einzige Fehlermeldung —
+   * `<audio>` schweigt bei 404 einfach.
+   *
+   * Genau dafür gibt es `assetUrl`: es löst gegen `base: './'` aus
+   * vite.config.js auf. Jedes andere Asset im Spiel geht schon diesen Weg.
+   */
+  _pfad(gebiet) {
+    return assetUrl(`${this.cfg.ordner}${gebiet}.${this._endung}`);
+  }
+
+  /** Legt (einmalig) die zwei Abspieler eines Gebiets an. */
+  _anlegen(gebiet) {
+    if (this._gebiete.has(gebiet)) return this._gebiete.get(gebiet);
+
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(this.ziel);
+
+    const bauen = () => {
+      const el = new Audio();
+      el.src = this._pfad(gebiet);
+      el.preload = 'auto';
+      // KEIN loop: die Schleife macht der Wechsel zwischen a und b, sonst
+      // liefen beide Mechanismen gegeneinander.
+      el.loop = false;
+      /* KEIN `crossOrigin`. Die Musik liegt im eigenen Build, ist also immer
+       * gleicher Herkunft — dann braucht ein MediaElementAudioSourceNode
+       * nichts dergleichen. Gesetzt bewirkt es das Gegenteil: es erzwingt
+       * eine CORS-Anfrage. Antwortet der Server ohne die passende Kopfzeile
+       * (Portal-CDN, oder `file://` in der Android-Hülle), liefert der Knoten
+       * STILLE statt Musik — ohne Fehlermeldung. */
+      // Tempo sofort mitgeben: ein Gebiet, das erst spät zum ersten Mal
+      // auftaucht, liefe sonst wieder auf 1.0 an.
+      this._tempoAnwenden(el);
+
+      const quelle = this.ctx.createMediaElementSource(el);
+      const eigen = this.ctx.createGain();
+      eigen.gain.value = 0;
+      quelle.connect(eigen).connect(gain);
+      return { el, eigen };
+    };
+
+    const eintrag = { a: bauen(), b: bauen(), gain, aktiv: null, uhr: 0 };
+    this._gebiete.set(gebiet, eintrag);
+    return eintrag;
+  }
+
+  /**
+   * Wechselt auf das Stück eines Gebiets. Mehrfachaufrufe mit demselben
+   * Namen sind wirkungslos — Game ruft das jeden Frame.
+   *
+   * @param {string} gebiet Schlüssel aus CONFIG.wall.stages
+   */
+  spiele(gebiet) {
+    if (this._aktuell === gebiet) return;
+    const fade = this.cfg.wechselFade;
+    const jetzt = this.ctx.currentTime;
+
+    // Altes ausblenden — es läuft weiter, bis die Blende durch ist.
+    if (this._aktuell) {
+      const alt = this._gebiete.get(this._aktuell);
+      if (alt) {
+        alt.gain.gain.cancelScheduledValues(jetzt);
+        alt.gain.gain.setValueCurveAtTime(blendkurve(alt.gain.gain.value, 0), jetzt, fade);
+        const zuStoppen = alt;
+        clearTimeout(zuStoppen.uhr);
+        zuStoppen.uhr = setTimeout(() => {
+          for (const s of [zuStoppen.a, zuStoppen.b]) {
+            try {
+              s.el.pause();
+              s.el.currentTime = 0;
+            } catch {
+              /* egal */
+            }
+          }
+          zuStoppen.aktiv = null;
+        }, fade * 1000 + 120);
+      }
+    }
+
+    this._aktuell = gebiet;
+    const neu = this._anlegen(gebiet);
+    clearTimeout(neu.uhr);
+
+    // Von vorn beginnen: ein Gebiet soll mit dem Anfang seines Stücks
+    // starten, nicht dort, wo man es beim letzten Mal verlassen hat.
+    neu.aktiv = neu.a;
+    neu.b.eigen.gain.value = 0;
+    neu.a.eigen.gain.value = 1;
+    try {
+      neu.a.el.currentTime = 0;
+    } catch {
+      /* noch nicht geladen — dann fängt es ohnehin bei 0 an */
+    }
+    this._starten(neu.a.el);
+
+    neu.gain.gain.cancelScheduledValues(jetzt);
+    neu.gain.gain.setValueCurveAtTime(
+      blendkurve(neu.gain.gain.value, this._pegel(gebiet)),
+      jetzt,
+      fade,
+    );
+  }
+
+  /** Lautstärke eines Gebiets: einheitlich, sofern nichts anderes dasteht. */
+  _pegel(gebiet) {
+    return this.cfg.pegel?.[gebiet] ?? this.cfg.grundPegel;
+  }
+
+
   /* ================================================================ Tempo */
 
   /**
