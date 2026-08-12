@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -67,14 +67,14 @@
 
              KEIN aria-pressed: die Beschriftung sagt schon, was passiert
              ("Ton einschalten"). Beides zusammen liest die Vorlesehilfe als
-             "Ton einschalten, gedrückt" — ein Widerspruch. Der Zustand steht
+             "Unmute, pressed" — ein Widerspruch. Der Zustand steht
              im data-Attribut, das nur die Darstellung braucht. -->
         <button
           id="btn-ton"
           class="ton-schalter"
           type="button"
           data-stumm="nein"
-          aria-label="Ton ausschalten"
+          aria-label="Mute"
           hidden
         >
           <span id="ton-symbol" aria-hidden="true">🔊</span>
@@ -85,31 +85,31 @@
           <h1 class="logo">JUNGLE<span>CLIMBER</span></h1>
           <div class="loader">
             <div class="loader__bar"><i id="loading-fill"></i></div>
-            <p id="loading-label" class="loader__label">Wird geladen…</p>
+            <p id="loading-label" class="loader__label">Loading…</p>
           </div>
         </section>
 
         <!-- --------------------------------------------------------- Menü -->
         <section id="screen-menu" class="screen screen--center">
           <h1 class="logo">JUNGLE<span>CLIMBER</span></h1>
-          <p class="tagline">Klettere so hoch du kannst. Weiche den Steinen aus.</p>
+          <p class="tagline">Climb as high as you can. Dodge the falling rocks.</p>
 
           <div class="button-row">
             <button id="btn-start" class="btn btn--primary" type="button">
-              Spiel starten
+              Play
             </button>
-            <button id="btn-characters" class="btn" type="button">Charaktere</button>
+            <button id="btn-characters" class="btn" type="button">Characters</button>
           </div>
 
           <div class="panel">
-            <h2 class="panel__title">Bestenliste</h2>
+            <h2 class="panel__title">Best runs</h2>
             <ol id="menu-highscores" class="highscores"></ol>
           </div>
 
           <div class="controls-hint">
-            <p><b>A</b> / <b>D</b> oder <b>Pfeiltasten</b> — nach links und rechts</p>
-            <p><b>Esc</b> / <b>P</b> — Pause &nbsp;·&nbsp; <b>F1</b> — Hitboxen</p>
-            <p class="controls-hint--touch">Irgendwo tippen und nach links oder rechts ziehen</p>
+            <p><b>A</b> / <b>D</b> or <b>arrow keys</b> — move left and right</p>
+            <p><b>Esc</b> / <b>P</b> — pause &nbsp;·&nbsp; <b>F1</b> — hitboxes</p>
+            <p class="controls-hint--touch">Tap anywhere and drag left or right</p>
           </div>
         </section>
 
@@ -118,14 +118,14 @@
              pointer-events:none, erst .screen--center holt es zurück.
              Ohne die Klasse wären die Kacheln nicht anklickbar. -->
         <section id="screen-characters" class="screen screen--center screen--dim">
-          <h2 class="headline">Dschungel-Camp</h2>
-          <p class="tagline">Affe wählen, Fell wählen, los.</p>
+          <h2 class="headline">Jungle Camp</h2>
+          <p class="tagline">Pick a monkey, pick a colour, go.</p>
 
           <!-- Gesamtbestand. Steht bewusst hier oben: hier wird ausgegeben. -->
           <p class="besitz">
             <span class="besitz__icon"></span>
             <span id="besitz-wert">0</span>
-            <span class="besitz__label">Münzen</span>
+            <span class="besitz__label">Coins</span>
           </p>
 
           <!-- Die Kacheln erzeugt UI.showCharacters() aus CONFIG.characters. -->
@@ -134,14 +134,14 @@
           <!-- Fellfarben. Erzeugt UI.showSkins() aus CONFIG.skins. Die
                Vorschau ist dasselbe Bild wie oben, nur mit demselben
                CSS-Filter — man sieht also exakt, was man bekommt. -->
-          <h3 class="panel__title panel__title--spaced">Fellfarbe</h3>
+          <h3 class="panel__title panel__title--spaced">Fur colour</h3>
           <div id="skin-list" class="skins"></div>
 
           <p id="character-error" class="char-error" role="status" aria-live="polite"></p>
 
           <div class="button-row">
-            <button id="btn-characters-go" class="btn btn--primary" type="button">Los!</button>
-            <button id="btn-characters-back" class="btn" type="button">Zurück</button>
+            <button id="btn-characters-go" class="btn btn--primary" type="button">Go!</button>
+            <button id="btn-characters-back" class="btn" type="button">Back</button>
           </div>
 
           <!-- Fortschritt mitnehmen.
@@ -151,11 +151,11 @@
                Bleibt versteckt, solange kein Server konfiguriert ist, und auf
                CrazyGames auch — dort hängt der Stand am Konto. -->
           <details id="uebertrag" class="uebertrag" hidden>
-            <summary>Fortschritt auf ein anderes Gerät mitnehmen</summary>
+            <summary>Move your progress to another device</summary>
             <!-- HÄLFTE 1: hier vergibt man seine vier Ziffern. -->
             <p class="uebertrag__hinweis">
-              Such dir <b>vier Ziffern</b> aus, die noch frei sind. Mit ihnen
-              holst du deine Münzen und Affen auf jedes andere Gerät.
+              Pick <b>four digits</b> that are still free. Use them to bring
+              your coins and monkeys to any other device.
             </p>
             <form id="uebertrag-belegen-form" class="uebertrag__form">
               <input
@@ -168,9 +168,9 @@
                 autocomplete="off"
                 spellcheck="false"
                 placeholder="0000"
-                aria-label="Vierstelligen Code aussuchen"
+                aria-label="Choose a four-digit code"
               />
-              <button class="btn btn--klein" type="submit">Merken</button>
+              <button class="btn btn--klein" type="submit">Save</button>
               <!-- Holt UND belegt in einem Zug. Ein blosser Vorschlag wäre
                    nicht verbindlich — siehe code_vorschlag in der SQL. -->
               <button id="btn-code-vorschlag" class="btn btn--klein" type="button">
@@ -179,12 +179,12 @@
             </form>
 
             <p class="uebertrag__hinweis uebertrag__hinweis--code" id="uebertrag-code-zeile" hidden>
-              Dein Code: <code id="uebertrag-code" class="uebertrag__code">—</code>
-              <button id="btn-code-kopieren" class="btn btn--klein" type="button">Kopieren</button>
+              Your code: <code id="uebertrag-code" class="uebertrag__code">—</code>
+              <button id="btn-code-kopieren" class="btn btn--klein" type="button">Copy</button>
             </p>
 
             <!-- HÄLFTE 2: hier gibt man ihn auf dem anderen Gerät ein. -->
-            <p class="uebertrag__hinweis">Code von einem anderen Gerät eingeben:</p>
+            <p class="uebertrag__hinweis">Enter a code from another device:</p>
             <form id="uebertrag-form" class="uebertrag__form">
               <input
                 id="uebertrag-eingabe"
@@ -196,9 +196,9 @@
                 autocomplete="off"
                 spellcheck="false"
                 placeholder="0000"
-                aria-label="Vierstelligen Code eingeben"
+                aria-label="Enter a four-digit code"
               />
-              <button class="btn btn--klein" type="submit">Laden</button>
+              <button class="btn btn--klein" type="submit">Load</button>
             </form>
             <p id="uebertrag-status" class="uebertrag__status" role="status" aria-live="polite"></p>
           </details>
@@ -223,7 +223,7 @@
                    das auch herunterfällt, damit man es wiedererkennt. -->
               <span class="hud__banane" id="hud-revive" aria-live="polite">
                 <img src="./hazards/banane.webp" alt="" aria-hidden="true" />
-                <span class="hud__banane-text">Extraleben</span>
+                <span class="hud__banane-text">Extra life</span>
               </span>
             </div>
           </div>
@@ -243,11 +243,11 @@
 
         <!-- -------------------------------------------------------- Pause -->
         <section id="screen-paused" class="screen screen--center screen--dim">
-          <h2 class="headline">Pause</h2>
+          <h2 class="headline">Paused</h2>
           <button id="btn-resume" class="btn btn--primary" type="button">
             Weiterspielen
           </button>
-          <button id="btn-pause-menu" class="btn" type="button">Zum Hauptmenü</button>
+          <button id="btn-pause-menu" class="btn" type="button">Main menu</button>
         </section>
 
         <!-- ------------------------------------------- Weiterspielen? -----
@@ -257,34 +257,34 @@
              daneben, könnte man erst eintragen und dann weiterklettern — und
              stünde am Ende zweimal in der Liste. -->
         <section id="screen-continue" class="screen screen--center screen--dim">
-          <h2 class="headline">Weiterklettern?</h2>
+          <h2 class="headline">Keep climbing?</h2>
 
           <p class="result">
             <span id="continue-score">0</span><span class="result__unit">m</span>
           </p>
 
           <p class="hint">
-            Ein Spot, und es geht an derselben Stelle weiter —
-            mit ein paar Sekunden Schonzeit.
+            One ad, and you carry on from the same spot —
+            with a few seconds of grace.
           </p>
 
           <div class="button-row">
             <button id="btn-watch-ad" class="btn btn--primary" type="button">
-              Werbung ansehen
+              Watch ad
             </button>
-            <button id="btn-decline-ad" class="btn" type="button">Nein danke</button>
+            <button id="btn-decline-ad" class="btn" type="button">No thanks</button>
           </div>
         </section>
 
         <!-- ---------------------------------------------------- Werbespot -->
         <section id="screen-ad" class="screen screen--center screen--dim">
-          <p class="ad-badge">Werbung</p>
+          <p class="ad-badge">Advertisement</p>
           <div class="ad-box">
             <p class="ad-box__count" id="ad-countdown">5</p>
-            <p class="ad-box__note">Platzhalter — hier läuft später der Spot.</p>
+            <p class="ad-box__note">Placeholder — the ad will play here.</p>
           </div>
           <div class="button-row">
-            <button id="btn-cancel-ad" class="btn" type="button">Abbrechen</button>
+            <button id="btn-cancel-ad" class="btn" type="button">Cancel</button>
           </div>
         </section>
 
@@ -297,23 +297,23 @@
           </p>
 
           <form id="name-form" class="name-form" autocomplete="off">
-            <label for="name-input" id="name-label">Neuer Highscore! Dein Name:</label>
+            <label for="name-input" id="name-label">New best! Your name:</label>
             <div class="name-form__row">
               <input
                 id="name-input"
                 class="name-input"
                 type="text"
                 maxlength="12"
-                placeholder="AFFE"
+                placeholder="APE"
                 autocomplete="off"
                 spellcheck="false"
               />
-              <button class="btn btn--primary" type="submit">Eintragen</button>
+              <button class="btn btn--primary" type="submit">Submit</button>
             </div>
           </form>
 
           <div class="panel">
-            <h2 class="panel__title">Bestenliste</h2>
+            <h2 class="panel__title">Best runs</h2>
             <ol id="gameover-highscores" class="highscores"></ol>
           </div>
 
@@ -321,16 +321,16 @@
                CONFIG.bestenliste stehen — dann gibt es schlicht nichts
                Weltweites zu zeigen. -->
           <div class="panel panel--welt" id="welt-panel">
-            <h2 class="panel__title">Weltweit</h2>
+            <h2 class="panel__title">Worldwide</h2>
             <ol id="welt-liste" class="highscores"></ol>
             <p class="welt__status" id="welt-status"></p>
           </div>
 
           <div class="button-row">
             <button id="btn-retry" class="btn btn--primary" type="button">
-              Nochmal
+              Again
             </button>
-            <button id="btn-gameover-menu" class="btn" type="button">Hauptmenü</button>
+            <button id="btn-gameover-menu" class="btn" type="button">Main menu</button>
           </div>
         </section>
 

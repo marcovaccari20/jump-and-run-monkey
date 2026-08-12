@@ -336,12 +336,12 @@ export class Game {
   async _codeLaden(code) {
     const b = this.cfg.bestenliste;
     if (!b?.url || !b?.schluessel) {
-      this.ui.setUebertragStatus('Ohne Server gibt es nichts zu übertragen.');
+      this.ui.setUebertragStatus('Nothing to transfer without a server.');
       return;
     }
 
     this.ui.setUebertragBesetzt(true);
-    this.ui.setUebertragStatus('wird geladen…');
+    this.ui.setUebertragStatus('loading…');
 
     /* ERST AUFLÖSEN, DANN DIE EIGENE KENNUNG ÜBERSCHREIBEN.
      *
@@ -362,7 +362,7 @@ export class Game {
     const stand = await speicher.laden();
     if (!stand) {
       this.ui.setUebertragBesetzt(false);
-      this.ui.setUebertragStatus('Zu diesem Code ist nichts gespeichert.');
+      this.ui.setUebertragStatus('Nothing is stored for that code.');
       return;
     }
 
@@ -376,7 +376,7 @@ export class Game {
 
     this.ui.setUebertragBesetzt(false);
     this.ui.setUebertragCode(String(code).trim());
-    this.ui.setUebertragStatus(`Übernommen: ${stand.muenzen} Münzen.`);
+    this.ui.setUebertragStatus(`Restored: ${stand.muenzen} coins.`);
     // Die Kacheln zeigen sonst weiter die alten Schlösser.
     this._openCharacters();
   }
@@ -391,16 +391,16 @@ export class Game {
   async _codeBelegen(code) {
     const b = this.cfg.bestenliste;
     if (!b?.url || !b?.schluessel) {
-      this.ui.setUebertragStatus('Ohne Server gibt es nichts zu übertragen.');
+      this.ui.setUebertragStatus('Nothing to transfer without a server.');
       return;
     }
     if (!this.spielerId) {
-      this.ui.setUebertragStatus('Noch keine Kennung — bitte einmal spielen.');
+      this.ui.setUebertragStatus('No profile yet — play one round first.');
       return;
     }
 
     this.ui.setUebertragBesetzt(true);
-    this.ui.setUebertragStatus('wird eingetragen…');
+    this.ui.setUebertragStatus('saving…');
 
     const erg = await codeBelegen(b, this.spielerId, code);
     this.ui.setUebertragBesetzt(false);
@@ -420,7 +420,7 @@ export class Game {
     this.fortschritt._sichern();
 
     this.ui.setUebertragCode(erg.code);
-    this.ui.setUebertragStatus(`Code ${erg.code} gehört jetzt dir.`);
+    this.ui.setUebertragStatus(`Code ${erg.code} is yours now.`);
   }
 
   /**
@@ -433,16 +433,16 @@ export class Game {
   async _codeVorschlag() {
     const b = this.cfg.bestenliste;
     if (!b?.url || !b?.schluessel) {
-      this.ui.setUebertragStatus('Ohne Server gibt es nichts zu übertragen.');
+      this.ui.setUebertragStatus('Nothing to transfer without a server.');
       return;
     }
     if (!this.spielerId) {
-      this.ui.setUebertragStatus('Noch keine Kennung — bitte einmal spielen.');
+      this.ui.setUebertragStatus('No profile yet — play one round first.');
       return;
     }
 
     this.ui.setUebertragBesetzt(true);
-    this.ui.setUebertragStatus('wird geholt…');
+    this.ui.setUebertragStatus('fetching…');
     const erg = await codeVorschlag(b, this.spielerId);
     this.ui.setUebertragBesetzt(false);
 
@@ -456,7 +456,7 @@ export class Game {
     this.fortschritt._sichern();
 
     this.ui.setUebertragCode(erg.code);
-    this.ui.setUebertragStatus(`Code ${erg.code} gehört jetzt dir.`);
+    this.ui.setUebertragStatus(`Code ${erg.code} is yours now.`);
   }
 
   /* ================================================================== Laden */
@@ -770,7 +770,7 @@ export class Game {
     this.spawner.coins?.releaseAll?.((m) => m.despawn());
     this.sturzflug?.abbrechen();
 
-    this.ui.toast('Feuer frei!', 'banana');
+    this.ui.toast('Fire in the hole!', 'banana');
     this.klang.effekt('chili');
 
     // Bildfolge beim ersten Mal nachladen.
@@ -1024,7 +1024,7 @@ export class Game {
   _goldmodusStarten() {
     const b = this.cfg.goldbanane;
     this._goldRest = b.sekunden;
-    this.ui.toast('Gold-Gebiet!', 'banana');
+    this.ui.toast('Golden zone!', 'banana');
     this.klang.effekt('banane');
 
     /* INS GOLD-GEBIET WECHSELN.
@@ -1087,7 +1087,7 @@ export class Game {
       this.player.fellWechseln?.(null);
       // Zurück in die reguläre Reihe — Wand und Musik zugleich.
       this.wall.sonderStufe(null, this.difficulty.elapsed);
-      this.ui.toast('Gold-Gebiet vorbei', 'revive');
+      this.ui.toast('Golden zone over', 'revive');
     }
   }
 
@@ -1426,7 +1426,7 @@ export class Game {
      * aber das ist die Stelle, die WIRKT — und sie wird auch aus load()
      * heraus mit einer gespeicherten ID gerufen. */
     if (!this.fortschritt.istFrei(id)) {
-      this.ui.showCharacterError(`${char.label} ist noch gesperrt.`);
+      this.ui.showCharacterError(`${char.label} is still locked.`);
       return;
     }
 
@@ -1439,7 +1439,7 @@ export class Game {
       console.warn('[Game] Charakter liess sich nicht laden:', err);
       if (meineNummer === this._wechselNummer) {
         this.ui.setCharactersBusy(false);
-        this.ui.showCharacterError(`${char.label} liess sich nicht laden.`);
+        this.ui.showCharacterError(`${char.label} could not be loaded.`);
       }
       return;
     }
@@ -1489,14 +1489,14 @@ export class Game {
     if (!this.fortschritt.kaufen(id, preis)) {
       const fehlt = preis - this.fortschritt.muenzen;
       this.ui.showCharacterError(
-        `${eintrag.label} kostet ${preis} Münzen — dir fehlen noch ${fehlt}.`,
+        `${eintrag.label} costs ${preis} coins — you need ${fehlt} more.`,
       );
       return;
     }
 
     this.ui.showCharacterError('');
     this.klang.effekt('frei');
-    this.ui.toast(`${eintrag.label} freigeschaltet!`, 'banana');
+    this.ui.toast(`${eintrag.label} unlocked!`, 'banana');
     // Frisch Gekauftes gleich auswählen: wer 150 Münzen ausgibt, will es
     // benutzen und nicht danach noch einmal klicken.
     if (art === 'skin') this._pickSkin(id);
@@ -1827,7 +1827,7 @@ export class Game {
      * Spielende. Kein await: der Bildschirm steht sofort, die Liste tröpfelt
      * nach, und wenn der Server schweigt, bleibt es beim Hinweistext. */
     if (this.bestenliste.weltweit) {
-      this.ui.setWeltStatus('Weltliste wird geladen…');
+      this.ui.setWeltStatus('Loading worldwide list…');
       this._zeigeWeltListe();
     }
   }
@@ -1863,7 +1863,7 @@ export class Game {
       return;
     }
 
-    if (ergebnis === 'fehler') this.ui.toast('Keine Werbung verfügbar', 'revive');
+    if (ergebnis === 'fehler') this.ui.toast('No ad available', 'revive');
     this._showGameOverScreen();
   }
 
@@ -1895,7 +1895,7 @@ export class Game {
     }
 
     this.states.transitionTo(GameState.PLAYING, { weiter: true });
-    this.ui.toast('Weiter geht’s!', 'revive');
+    this.ui.toast('Off you go!', 'revive');
     if (this.cfg.debug.showStats) {
       console.info(`[Game] Weiterspielen — ${weg} Objekte weggeräumt`);
     }
@@ -1967,7 +1967,7 @@ export class Game {
 
     /* Weltweit dazu. Die Spielzeit steht NICHT hier drin — sie kommt aus der
      * Marke, die der Server beim Rundenstart gestempelt hat. */
-    this.ui.setWeltStatus('wird eingetragen…');
+    this.ui.setWeltStatus('saving…');
     const antwort = await this.bestenliste.eintragen(this._weltLauf, sauber, meters, mitWerbung);
     if (marke !== this._eintragNummer) return;
 
@@ -1975,7 +1975,7 @@ export class Game {
       // Den ECHTEN Grund zeigen. "Nicht erreichbar" für eine fachliche
       // Ablehnung (zu kurzer Lauf, Sperrfrist) schickt den Spieler auf die
       // Suche nach einem Netzproblem, das es gar nicht gibt.
-      this.ui.setWeltStatus(antwort.grund ?? 'Weltliste nicht erreichbar');
+      this.ui.setWeltStatus(antwort.grund ?? 'Worldwide list unreachable');
       return;
     }
     /* Name und Platz merken, damit die Liste sie danach ANZEIGT und stehen
@@ -1998,7 +1998,7 @@ export class Game {
       this.ui.showWeltListe(eintraege, this._eigenerEintrag);
     } catch {
       if (meine !== this._eintragNummer) return;
-      this.ui.setWeltStatus('Weltliste nicht erreichbar');
+      this.ui.setWeltStatus('Worldwide list unreachable');
     }
   }
 
@@ -2445,7 +2445,7 @@ export class Game {
     if (result !== 'ignored') this.klang.effekt('treffer');
     if (result === 'revived') {
       this.ui.setRevive(false);
-      this.ui.toast('Wiederbelebt!', 'revive');
+      this.ui.toast('Revived!', 'revive');
     } else if (result === 'dead') {
       this._deathTimer = this.cfg.flow.gameOverDelay;
     }
@@ -2480,7 +2480,7 @@ export class Game {
       this.klang.effekt('banane');
       this._affeFreutSich(this.cfg.klang.affenRuf?.beiBanane ?? 0);
       this.ui.setRevive(true);
-      this.ui.toast('+1 Wiederbelebung', 'banana');
+      this.ui.toast('+1 revive', 'banana');
     }
   }
 

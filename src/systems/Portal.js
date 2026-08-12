@@ -41,8 +41,25 @@
  *  zwischen zwei Spots liegen mindestens 180 Sekunden.
  * ===================================================================== */
 
-/** Mindestabstand zwischen zwei Spots, vom Portal erzwungen. */
-const SPERRE_MS = 180000;
+/* Mindestabstand zwischen zwei EIGENEN Anfragen.
+ *
+ * ACHTUNG, HIER STAND 180000, UND DAS WAR EIN FEHLSCHLUSS.
+ *
+ * Die 180000 aus dem SDK sind der Takt, in dem das Portal von SICH AUS einen
+ * Zwischenspot legt — keine Sperre für `showBanner()`. Gemessen am laufenden
+ * SDK: 13 Sekunden nach dem Preroll auf Anfrage ein vollständiger Spot über
+ * 10.5 Sekunden, mit der ganzen Ereigniskette von LOADED bis COMPLETE.
+ *
+ * Mit 180 Sekunden hätte der Knopf "Werbung ansehen" beim ERSTEN Game Over
+ * gefehlt — der Preroll läuft ja schon beim Laden, und die erste Runde ist
+ * kürzer als drei Minuten. Genau die Stelle, an der ein Weiterleben am
+ * meisten wert ist.
+ *
+ * 60 Sekunden verhindern das Hämmern, ohne etwas zu verschenken. Kommt trotz
+ * Anfrage kein Spot, meldet `_ereignis` sauber 'fehler' — der Spieler
+ * bekommt dann "Keine Werbung verfügbar" statt eines Knopfes, der nichts
+ * tut. */
+const SPERRE_MS = 60000;
 
 /* Ab dieser Dauer gilt ein Spot als WIRKLICH gelaufen.
  *

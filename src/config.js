@@ -412,7 +412,7 @@ export const CONFIG = {
     list: {
       standard: { id: 'standard', label: 'Standard', filter: 'none', kosten: 0 },
       grau: { id: 'grau', label: 'Grau', filter: 'saturate(0.12)', kosten: 200 },
-      rot: { id: 'rot', label: 'Rot', filter: 'hue-rotate(-28deg) saturate(1.9)', kosten: 200 },
+      rot: { id: 'rot', label: 'Red', filter: 'hue-rotate(-28deg) saturate(1.9)', kosten: 200 },
 
       /* GRÜN braucht einen kräftigeren Umriss: vor der grünen Wand geht es
        * sonst unter. Der Umriss ist genau dafür da (CONFIG.sprite.outline),
@@ -420,15 +420,15 @@ export const CONFIG = {
        * alles Nichtgenannte bleibt. */
       gruen: {
         id: 'gruen',
-        label: 'Grün',
+        label: 'Green',
         filter: 'hue-rotate(72deg) saturate(1.3)',
         outline: { opacity: 0.72, scale: 1.1 },
         kosten: 200,
       },
-      blau: { id: 'blau', label: 'Blau', filter: 'hue-rotate(160deg) saturate(1.5)', kosten: 200 },
+      blau: { id: 'blau', label: 'Blue', filter: 'hue-rotate(160deg) saturate(1.5)', kosten: 200 },
       violett: {
         id: 'violett',
-        label: 'Violett',
+        label: 'Purple',
         filter: 'hue-rotate(215deg) saturate(1.5)',
         kosten: 200,
       },
@@ -450,8 +450,8 @@ export const CONFIG = {
         id: 'braun',
         // Von Anfang an da — irgendwer muss den ersten Lauf machen.
         kosten: 0,
-        label: 'Brauner Affe',
-        blurb: 'Der Klassiker. Ausgewogen in allem.',
+        label: 'Brown Monkey',
+        blurb: 'The classic. Balanced in every way.',
         preview: '/characters/brown.webp',
         framePath: '/textures/move_{n}.webp',
         // Je Affe eigene Bildzahl: die Videos enthalten unterschiedlich viele
@@ -485,8 +485,8 @@ export const CONFIG = {
         id: 'weiss',
         // Der Flinke. Halb so grosse Hitbox, aber keine Wiederbelebung.
         kosten: 1000,
-        label: 'Weisser Affe',
-        blurb: 'Halb so gross und flinker. Keine Bananen, keine zweite Chance.',
+        label: 'White Monkey',
+        blurb: 'Half the size and quicker. No bananas, no second chance.',
         preview: '/characters/white.webp',
         framePath: '/textures/weiss/move_{n}.webp',
         /* ZWÖLF BILDER, NICHT ZEHN — es ist jetzt der eingefärbte BRAUNE.
@@ -536,8 +536,8 @@ export const CONFIG = {
         id: 'orange',
         // Der Schwere. Kleine Steine prallen ab — die teuerste Fähigkeit.
         kosten: 1500,
-        label: 'Oranger Affe',
-        blurb: 'Dick und langsam — die kleinsten Steine prallen an ihm ab.',
+        label: 'Orange Monkey',
+        blurb: 'Heavy and slow — the smallest rocks bounce right off.',
         preview: '/characters/orange.webp',
         framePath: '/textures/orange/move_{n}.webp',
         // 21 Bilder: eigenes Video, eigene Periode (0.875 s).
@@ -1638,14 +1638,17 @@ export const CONFIG = {
       an: true,
       /* Sekunden zwischen zwei Spots, ab dem Ende des vorigen.
        *
-       * 180 STATT 90 — nicht aus Rücksicht, sondern weil 90 nicht ging.
+       * 120 statt 90. Im SDK steht `midroll: 180000` — der Takt, in dem das
+       * Portal von sich aus einen Zwischenspot legt. Gemessen liefert es auf
+       * ausdrückliche Anfrage aber auch deutlich früher (13 Sekunden nach dem
+       * Preroll ein voller Spot), es ist also keine harte Sperre.
        *
-       * GameMonetize erzwingt den Abstand selbst: im ausgelieferten SDK steht
-       * `midroll: 180000`. Wer früher fragt, bekommt keinen Spot und auch
-       * keine Meldung — es passiert einfach nichts. Mit 90 fragte das Spiel
-       * also zuverlässig mitten in die Sperre hinein und bekam ein stilles
-       * Nein. Das ist der Grund, warum "der Spot kam nicht von alleine". */
-      mindestAbstand: 180,
+       * 120 liegt bewusst darunter: der Zwischenspot soll den Takt des
+       * Portals nicht doppelt bedienen, aber auch nicht drei Minuten lang
+       * ausfallen. Der belohnte Spot fürs Weiterspielen hat seine eigene,
+       * kürzere Sperre (SPERRE_MS in Portal.js) — er ist der wertvollere von
+       * beiden und darf öfter. */
+      mindestAbstand: 120,
       /* Nach der allerersten Runde noch keiner.
        *
        * Die erste Runde ist der Eindruck, über den jemand entscheidet, ob er

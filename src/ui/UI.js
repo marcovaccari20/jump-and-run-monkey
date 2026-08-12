@@ -250,11 +250,11 @@ export class UI {
       const code = this.el.uebertragCode.textContent;
       try {
         await navigator.clipboard.writeText(code);
-        this.setUebertragStatus('Code kopiert.');
+        this.setUebertragStatus('Code copied.');
       } catch {
         /* Zwischenablage gesperrt (Fremd-Rahmen, kein HTTPS) — dann muss man
          * ihn eben markieren. Der Code steht ja sichtbar da. */
-        this.setUebertragStatus('Kopieren nicht erlaubt — Code von Hand markieren.');
+        this.setUebertragStatus('Copying is blocked — select the code by hand.');
       }
     });
 
@@ -346,7 +346,7 @@ export class UI {
       const li = document.createElement('li');
       const span = document.createElement('span');
       span.className = 'empty';
-      span.textContent = 'Noch keine Einträge — sei der Erste.';
+      span.textContent = 'No entries yet — be the first.';
       li.appendChild(span);
       listEl.appendChild(li);
       return;
@@ -375,7 +375,7 @@ export class UI {
         const mark = document.createElement('span');
         mark.className = 'score__mark';
         mark.textContent = '▸';
-        mark.title = 'Lauf wurde nach dem Tod fortgesetzt';
+        mark.title = 'Run was continued after dying';
         li.appendChild(mark);
       }
 
@@ -485,8 +485,8 @@ export class UI {
     kachel.appendChild(p);
 
     kachel.title = reicht
-      ? `Für ${preis} Münzen freischalten`
-      : `Kostet ${preis} Münzen — du hast ${bestand}`;
+      ? `Unlock for ${preis} coins`
+      : `Costs ${preis} coins — you have ${bestand}`;
   }
 
   /**
@@ -630,7 +630,7 @@ export class UI {
    */
   showGameOver({ score, qualifies, isNewBest, highscores }) {
     this.el.gameoverScore.textContent = String(score);
-    this.el.gameoverHeadline.textContent = isNewBest ? 'Neuer Rekord!' : 'Game Over';
+    this.el.gameoverHeadline.textContent = isNewBest ? 'New record!' : 'Game Over';
     this.el.gameoverHeadline.classList.toggle('headline--best', isNewBest);
 
     /* Das Weltlisten-Feld zurücksetzen. Ohne das blieb ein "Weltliste nicht
@@ -703,9 +703,9 @@ export class UI {
     if (eigen?.rang && index < 0) {
       // Eingetragen, aber nicht in der Top 10 — das ist kein Fehler, und der
       // Platz gehört trotzdem gezeigt.
-      this.el.weltStatus.textContent = `Dein Platz weltweit: ${eigen.rang}`;
+      this.el.weltStatus.textContent = `Your worldwide rank: ${eigen.rang}`;
     } else if (eigen?.rang) {
-      this.el.weltStatus.textContent = `Platz ${eigen.rang} weltweit`;
+      this.el.weltStatus.textContent = `Rank ${eigen.rang} worldwide`;
     } else {
       this.el.weltStatus.textContent = '';
     }
@@ -725,7 +725,7 @@ export class UI {
     // wirksam und darf sichtbar werden.
     this.el.btnTon.hidden = false;
     this.el.btnTon.dataset.stumm = stumm ? 'ja' : 'nein';
-    this.el.btnTon.setAttribute('aria-label', stumm ? 'Ton einschalten' : 'Ton ausschalten');
+    this.el.btnTon.setAttribute('aria-label', stumm ? 'Unmute' : 'Mute');
     this.el.tonSymbol.textContent = stumm ? '🔇' : '🔊';
   }
 
