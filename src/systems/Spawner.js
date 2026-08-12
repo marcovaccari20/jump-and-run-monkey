@@ -461,6 +461,9 @@ export class Spawner {
     }
     rock.spawn(type, this.hazardLook, x, world.spawnY, Math.random(), Math.random(), Math.random());
 
+    /* --- Manchmal ein ZWEITES auf einer anderen Bahn ------------------ */
+    this._doppelAbwurf(x);
+
     /* --- Wann kommt das nächste? ------------------------------------- */
     if (this._salveRest > 0) {
       this._salveRest--;
@@ -659,7 +662,80 @@ export class Spawner {
     });
 
     if (frei.length === 0) return null;
+    /* Die freien Bahnen merken, nicht wegwerfen.
+     *
+     * Der Doppelabwurf (`_doppelAbwurf`) braucht ZWEI davon. Sie hier
+     * zurückzugeben statt sie ein zweites Mal auszurechnen ist nicht nur
+     * billiger — es ist die einzige Art, sicherzugehen, dass beide Abwürfe
+     * dieselbe Garantie benutzen. Zwei getrennte Rechnungen könnten sich
+     * um einen Frame unterscheiden, und dann läge das zweite Objekt genau
+     * auf der Bahn, die dem Affen zugesichert wurde. */
+    this._letzteFreie = frei;
     return this._bahnWaehlen(frei, bahnen);
+  }
+
+  /**
+   * ZWEI BAHNEN AUF EINMAL — der zweite Abwurf im selben Moment.
+   *
+   * WARUM ES DAS GIBT
+   * Bisher fiel immer nur EIN Objekt zur Zeit. Es gab zwar Salven, aber die
+   * kamen NACHEINANDER — man musste nie zwischen zwei gleichzeitigen
+   * Bedrohungen wählen, sondern nur einer nach der anderen ausweichen. Bei
+   * drei Bahnen heisst das: zwei von drei Bahnen sind in jedem Moment sicher,
+   * und man kann fast stehenbleiben. Genau das war zu einfach.
+   *
+   * Mit zwei gleichzeitigen Objekten bleibt GENAU EINE Bahn frei — und das
+   * ist die, die der Korridor ohnehin zusichert. Der Affe muss also wirklich
+   * dorthin, statt nur ungefähr auszuweichen. Die Garantie bleibt dabei
+   * wörtlich dieselbe: beide Objekte kommen aus derselben `frei`-Liste, die
+   * `_freieStelle` gerade ausgerechnet hat, und diese Liste enthält
+   * grundsätzlich keine Bahn, die der Affe braucht.
+   *
+   * WARUM ERST SPÄTER
+   * In den ersten Gebieten lernt man das Spiel. Die Wahrscheinlichkeit wächst
+   * deshalb mit der Härte, von null bis `doppel.chanceMax` (siehe
+   * CONFIG.difficulty.dichte.doppel).
+   *
+   * @param {number} ersterX Bahn des schon abgeworfenen Objekts
+   */
+  _doppelAbwurf(ersterX) {
+    const cfg = this.cfg.difficulty.dichte.doppel;
+    if (!cfg) return;
+
+    // Nicht im Gold-Gebiet und nicht, wenn der Nachschub aus ist.
+    if (this.nachschubAus || this.nurMuenzen) return;
+
+    const wand = this.difficulty.wand;
+    if (wand < cfg.abWand) return;
+
+    /* Wahrscheinlichkeit wächst linear von `abWand` bis `vollAbWand`. */
+    const t = Math.min(1, (wand - cfg.abWand) / Math.max(0.001, cfg.vollAbWand - cfg.abWand));
+    if (Math.random() >= cfg.chanceMax * t) return;
+
+    /* Nur die Bahnen, die `_freieStelle` gerade freigegeben hat — und davon
+     * nicht die, auf der das erste Objekt schon liegt. Bleibt nichts übrig,
+     * fällt eben nur eines; die Garantie schlägt die Wunschmenge. */
+    const frei = (this._letzteFreie ?? []).filter((x) => x !== ersterX);
+    if (frei.length === 0) return;
+
+    const zweiterX = this._bahnWaehlen(frei, this.world.bahnX ?? []);
+    if (zweiterX === null || zweiterX === undefined) return;
+
+    /* Der zweite darf NICHT dieselbe Grösse haben müssen — aber er muss
+     * genauso schnell ankommen, sonst ist es kein Doppelabwurf, sondern
+     * eine Salve mit Umweg. Deshalb derselbe Typ. */
+    const type = this._wartenderTyp ?? this._pickRockType();
+    const rock = this.rocks.acquire();
+    if (!rock) return;
+    rock.spawn(
+      type,
+      this.hazardLook,
+      zweiterX,
+      this.world.spawnY,
+      Math.random(),
+      Math.random(),
+      Math.random(),
+    );
   }
 
   /**

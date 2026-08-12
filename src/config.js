@@ -567,16 +567,28 @@ export const CONFIG = {
      * Kontinuierlich gerechnet, nicht in Stufen: sonst spränge die
      * Schwierigkeit mitten in eine fallende Welle hinein.
      * ------------------------------------------------------------------ */
-    /* Abstand zweier Wandwechsel — MUSS zum Abstand in CONFIG.wall.stages
-     * passen, dort stehen ab Gebiet 2 durchgehend 132 s.
+    /* Zeitmass der HÄRTE — nicht mehr der Abstand der Wandwechsel.
      *
-     * GEBIET 1 IST DIE AUSNAHME: es endet nach 55 s (= 100 Höhenmeter) statt
-     * nach 132. Es ist der Einstieg, und 132 Sekunden erste Wand sind zu viel,
-     * bevor überhaupt etwas passiert. Die Härtekurve läuft davon unberührt
-     * weiter — sie ist stetig, kennt keine Stufen und liest die Gebietsliste
-     * gar nicht. Praktisch heisst das nur: der Sprung von Gebiet 1 auf 2 ist
-     * kleiner als die üblichen +25 % (nämlich +9.8 %), ab Gebiet 2 stimmt der
-     * Takt wieder. Genau richtig für ein Einstiegsgebiet. */
+     * Das waren einmal dieselben 132 Sekunden, und der Kommentar hier
+     * versprach entsprechend "jede Wand ist ein Viertel schwerer als die
+     * davor". DAS GILT NICHT MEHR, und es ist wichtig, das hier stehen zu
+     * haben, statt es stillschweigend falsch zu lassen.
+     *
+     * Die Gebiete sind jetzt nach METERN geschnitten (150 bis 200, siehe
+     * CONFIG.wall.stages): feste Sekunden hiessen bei wachsendem Tempo immer
+     * mehr Meter, gemessen von 263 m im zweiten Gebiet bis 793 m ab dem
+     * elften. Ein Gebiet dauert dadurch heute zwischen 86 s (früh, langsam)
+     * und 37 s (spät, schnell).
+     *
+     * Die Härte hängt weiter allein an der ZEIT — stetig, ohne Stufen, ohne
+     * die Gebietsliste zu lesen. Sie ist damit vom Wandwechsel entkoppelt:
+     * der Hintergrund wechselt jetzt öfter als die Härte um 25 % steigt. Das
+     * ist Absicht. Der Wandwechsel ist die Abwechslung, die Härtekurve ist
+     * die Schwierigkeit, und die beiden müssen nicht denselben Takt haben.
+     *
+     * Wer die Zahl ändert, ändert das ganze Spiel — sie ist der Nenner in
+     * `haerte = proWand ^ (t / sekundenProWand)`. Die Gebietslängen dagegen
+     * rechnet scripts/_gebietsmeter.mjs aus. */
     sekundenProWand: 132,
     proWand: 1.25, // +25 % je Wand
 
@@ -690,6 +702,38 @@ export const CONFIG = {
        * Durchschnittsdichte stimmt und Salven kein heimlicher Aufschlag sind. */
       salveChance: 0.22,
       salveMax: 3,
+
+      /* ─── ZWEI AUF EINMAL ─────────────────────────────────────────────
+       *
+       * Salven kommen NACHEINANDER — man weicht einer nach der anderen aus,
+       * und bei drei Bahnen sind in jedem Moment zwei sicher. Das war zu
+       * einfach: man konnte fast stehenbleiben.
+       *
+       * Ein Doppelabwurf legt zwei Objekte GLEICHZEITIG auf zwei
+       * verschiedene Bahnen. Damit bleibt genau eine frei — und zwar die,
+       * die der Korridor ohnehin zusichert. Der Affe muss also wirklich
+       * dorthin, statt nur ungefähr auszuweichen.
+       *
+       * Die Garantie bleibt wörtlich unangetastet: beide Objekte stammen aus
+       * derselben Liste freier Bahnen, die auch der Einzelabwurf benutzt
+       * (Spawner._freieStelle -> _letzteFreie).
+       *
+       * `abWand` und `vollAbWand` sind WANDINDIZES (Spielzeit geteilt durch
+       * sekundenProWand), keine Gebietsnummern: die Härte hängt an der Zeit,
+       * und dieser Reiz gehört zur Härte. Bei 132 s je Wand sind 1.5 rund
+       * dreieinhalb Minuten, 6.0 rund dreizehn Minuten Spielzeit. */
+      doppel: {
+        /* Gemessen mit abWand 1.5 / vollAbWand 6.0 / chanceMax 0.42: über
+         * zwölf Minuten kamen nur 9.7 % der Abwurfmomente doppelt, weil die
+         * Rampe erst nach dreieinhalb Minuten anfängt und über zehn Minuten
+         * läuft. Für "es ist zu einfach" ist das zu wenig und zu spät.
+         *
+         * Jetzt ab Wand 1.0 (rund zwei Minuten, etwa Gebiet 3 — nach dem
+         * Einstieg, aber lange bevor es zäh wird) und voll ab Wand 5.0. */
+        abWand: 1.0,
+        vollAbWand: 5.0,
+        chanceMax: 0.5,
+      },
     },
   },
 
@@ -2562,49 +2606,49 @@ export const CONFIG = {
         name: 'blumen',
         // Holz statt Stein: Stock (klein), Baumscheibe (mittel), Stamm (gross).
         hazard: 'holz',
-        afterSeconds: 55,
+        afterSeconds: 55.3,
         near: '/textures/stage2_flowers.webp',
         far: '/textures/stage2_flowers_far.webp',
       },
       {
         name: 'aeste',
         hazard: 'kokosnuss',
-        afterSeconds: 187,
+        afterSeconds: 141.6,
         near: '/textures/stage3_branches.webp',
         far: '/textures/stage3_branches_far.webp',
       },
       {
         name: 'pilzwald',
         hazard: 'pilz',
-        afterSeconds: 319,
+        afterSeconds: 228.8,
         near: '/textures/wall_mushroom.webp',
         far: '/textures/wall_mushroom_far.webp',
       },
       {
         name: 'gift',
         hazard: 'gift',
-        afterSeconds: 451,
+        afterSeconds: 296.7,
         near: '/textures/stage4_poison.webp',
         far: '/textures/stage4_poison_far.webp',
       },
       {
         name: 'halloween',
         hazard: 'kuerbis',
-        afterSeconds: 583,
+        afterSeconds: 374.8,
         near: '/textures/stage5_halloween.webp',
         far: '/textures/stage5_halloween_far.webp',
       },
       {
         name: 'wasser',
         hazard: 'meer',
-        afterSeconds: 715,
+        afterSeconds: 439.8,
         near: '/textures/wall_water.webp',
         far: '/textures/wall_water_far.webp',
       },
       {
         name: 'wolken',
         hazard: 'wolken',
-        afterSeconds: 847,
+        afterSeconds: 496.3,
         near: '/textures/stage7_clouds.webp',
         far: '/textures/stage7_clouds_far.webp',
         // Weisser Hagel vor weissen Wolken ist nicht zu sehen — und was man
@@ -2615,7 +2659,7 @@ export const CONFIG = {
       {
         name: 'eiszeit',
         hazard: 'eiszapfen',
-        afterSeconds: 979,
+        afterSeconds: 558.9,
         near: '/textures/stage6_ice.webp',
         far: '/textures/stage6_ice_far.webp',
         // Gleicher Grund wie bei den Wolken: helle Zapfen vor heller Wand.
@@ -2624,14 +2668,14 @@ export const CONFIG = {
       {
         name: 'kristall',
         hazard: 'kristall',
-        afterSeconds: 1111,
+        afterSeconds: 620.3,
         near: '/textures/wall_crystal.webp',
         far: '/textures/wall_crystal_far.webp',
       },
       {
         name: 'lava',
         hazard: 'feuer',
-        afterSeconds: 1243,
+        afterSeconds: 669,
         near: '/textures/stage8_lava.webp',
         far: '/textures/stage8_lava_far.webp',
         // Feuerbälle vor einer Wand aus Feuer: die Wand muss zurücktreten,
@@ -2641,14 +2685,14 @@ export const CONFIG = {
       {
         name: 'asche',
         hazard: 'asche',
-        afterSeconds: 1375,
+        afterSeconds: 720.1,
         near: '/textures/stage9_ash.webp',
         far: '/textures/stage9_ash_far.webp',
       },
       {
         name: 'schrott',
         hazard: 'metall',
-        afterSeconds: 1507,
+        afterSeconds: 761.3,
         near: '/textures/stage_schrott.webp',
         far: '/textures/stage_schrott_far.webp',
         /* Die Wand ist selbst rostbraun und voller Kanten. Ohne Dämpfung
@@ -2659,7 +2703,7 @@ export const CONFIG = {
       {
         name: 'bonbon',
         hazard: 'bonbon',
-        afterSeconds: 1639,
+        afterSeconds: 810,
         near: '/textures/stage_bonbon.webp',
         far: '/textures/stage_bonbon_far.webp',
         // Sehr helle, bunte Wand — sonst geht ein rosa Bonbon darin unter.
@@ -2668,14 +2712,14 @@ export const CONFIG = {
       {
         name: 'kakteen',
         hazard: 'kaktus',
-        afterSeconds: 1771,
+        afterSeconds: 851.8,
         near: '/textures/stage_kakteen.webp',
         far: '/textures/stage_kakteen_far.webp',
       },
       {
         name: 'ruine',
         hazard: 'ruine',
-        afterSeconds: 1903,
+        afterSeconds: 888.8,
         near: '/textures/stage_ruine.webp',
         far: '/textures/stage_ruine_far.webp',
         /* Die Ruinenwand ist die dunkelste im Spiel. Hier wird AUFGEHELLT,
@@ -2690,8 +2734,13 @@ export const CONFIG = {
      *  13 schrott 14 bonbon  15 kakteen  16 ruine
      * Die Nummern zählen für goldbanane/chili/sturzflug (abGebiet). */
 
-    // Nach der letzten Stufe alle X Sekunden zur nächsten (zyklisch von vorne).
-    stageLoopSeconds: 132,
+    /* Nach der letzten Stufe alle X Sekunden zur nächsten (zyklisch von vorne).
+     *
+     * 40 STATT 132 — dieselbe Umstellung wie bei `afterSeconds` oben.
+     * Ab Gebiet 16 hängt das Tempo am Deckel (6.01 m/s), 40 Sekunden sind
+     * dort rund 240 Meter. Mit 132 wären es 793 gewesen — dreimal so lang wie
+     * jedes andere Gebiet, ausgerechnet dort, wo man am längsten spielt. */
+    stageLoopSeconds: 40,
     // Überblendzeit zwischen zwei Stufen (Sekunden). Kein harter Schnitt.
     stageFade: 1.8,
     // Seitenverhältnis der Stufentexturen (1252x676) — damit die Kacheln
