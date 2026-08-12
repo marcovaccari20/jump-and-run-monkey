@@ -78,11 +78,10 @@ const BOSSE = [
     datei: 'hf_20260812_071232_c86176c0-865d-47c6-ac32-0a10e7f09c83.mp4',
     was: 'grosser Gorilla — wirft grüne Bananen',
   },
-  {
-    id: 'affe',
-    datei: 'hf_20260808_114309_03b9688f-109d-43a0-9fb4-ba65b3578a8b.mp4',
-    was: 'kleiner Affe — wirft kleine gelbe Bananen',
-  },
+  /* Der kleine Affe stand hier einmal als zweite Boss-Ausführung. Er ist
+   * raus: es ist DIESELBE Figur wie die Spielfigur, als Gegner also
+   * verwirrend. Sein Video wird jetzt von scripts/prepare-spielerwurf.mjs
+   * zur Wurfanimation des SPIELERS verarbeitet. */
 ];
 
 /* Schwellen des Alphakeils, in Helligkeitsstufen Abstand zum Hintergrund. */

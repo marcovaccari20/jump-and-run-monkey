@@ -1702,20 +1702,26 @@ export const CONFIG = {
    *  ER WIRD IMMER SCHNELLER — siehe `tempo`, `frameTakt` und `druck`.
    * ================================================================== */
   boss: {
-    /* WANN. Nicht in den ersten beiden Gebieten: dort lernt man das Spiel,
-     * und ein Sonderzustand mit eigener Steuerung wäre da nur verwirrend. */
-    abGebiet: 3,
+    /* WANN. Überall AUSSER im ersten Gebiet.
+     *
+     * Hier stand 3, und das war zu starr gedacht: es hiess praktisch "im
+     * dritten Gebiet kommt er". Gewollt ist dasselbe wie bei der goldenen
+     * Banane und beim Chili — er kommt einfach zufällig, nur eben nicht im
+     * allerersten Gebiet, wo man das Spiel noch lernt. */
+    abGebiet: 2,
 
     /* ZUFÄLLIG, NICHT NACH PLAN.
      *
-     * Wahrscheinlichkeit je Gebietswechsel. 0.28 heisst: im Schnitt etwa
-     * jedes dritte bis vierte Gebiet einer. Ein fester Takt ("jedes vierte")
+     * Wahrscheinlichkeit je Gebietswechsel. Ein fester Takt ("jedes vierte")
      * wäre nach zwei Runden durchschaut, und der Schreck ist der halbe Boss.
      *
-     * `mindestAbstand` verhindert die andere Seite des Zufalls: zwei Kämpfe
-     * direkt hintereinander. */
-    chanceProGebiet: 0.28,
-    mindestAbstandGebiete: 2,
+     * 0.3 heisst im Schnitt etwa jedes dritte Gebiet einer. Die Gebiete sind
+     * seit der Umstellung auf Meter deutlich kürzer (157 bis 200 m statt bis
+     * zu 793), es kommen also mehr Gebiete je Runde — bei gleicher
+     * Wahrscheinlichkeit wären das zu viele Kämpfe. Der Mindestabstand hält
+     * dagegen: nach einem Kampf bleiben zwei Gebiete Ruhe. */
+    chanceProGebiet: 0.3,
+    mindestAbstandGebiete: 3,
 
     /* Vorwarnung. Lang genug zum Lesen und um sich zu sortieren, kurz genug,
      * dass es nicht wie ein Ladebildschirm wirkt. */
@@ -1816,6 +1822,17 @@ export const CONFIG = {
      * Bild 0. Bild 23 ist der Moment, in dem der Arm über dem Kopf steht.
      * Beim kleinen AFFEN stimmte die Messung mit dem Bild überein (Bild 4,
      * Arm zur Seite gestreckt). */
+    /* NUR DER GORILLA.
+     *
+     * Es gab hier eine zweite Ausführung mit dem kleinen Affen aus dem
+     * anderen Video. Die ist raus, und zwar aus einem Grund, den man im Bild
+     * sofort sieht: es ist DIESELBE Figur wie die Spielfigur — derselbe
+     * braune Affe, dieselbe Ansicht von hinten. Als Gegner oben im Bild
+     * kämpfte man gegen sich selbst.
+     *
+     * Das Video steckt jetzt dort, wo es hingehört: es ist die
+     * Wurfanimation des Spielers (scripts/prepare-spielerwurf.mjs,
+     * public/textures/wurf). Der Boss ist der Gorilla, und nur er. */
     arten: [
       {
         id: 'gorilla',
@@ -1833,22 +1850,6 @@ export const CONFIG = {
           poolSize: 10,
         },
       },
-      {
-        id: 'affe',
-        label: 'Affe',
-        framePath: '/boss/affe/f_{n}.webp',
-        frameAnzahl: 30,
-        hoehe: 3.0,
-        loslassenBei: 4 / 30,
-        // Kleine gelbe Banane: schnell, dafür schmal.
-        wurf: {
-          bild: '/hazards/banane.webp',
-          radius: 0.24,
-          tempo: 7.0,
-          hitRadiusFactor: 0.84,
-          poolSize: 12,
-        },
-      },
     ],
 
     /* ─── DER WURF DES AFFEN ────────────────────────────────────────────
@@ -1856,9 +1857,18 @@ export const CONFIG = {
      * Die Bildfolge dafür liegt bereits in public/textures/wurf (12 Bilder)
      * und wird von SpritePlayer.setzeWurfFrames verwendet. */
     wurf: {
-      // Anteil der Wurfanimation, bei dem die Banane die Hand verlässt.
-      // An den 12 Bildern abgelesen: ab Bild 8 ist der Arm gestreckt.
-      loslassenBei: 8 / 12,
+      /* Anteil der Wurfanimation, bei dem die Banane die Hand verlässt.
+       *
+       * Die Bildfolge stammt jetzt aus dem Video des kleinen Affen
+       * (scripts/prepare-spielerwurf.mjs). Bild 5 bis 9 zeigen den Arm OBEN
+       * — und weil die Banane nach oben fliegt, ist der höchste Punkt des
+       * Schwungs der Moment des Loslassens. Bild 5 von 12.
+       *
+       * Die automatische Messung des Skripts ("breitestes Bild") zeigt auf
+       * Bild 1 und taugt hier nicht: das breiteste ist das mit dem Arm ZUR
+       * SEITE, nicht nach oben. Für einen Wurf nach oben ist das die falsche
+       * Frage — dieselbe Falle wie beim Gorilla. */
+      loslassenBei: 5 / 12,
       dauer: 0.55, // ganze Wurfanimation
       nachladen: 0.18, // erst danach kann erneut geworfen werden
       tempo: 11.0, // Einheiten/s, fliegt gerade nach oben
