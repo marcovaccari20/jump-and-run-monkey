@@ -1588,7 +1588,18 @@ export const CONFIG = {
      * Meldet sich kein SDK (Werbeblocker, lokal, offline), fällt das Spiel auf
      * den Platzhalter zurück — das zweite Leben bleibt spielbar, es wird nur
      * nichts abgerechnet. Das Spiel darf nie an einem fremden Server hängen. */
-    provider: 'auto',
+    /* 'auto' erkennt das Portal selbst — ausser beim Play-Store-Bau.
+     *
+     * In einer Android-App gibt es kein Portal, und die Web-SDKs von
+     * CrazyGames und GameMonetize laden dort gar nicht erst. `KeinPortal`
+     * ist dann die richtige Antwort: das Spiel läuft, es kommt nur keine
+     * Werbung (bis AdMob in der Hülle sitzt, siehe scripts/app-huelle.md).
+     *
+     * Umgestellt wird das beim BAUEN, nicht von Hand:
+     *     VITE_ZIEL=playstore npm run build
+     * `npm run paket` setzt die Variable für das Play-Store-ZIP selbst. So
+     * kann niemand vergessen, sie vor dem Hochladen zurückzustellen. */
+    provider: import.meta.env?.VITE_ZIEL === 'playstore' ? 'none' : 'auto',
 
     /* Von GameMonetize beim Einreichen vergeben. Ohne sie wird das SDK gar
      * nicht erst geladen — es lädt zwar, liefert aber nie einen Spot. */

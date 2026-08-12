@@ -89,8 +89,11 @@ const PORTALE = {
     ohneFremdSdk: true,
     hinweise: [
       'Dieses ZIP ist NICHT die fertige App — es ist ihr Inhalt.',
-      'CONFIG.ad.provider auf "admob" stellen (bzw. "none", solange AdMob fehlt).',
-      '  Die Web-SDKs von CrazyGames/GameMonetize laufen in einer App nicht.',
+      'Es wurde mit VITE_ZIEL=playstore gebaut: provider steht fest auf "none",',
+      '  die Web-SDKs von CrazyGames/GameMonetize werden nie geladen. Von Hand',
+      '  ist dafür nichts umzustellen.',
+      'Werbung gibt es in dieser Fassung noch keine — dafür kommt AdMob in die',
+      '  Hülle, nicht ins Web-Bündel.',
       'Weiter geht es mit Capacitor: siehe scripts/app-huelle.md.',
       'Play Store verlangt zusätzlich: Datenschutzerklärung, Alterseinstufung,',
       '  Symbol 512x512, Funktionsgrafik 1024x500, mindestens 2 Screenshots.',
@@ -199,8 +202,36 @@ console.log('Prüfung bestanden: index.html in der Wurzel, alle Pfade relativ, k
 mkdirSync(OUT, { recursive: true });
 const ziele = nur ? [nur] : Object.keys(PORTALE);
 
-for (const key of ziele) {
+/* Der Play Store bekommt einen EIGENEN Build.
+ *
+ * Die anderen beiden Ziele teilen sich einen: dasselbe ZIP läuft auf
+ * CrazyGames, GameMonetize und der eigenen Seite, weil das Spiel das Portal
+ * selbst erkennt. Die App-Fassung kann das nicht — dort muss `provider` fest
+ * auf 'none' stehen, sonst versucht sie im WebView ein Web-SDK zu laden.
+ * Deshalb wird für sie mit VITE_ZIEL=playstore neu gebaut.
+ *
+ * Reihenfolge: erst die Web-Ziele mit dem vorhandenen Build, danach der
+ * App-Build. Sonst läge am Ende die App-Fassung in dist/, und der nächste
+ * `npm run dev` liefe ohne Portalerkennung. */
+const appZiele = ziele.filter((k) => PORTALE[k].ohneFremdSdk);
+const webZiele = ziele.filter((k) => !PORTALE[k].ohneFremdSdk);
+let dateienJetzt = dateien;
+
+for (const key of [...webZiele, ...appZiele]) {
   const p = PORTALE[key];
+
+  // Vergleich gegen die URSPRÜNGLICHE Liste: nur beim ersten App-Ziel neu bauen.
+  if (p.ohneFremdSdk && dateienJetzt === dateien) {
+    console.log('\nBaue die App-Fassung (VITE_ZIEL=playstore) …');
+    execFileSync('npx', ['vite', 'build'], {
+      cwd: ROOT,
+      stdio: 'inherit',
+      shell: true,
+      env: { ...process.env, VITE_ZIEL: 'playstore' },
+    });
+    dateienJetzt = alleDateien(DIST);
+  }
+  const dateien_ = dateienJetzt;
 
   /* Für die App-Fassung gilt eine SCHÄRFERE Regel als fürs Web.
    *
@@ -211,25 +242,62 @@ for (const key of ziele) {
    * Datenschutzerklärung nicht auftauchen. Deshalb hier nochmal prüfen — mit
    * einer leeren Erlaubnisliste. */
   if (p.ohneFremdSdk) {
-    const verboten = [];
-    for (const datei of dateien) {
-      if (!/\.(js|html|css|json)$/i.test(datei)) continue;
+    /* GEPRÜFT WIRD, WAS GELADEN WIRD — nicht, welche Zeichenketten im Bündel
+     * stehen.
+     *
+     * Die erste Fassung suchte einfach jede http-Adresse im Build und lehnte
+     * ab, sobald eine auftauchte. Das war in beide Richtungen falsch:
+     *
+     *   ZU STRENG bei Supabase. Bestenliste und Fortschritt sind auch in
+     *   einer App völlig in Ordnung — Apps dürfen ins Netz. Es gehört in die
+     *   Datenschutzerklärung, nicht auf eine Verbotsliste. Solange Supabase
+     *   als Fremdaufruf galt, liess sich das Play-Store-Paket überhaupt nie
+     *   schnüren.
+     *
+     *   ZU LASCH wäre es umgekehrt gewesen, sich auf die Abwesenheit der
+     *   SDK-Adressen zu verlassen: sie stehen als Zeichenketten in Portal.js
+     *   und verschwinden auch dann nicht aus dem Bündel, wenn sie nie
+     *   gerufen werden.
+     *
+     * Entscheidend ist deshalb der SCHALTER: wird mit VITE_ZIEL=playstore
+     * gebaut, steht `provider` auf 'none', `erzeugePortal` liefert
+     * `KeinPortal`, und keines der beiden SDKs wird je angefordert. Genau das
+     * wird hier nachgewiesen. */
+    let schalterOk = false;
+    for (const datei of dateien_) {
+      if (!/\.js$/i.test(datei)) continue;
       const text = readFileSync(datei, 'utf8');
-      for (const m of text.matchAll(/https?:\/\/[a-zA-Z0-9.-]+/g)) {
+      /* Der Bundler ersetzt den Ausdruck durch den festen Wert — aber in
+       * welcher Anführung, entscheidet er selbst. Gemessen kam
+       * `provider:\`none\`` heraus, mit Backticks; eine Prüfung nur auf
+       * ' und " ging deshalb ins Leere und meldete die fertige App-Fassung
+       * als „keine App-Fassung". Alle drei zulassen. */
+      if (/provider\s*:\s*["'`]none["'`]/.test(text)) schalterOk = true;
+    }
+    if (!schalterOk) {
+      console.log(`\n${p.label}: ÜBERSPRUNGEN — der Build ist keine App-Fassung.`);
+      console.log('  Erwartet: provider = "none" im Bündel.');
+      console.log('  So bauen:  VITE_ZIEL=playstore npm run build');
+      continue;
+    }
+
+    // Fremdadressen NENNEN, nicht ablehnen — sie gehören in die
+    // Datenschutzerklärung des Play-Store-Eintrags.
+    const fremde = new Set();
+    for (const datei of dateien_) {
+      if (!/\.(js|html|css|json)$/i.test(datei)) continue;
+      for (const m of readFileSync(datei, 'utf8').matchAll(/https?:\/\/[a-zA-Z0-9.-]+/g)) {
         const url = m[0];
-        /* Namensräume und Quellenangaben sind keine Netzwerkaufrufe.
-         * OHNE Schrägstrich vergleichen: der Ausdruck oben trifft die Adresse
-         * ohne Pfad, mit `.../` verglichen ging die Ausnahme ins Leere und
-         * beide wurden fälschlich als Fremdserver gemeldet. */
         if (url.startsWith('http://www.w3.org') || url.startsWith('https://jcgt.org')) continue;
-        if (!verboten.includes(url)) verboten.push(url);
+        fremde.add(url);
       }
     }
-    if (verboten.length) {
-      console.log(`\n${p.label}: ÜBERSPRUNGEN — Fremdaufrufe, die in einer App nicht laufen:`);
-      for (const u of verboten) console.log('  ✗ ' + u);
-      console.log('  CONFIG.ad.provider auf "none" oder "admob" stellen und neu bauen.');
-      continue;
+    if (fremde.size) {
+      console.log(`\n${p.label}: Adressen im Bündel — für die Datenschutzerklärung:`);
+      for (const u of fremde) {
+        const tot = /sdk\.crazygames|api\.gamemonetize/.test(u);
+        console.log(`  ${tot ? '·' : '→'} ${u}${tot ? '   (nur Zeichenkette, wird nie geladen)' : ''}`);
+      }
     }
   }
 
