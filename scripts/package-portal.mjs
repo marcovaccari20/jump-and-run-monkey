@@ -117,6 +117,49 @@ if (!existsSync(DIST) || process.argv.includes('--bauen')) {
 
 /* ------------------------------------------------------------ Prüfen */
 
+/**
+ * Liest die Dateinamen aus einem ZIP — ohne Abhängigkeit, direkt aus dem
+ * zentralen Verzeichnis am Ende der Datei.
+ *
+ * Gebraucht, um das FERTIGE Archiv zu prüfen statt dem Packer zu vertrauen.
+ * Aufbau laut ZIP-Spezifikation (APPNOTE):
+ *   - am Dateiende steht das "End of Central Directory" (Signatur 06054b50),
+ *     darin Zahl und Startadresse der Einträge
+ *   - jeder Eintrag beginnt mit 02014b50, die Namenslänge steht bei +28,
+ *     der Name selbst bei +46
+ *
+ * @returns {string[]} leer, wenn sich das Archiv nicht lesen lässt
+ */
+function zipEintraege(datei) {
+  try {
+    const b = readFileSync(datei);
+    // EOCD von hinten suchen (das Kommentarfeld ist höchstens 65535 lang).
+    let eocd = -1;
+    for (let i = b.length - 22; i >= Math.max(0, b.length - 22 - 65535); i--) {
+      if (b.readUInt32LE(i) === 0x06054b50) {
+        eocd = i;
+        break;
+      }
+    }
+    if (eocd < 0) return [];
+    const anzahl = b.readUInt16LE(eocd + 10);
+    let pos = b.readUInt32LE(eocd + 16);
+
+    const namen = [];
+    for (let i = 0; i < anzahl && pos + 46 <= b.length; i++) {
+      if (b.readUInt32LE(pos) !== 0x02014b50) break;
+      const nameLen = b.readUInt16LE(pos + 28);
+      const extraLen = b.readUInt16LE(pos + 30);
+      const kommLen = b.readUInt16LE(pos + 32);
+      namen.push(b.toString('utf8', pos + 46, pos + 46 + nameLen));
+      pos += 46 + nameLen + extraLen + kommLen;
+    }
+    return namen;
+  } catch {
+    return [];
+  }
+}
+
 function alleDateien(dir, treffer = []) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
@@ -304,17 +347,77 @@ for (const key of [...webZiele, ...appZiele]) {
   const zip = join(OUT, `jungle-climber-${key}.zip`);
   rmSync(zip, { force: true });
 
-  // Compress-Archive statt einer npm-Abhängigkeit: liegt auf jedem Windows
-  // bei, und das Paket soll ohne zusätzliche Installation entstehen.
-  execFileSync(
-    'powershell',
-    [
-      '-NoProfile',
-      '-Command',
-      `Compress-Archive -Path '${DIST}\\*' -DestinationPath '${zip}' -Force`,
-    ],
-    { stdio: 'inherit' },
-  );
+  /* GEPACKT WIRD MIT BORDMITTELN — aber je nach System mit anderen.
+   *
+   * Hier stand nur `Compress-Archive`. Das liegt auf jedem Windows bei und
+   * spart eine npm-Abhängigkeit, ist aber NUR unter Windows da. Sobald der
+   * Bau auf GitHubs Linux-Rechnern läuft (siehe .github/workflows/
+   * pakete.yml), gäbe es an dieser Stelle einen Abbruch — und zwar erst nach
+   * dem kompletten Build, also spät und ohne erkennbaren Zusammenhang.
+   *
+   * Unter Linux und macOS tut es `zip`, das dort ebenso zum Bestand gehört.
+   * Beide packen den INHALT von dist/, nicht den Ordner selbst: index.html
+   * muss in der Wurzel des Archivs liegen, sonst lehnen die Portale ab. */
+  if (process.platform === 'win32') {
+    /* `tar` STATT `Compress-Archive` — und das ist kein Geschmacksurteil,
+     * sondern die Behebung eines Fehlers, der jedes Portal-Paket unbrauchbar
+     * gemacht hätte.
+     *
+     * Compress-Archive der Windows-PowerShell schreibt die Pfade im Archiv
+     * mit BACKSLASH: `musik\gruen.ogg`. Der ZIP-Standard (APPNOTE 4.4.17)
+     * schreibt den Schrägstrich vor. Windows entpackt beides klaglos —
+     * deshalb fällt es hier nie auf. Ein Linux- oder Java-Entpacker, und
+     * genau darauf laufen die Portale, sieht dagegen KEINEN Ordner: er legt
+     * 231 Dateien mit Namen wie "musik\gruen.ogg" flach in die Wurzel.
+     * index.html lädt dann und findet nichts mehr.
+     *
+     * Gemessen am fertigen Paket: 231 von 232 Einträgen mit Backslash, kein
+     * einziger mit Schrägstrich.
+     *
+     * `tar.exe` liegt seit Windows 10 (1803) im System, benutzt libarchive
+     * und schreibt normgerechte Schrägstriche. `-a` wählt das Format anhand
+     * der Endung, `-C` wechselt ins dist-Verzeichnis.
+     *
+     * Die oberste Ebene wird EINZELN benannt statt als `.` — sonst stellt
+     * tar jedem Eintrag `./` voran, und `index.html` hiesse `./index.html`.
+     * Die meisten Entpacker sehen das als dasselbe an, aber ein Portal, das
+     * stur auf `index.html` prüft, nicht. */
+    /* MIT VOLLEM PFAD, nicht über den Suchpfad.
+     *
+     * `tar` allein erwischt in einer Git-Bash das mitgelieferte GNU-tar, und
+     * das kann gar keine ZIP-Dateien: der Lauf brach mit Status 128 ab, ohne
+     * eine Zeile Erklärung. Gemeint ist immer das bsdtar aus System32. */
+    const winTar = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe');
+    const oben = readdirSync(DIST);
+    execFileSync(winTar, ['-a', '-c', '-f', zip, '-C', DIST, ...oben], { stdio: 'inherit' });
+  } else {
+    // -r rekursiv, -q leise, . = alles im aktuellen Ordner (cwd ist dist/).
+    // `zip` schreibt von Haus aus Schrägstriche.
+    execFileSync('zip', ['-rq', zip, '.'], { cwd: DIST, stdio: 'inherit' });
+  }
+
+  /* DAS FERTIGE ARCHIV NACHSEHEN, nicht dem Packer glauben.
+   *
+   * Der Backslash-Fehler oben war im Spiel und im Build unsichtbar und wäre
+   * erst auf dem Portal aufgefallen — nach Tagen Wartezeit, mit einem Spiel,
+   * das dort einen weissen Bildschirm zeigt. Deshalb wird jetzt die
+   * Dateiliste IM ZIP gelesen und beides geprüft: normgerechte Trenner und
+   * index.html wirklich in der Wurzel. */
+  const eintraege = zipEintraege(zip);
+  const mitBackslash = eintraege.filter((n) => n.includes('\\'));
+  if (mitBackslash.length) {
+    befunde.push(
+      `${p.label}: ${mitBackslash.length} von ${eintraege.length} Einträgen im ZIP benutzen ` +
+        `Backslash statt Schrägstrich (z. B. "${mitBackslash[0]}"). Linux-Entpacker legen daraus ` +
+        `flache Dateien in der Wurzel — das Spiel wäre auf dem Portal kaputt.`,
+    );
+  }
+  if (eintraege.length && !eintraege.includes('index.html')) {
+    befunde.push(
+      `${p.label}: index.html liegt nicht als "index.html" in der Wurzel des ZIP ` +
+        `(gefunden: ${eintraege.slice(0, 3).join(', ')}…).`,
+    );
+  }
 
   const zipMB = statSync(zip).size / 1024 / 1024;
   const passt = zipMB <= p.maxMB;

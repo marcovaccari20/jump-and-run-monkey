@@ -1,0 +1,88 @@
+# Baut die Portal-Pakete auf GitHubs Rechnern und hängt sie zum Download an.
+#
+# WOZU
+# Die fertigen ZIPs entstehen beim Bauen und liegen deshalb absichtlich nicht
+# im Repo (`pakete/` steht in .gitignore) — sonst wüchse die Versions-
+# geschichte bei jedem Stand um über 180 MB. Wer sie an einem anderen Rechner
+# braucht, musste sie bisher dort selbst bauen, also Node installieren und
+# 247 MB klonen.
+#
+# Mit diesem Ablauf baut GitHub sie selbst: nach jedem Push liegen die drei
+# ZIPs unter "Actions" beim jeweiligen Lauf als Download bereit. Von jedem
+# Gerät, ohne Installation, immer der aktuelle Stand.
+#
+# SO KOMMST DU DRAN
+#   1. github.com/marcovaccari20/jump-and-run-monkey  ->  Reiter "Actions"
+#   2. Oben den letzten Lauf von "Pakete bauen" anklicken
+#   3. Ganz unten unter "Artifacts" das gewünschte ZIP herunterladen
+#
+# ACHTUNG, EINE EIGENHEIT VON GITHUB: der Download ist noch einmal in ein ZIP
+# verpackt. Einmal auspacken — darin liegt dann
+# `jungle-climber-gamemonetize.zip`, und DAS ist die Datei fürs Portal, nicht
+# die äussere.
+
+name: Pakete bauen
+
+on:
+  push:
+    branches: [main]
+  # Von Hand auslösbar, ohne etwas ändern zu müssen: Actions -> Pakete bauen
+  # -> "Run workflow".
+  workflow_dispatch:
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # Nutzt package-lock.json als Schlüssel — der zweite Lauf holt die
+          # Abhängigkeiten aus dem Zwischenspeicher statt aus dem Netz.
+          cache: npm
+
+      # `npm ci` statt `npm install`: baut exakt das, was in package-lock.json
+      # steht. Sonst könnte auf GitHub eine andere Fassung einer Abhängigkeit
+      # landen als lokal, und das Paket wäre nicht mehr dasselbe.
+      - name: Abhängigkeiten holen
+        run: npm ci
+
+      # Prüft die angemeldeten Bildfolgen gegen die Platte. Fehlt ein Bild,
+      # soll der Lauf HIER scheitern und nicht erst im Spiel — dort liefert
+      # ein fehlendes Bild still eine HTML-Seite mit Status 200.
+      - name: Bilder prüfen
+        run: npm run pruef:bilder
+
+      # Baut und schnürt alle drei Ziele. Das Skript prüft dabei selbst:
+      # index.html in der Wurzel, alle Pfade relativ, keine unerwarteten
+      # Fremdserver, Grösse innerhalb der Portalgrenzen.
+      - name: Pakete schnüren
+        run: npm run paket -- --bauen
+
+      - name: CrazyGames
+        uses: actions/upload-artifact@v4
+        with:
+          name: jungle-climber-crazygames
+          path: pakete/jungle-climber-crazygames.zip
+          # Die ZIPs sind schon gepackt; nochmal komprimieren kostet nur Zeit.
+          compression-level: 0
+          retention-days: 30
+
+      - name: GameMonetize
+        uses: actions/upload-artifact@v4
+        with:
+          name: jungle-climber-gamemonetize
+          path: pakete/jungle-climber-gamemonetize.zip
+          compression-level: 0
+          retention-days: 30
+
+      - name: Play Store
+        uses: actions/upload-artifact@v4
+        with:
+          name: jungle-climber-playstore
+          path: pakete/jungle-climber-playstore.zip
+          compression-level: 0
+          retention-days: 30
