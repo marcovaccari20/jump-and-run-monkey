@@ -76,14 +76,30 @@ const BACKGROUNDS = [
    * die fallenden Objekte darin, darüber wird das Bild flau. */
   .map((b) => {
     const stufen = {
-      'stage_ruine.png': 2.9, //  21 -> ~72
-      'stage8_lava.png': 2.0, //  32 -> ~74  (die Lava hat zusätzlich einen Dämpfer)
-      'stage_schrott.png': 1.7, //  43 -> ~73
-      'stage_bibliothek.png': 1.6, //  50 -> ~78
-      'stage5_halloween.png': 1.5, //  53 -> ~78
-      'stage_pirat.png': 1.25, //  75 -> ~90  (dunkles Nassholz)
+      /* Die beiden dunkelsten bekommen den Schatten-Hub statt einer reinen
+       * Multiplikation — bei ihnen liegt zu viel Bildfläche auf schwarz,
+       * und die bleibt schwarz, egal wie hoch man multipliziert. */
+      'stage_ruine.png': { mul: 2.6, plus: 38, gamma: 1.1 }, //  21 -> ~93
+      'stage_bibliothek.png': { mul: 2.2, plus: 46, gamma: 1.1 }, //  43 -> ~155
+      'stage8_lava.png': 2.0, //  32 -> ~57  (die Lava hat zusätzlich einen Dämpfer)
+      'stage_schrott.png': 1.7, //  43 -> ~69
+      'stage5_halloween.png': 1.5, //  53 -> ~72
+      'stage_pirat.png': 1.25, //  75 -> ~91  (dunkles Nassholz)
     };
-    return stufen[b.src] ? { ...b, aufhellen: stufen[b.src] } : b;
+    /* WELCHE WÄNDE MEHRERE VARIANTEN BEKOMMEN — siehe `varianten` weiter
+     * unten. Nur Bilder mit EINEM auffälligen Einzelmotiv: dort fällt die
+     * Wiederholung sofort auf. Bei einer Ziegelmauer oder einer Wabenwand
+     * sieht man ohnehin kein "dasselbe schon wieder", und die dreifache
+     * Dateigrösse wäre verschenkt. */
+    const abwechslung = {
+      'stage_weltall.png': 3, // Astronaut und Mondfenster
+      'stage_pirat.png': 3, // Papagei im Segel
+      'stage_bibliothek.png': 2, // die beiden Kerzen
+    };
+    const opt = { ...b };
+    if (stufen[b.src]) opt.aufhellen = stufen[b.src];
+    if (abwechslung[b.src]) opt.varianten = abwechslung[b.src];
+    return opt;
   });
 
 /* Kletter-Frames: bereits freigestellte Einzelbilder aus den Bewegungsvideos.
@@ -164,6 +180,57 @@ async function seamError(file) {
  * Zeilen vom Ende überblendet. Danach grenzen im Ergebnis zwei im Original
  * BENACHBARTE Zeilen aneinander — die Kachelung ist exakt nahtlos.
  */
+/**
+ * Stapelt `n` seitlich versetzte Kopien einer bereits nahtlosen Kachel
+ * übereinander, damit beim endlosen Scrollen nicht immer dasselbe Motiv an
+ * derselben Stelle vorbeikommt.
+ *
+ * Die Kopie k wird um k/n der Breite nach rechts gerollt. Weil die Vorlage
+ * waagerecht nahtlos ist, entsteht dabei kein Bruch — das Motiv steht nur
+ * woanders. Senkrecht wird an jeder Stossstelle über `band` Zeilen
+ * überblendet, mit derselben Rechnung wie in `makeSeamless`.
+ *
+ * @param {{data: Buffer, width: number, height: number}} s  nahtlose Kachel
+ * @param {number} channels
+ * @param {number} n      wie viele Varianten (2 oder 3 sind sinnvoll)
+ * @param {number} band   Höhe der Überblendung an jeder Stossstelle
+ */
+function stapelVarianten(s, channels, n, band) {
+  const { width: W, height: H } = s;
+  const b = Math.min(band, Math.floor(H / 3));
+  // Jede Variante verliert oben `b` Zeilen an die Überblendung.
+  const teilH = H - b;
+  const outH = teilH * n;
+  const out = Buffer.alloc(W * outH * channels);
+
+  /** Pixel der um `shift` gerollten Kopie an (x, y). */
+  const hole = (x, y, shift, c) => {
+    const sx = (x + shift) % W;
+    return s.data[((y % H) * W + sx) * channels + c];
+  };
+
+  for (let k = 0; k < n; k++) {
+    const shift = Math.round((k * W) / n);
+    // Die Kopie DAVOR liefert die Zeilen, in die hineingeblendet wird.
+    const shiftVor = Math.round((((k - 1 + n) % n) * W) / n);
+
+    for (let y = 0; y < teilH; y++) {
+      const t = y < b ? y / b : 1;
+      for (let x = 0; x < W; x++) {
+        const dst = ((k * teilH + y) * W + x) * channels;
+        for (let c = 0; c < channels; c++) {
+          const eigen = hole(x, y, shift, c);
+          out[dst + c] =
+            t >= 1
+              ? eigen
+              : Math.round(eigen * t + hole(x, y + teilH, shiftVor, c) * (1 - t));
+        }
+      }
+    }
+  }
+  return { data: out, width: W, height: outH };
+}
+
 function makeSeamless(data, width, height, channels, bandX, bandY) {
   // ---- vertikal ----
   const outH = height - bandY;
@@ -211,43 +278,73 @@ async function prepareBackgrounds() {
     const dst = resolve(OUT, bg.out);
     const vorher = await seamError(src);
 
-    const { data, info } = await sharp(src)
-      .removeAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
+    /* ZUERST AUFHELLEN, DANN NAHTLOS MACHEN — die Reihenfolge ist wichtig.
+     *
+     * Umgekehrt herum multipliziert das Aufhellen den Restfehler der Naht
+     * gleich mit: bei der Bibliothek stieg er dadurch von 4.7 auf 10.3 von
+     * 255, und die Kachelgrenze wurde als Streifen sichtbar. Die Wand
+     * scrollt endlos, ein Streifen läuft also alle paar Sekunden durchs
+     * Bild.
+     *
+     * So herum arbeitet `makeSeamless` auf den endgültigen Tönen und blendet
+     * genau die Werte ineinander, die später auch zu sehen sind. */
+    const roh = sharp(src).removeAlpha();
+    if (typeof bg.aufhellen === 'number' && bg.aufhellen > 1) {
+      roh.modulate({ brightness: bg.aufhellen }).gamma(1.12);
+    } else if (bg.aufhellen?.mul) {
+      /* SCHATTEN ANHEBEN statt nur multiplizieren.
+       *
+       * Bei sehr dunklen Vorlagen reicht Multiplizieren nicht: was schwarz
+       * ist, bleibt schwarz, egal mit welchem Faktor. Die Ruinenwand mit
+       * Rohwert 22.7 wurde mit 2.9x auf 52 gehoben und sah trotzdem finster
+       * aus, weil alle Fugen und Schatten weiter bei null lagen.
+       *
+       * `linear(mul, plus)` rechnet  aus = mul × ein + plus. Der Summand
+       * hebt den Schwarzpunkt an und macht sichtbar, was vorher im Schwarz
+       * verschwand — Fugen, Ranken, Reliefs. Verglichen am fertigen Bild:
+       * 2.9x -> 52 (Schatten schwarz), linear(2.6, 38) -> 95 (Mauerwerk und
+       * Ranken lesbar).
+       *
+       * Der Preis ist etwas weniger Kontrast im Dunklen. Bei einer Wand, vor
+       * der man fallende Steine erkennen muss, ist das der richtige Tausch. */
+      roh.linear(bg.aufhellen.mul, bg.aufhellen.plus ?? 0);
+      if (bg.aufhellen.gamma) roh.gamma(bg.aufhellen.gamma);
+    }
+
+    const { data, info } = await roh.raw().toBuffer({ resolveWithObject: true });
 
     const bandY = Math.round(info.height * 0.12);
     const bandX = Math.round(info.width * 0.09);
-    const s = makeSeamless(data, info.width, info.height, info.channels, bandX, bandY);
+    let s = makeSeamless(data, info.width, info.height, info.channels, bandX, bandY);
 
-    /* AUFHELLEN — für Vorlagen, die von Haus aus zu dunkel sind.
+    /* ABWECHSLUNG BEIM ENDLOSEN SCROLLEN.
      *
-     * WARUM DAS HIER PASSIEREN MUSS UND NICHT IN DER CONFIG
-     * CONFIG.wall.stages[*].tint wird über `material.color.multiply()`
-     * angewendet (PlantWall._tint). Das ist eine MULTIPLIKATION: jeder Wert
-     * unter 0xffffff macht dunkler, und heller als die Vorlage geht damit
-     * grundsätzlich nicht. Bei mehreren Wänden stand trotzdem „hier wird
-     * aufgehellt" im Kommentar — die Werte 0xd6dae0 und 0xdae0e8 dämpften in
-     * Wirklichkeit um 12 bis 14 Prozent.
+     * Die Wand wiederholt EINE Kachel. Bei einem Bild mit einem auffälligen
+     * Einzelmotiv — dem Astronauten an der Rakete — kommt damit alle paar
+     * Sekunden exakt dasselbe Motiv an derselben Stelle vorbei, und das
+     * Mondfenster daneben sieht man nie an anderer Position. Gemeldet als
+     * "dann kommt nicht ständig dasselbe Bild wie vom Astronaut, damit auch
+     * mal das Fenster mit dem Mond kommt".
      *
-     * Wer eine Wand wirklich heller haben will, muss deshalb die TEXTUR
-     * anheben, und das ist hier die Stelle. Gemessen wurde die mittlere
-     * Helligkeit der fertigen Wand im Spiel (0–255):
+     * `varianten: N` stapelt N Kopien der Kachel übereinander, jede
+     * horizontal um 1/N der Breite weitergerollt. Weil die Kachel bereits
+     * waagerecht nahtlos ist, ist jede gerollte Kopie für sich wieder ein
+     * gültiges Bild — nur zeigt sie das Motiv an einer anderen Stelle. Beim
+     * Hochscrollen wandert der Astronaut also durchs Bild, und dazwischen
+     * steht das Mondfenster dort, wo vorher er war.
      *
-     *     ruine 21    lava 32    schrott 43    bibliothek 43    halloween 53
+     * Die Übergänge zwischen den Kopien werden mit demselben Band überblendet
+     * wie die Aussenkanten, sonst liefe an jeder Stossstelle eine Kante durch.
      *
-     * Bei 21 ist von einem Steinkopf vor Mauerwerk nichts mehr zu erkennen.
-     *
-     * `brightness` multipliziert linear; `gamma` hebt zusätzlich die
-     * Mitteltöne an, ohne die Lichter auszufressen. Beides zusammen hellt
-     * auf, ohne dass das Bild ausbleicht. */
-    const heller = sharp(s.data, {
-      raw: { width: s.width, height: s.height, channels: info.channels },
-    });
-    if (bg.aufhellen && bg.aufhellen > 1) {
-      heller.modulate({ brightness: bg.aufhellen }).gamma(1.12);
+     * PREIS: die Textur wird N-mal so hoch und damit N-mal so gross. Deshalb
+     * nur dort, wo ein Einzelmotiv wirklich stört. */
+    if (bg.varianten > 1) {
+      s = stapelVarianten(s, info.channels, bg.varianten, bandY);
     }
-    await heller.webp({ quality: 88 }).toFile(dst);
+
+    await sharp(s.data, { raw: { width: s.width, height: s.height, channels: info.channels } })
+      .webp({ quality: 88 })
+      .toFile(dst);
 
     // Fernvariante für die hintere Parallax-Ebene: dieselbe Vorlage, nur
     // unscharf, dunkler und entsättigt. Dadurch entsteht Tiefe, ohne

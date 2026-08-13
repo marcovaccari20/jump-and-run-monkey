@@ -1774,9 +1774,17 @@ export const CONFIG = {
      * die erste verstanden hat, nimmt dem Anfang den Ernst — und wer sie
      * dort einsammelt, weiss gar nicht, was er da hat.
      *
-     * Ein Gebiet dauert 132 s, das zweite endet also bei 264 s. 230 s liegt
-     * kurz davor: sie taucht im letzten Viertel des zweiten Gebiets auf. */
-    abSekunde: 230,
+     * AB GEBIET, NICHT AB SEKUNDE. Hier stand fest `abSekunde: 230` mit der
+     * Begründung "ein Gebiet dauert 132 s, das zweite endet bei 264 s". Beides
+     * gilt längst nicht mehr: die Gebiete hängen an eigenen Grenzen und dauern
+     * 24 bis 90 Sekunden. Dieselbe Sekundenzahl bedeutet nach jeder
+     * Tempoänderung etwas anderes — zuletzt lag sie im fünften Gebiet statt
+     * im zweiten, ohne dass es jemand gemerkt hätte.
+     *
+     * `abGebiet` wird am Ende dieser Datei in `abSekunde` umgerechnet und
+     * wandert damit automatisch mit, wenn sich die Gebietslängen ändern. */
+    abGebiet: 3,
+    abSekunde: 0, // wird unten aus abGebiet gesetzt — nicht von Hand ändern
 
     /* HÖCHSTENS EINE JE GEBIET.
      *
@@ -3047,5 +3055,13 @@ export const CONFIG = {
  * `difficulty.proWand` gilt wörtlich je Gebiet. Siehe die ausführliche
  * Begründung im Konstruktor von DifficultyCurve. */
 CONFIG.difficulty.gebietsGrenzen = CONFIG.wall.stages.map((s) => s.afterSeconds ?? 0);
+
+/* Ab wann die Extraleben-Banane fallen darf, in Sekunden.
+ *
+ * Gepflegt wird `banana.abGebiet` (eine Gebietsnummer, 1-basiert); die
+ * Sekunde ergibt sich daraus. Eine fest eingetragene Sekundenzahl bedeutet
+ * nach jeder Tempoänderung etwas anderes — genau das war passiert. */
+CONFIG.banana.abSekunde =
+  CONFIG.difficulty.gebietsGrenzen[Math.max(0, (CONFIG.banana.abGebiet ?? 1) - 1)] ?? 0;
 
 export default CONFIG;

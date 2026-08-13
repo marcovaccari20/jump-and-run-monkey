@@ -85,7 +85,12 @@ function spielfeld(aspect, halbeBreite, pCfg) {
   return {
     ...base,
     bounds: { minX: Math.max(base.bounds.minX, -limit), maxX, minY: base.bounds.minY, maxY: base.bounds.maxY },
-    bahnX: base.bahnen.map((a) => a * maxX),
+    // --deckel: Bahnen wie im Spiel auf world.bahnDeckel begrenzt
+    // (Game.js:2586). fairness.mjs tut das NICHT — im Querformat liegen die
+    // Bahnen dort bei ±8.3 statt ±2.2.
+    bahnX: base.bahnen.map(
+      (a) => a * (process.argv.includes('--deckel') ? Math.min(maxX, base.bahnDeckel) : maxX),
+    ),
     spawnHalfWidth: Math.min(base.spawnHalfWidth, limit + 0.8),
   };
 }
