@@ -105,18 +105,25 @@ const BACKGROUNDS = [
      * Kopie nichts bei, kostet aber dasselbe. */
     const opt = { ...b };
     if (stufen[b.src]) opt.aufhellen = stufen[b.src];
-    /* AUS — der seitliche Versatz war der falsche Weg.
+
+    /* EIN ZWEITES, ECHTES BILD JE WAND — falls vorhanden.
      *
-     * Er stapelt dieselbe Kachel mehrfach, nur horizontal gerollt. Das
-     * bringt zwar rechnerisch Abwechslung, sieht im Spiel aber verzogen
-     * aus: es ist erkennbar DASSELBE Bild, nur verschoben, und an den
-     * Überblendbändern wirkt es verwaschen.
+     * Der erste Versuch stapelte dieselbe Kachel mehrfach, nur horizontal
+     * gerollt. Rechnerisch ist das Abwechslung, im Spiel aber erkennbar
+     * DASSELBE Bild, nur verschoben; an den Überblendbändern wirkte es
+     * verwaschen. Rückmeldung: "es sieht verzogen aus".
      *
-     * Was es braucht, ist ein ZWEITES, echtes Bild je Wand — gleicher Stil,
-     * andere Anordnung. Dann wechseln sich zwei verschiedene Ansichten ab
-     * statt einer verschobenen. `varianten` bleibt als Mechanik erhalten:
-     * sobald die zweiten Bilder da sind, stapelt sie das Original und das
-     * neue Bild übereinander. */
+     * Was es braucht, ist eine zweite ANSICHT: gleicher Stil, gleiche
+     * Palette, andere Anordnung. Liegt neben `stage_x.png` auch
+     * `stage_x_b.png`, werden beide untereinander gesetzt und die
+     * Stossstelle überblendet. Die Wand zeigt dann abwechselnd zwei
+     * verschiedene Bilder statt eines verschobenen.
+     *
+     * Die zweiten Bilder entstehen mit Higgsfield (flux_2_pro_outpaint):
+     * das Original wird nach unten hinaus weitergemalt, dadurch stimmen
+     * Stil, Farben und Lichtführung von selbst. Siehe scripts/zweitbild.mjs. */
+    const zweit = b.src.replace(/\.png$/, '_b.png');
+    if (existsSync(resolve(SRC, zweit))) opt.zweitbild = zweit;
     return opt;
   });
 
@@ -199,49 +206,45 @@ async function seamError(file) {
  * BENACHBARTE Zeilen aneinander — die Kachelung ist exakt nahtlos.
  */
 /**
- * Stapelt `n` seitlich versetzte Kopien einer bereits nahtlosen Kachel
- * übereinander, damit beim endlosen Scrollen nicht immer dasselbe Motiv an
- * derselben Stelle vorbeikommt.
+ * Setzt ZWEI verschiedene, jeweils nahtlose Kacheln untereinander.
  *
- * Die Kopie k wird um k/n der Breite nach rechts gerollt. Weil die Vorlage
- * waagerecht nahtlos ist, entsteht dabei kein Bruch — das Motiv steht nur
- * woanders. Senkrecht wird an jeder Stossstelle über `band` Zeilen
- * überblendet, mit derselben Rechnung wie in `makeSeamless`.
+ * Der erste Versuch stapelte dieselbe Kachel mehrfach, nur horizontal
+ * gerollt — das sah verzogen aus, weil es erkennbar dasselbe Bild blieb.
+ * Hier kommen stattdessen zwei ECHTE Ansichten zusammen: das gelieferte
+ * Bild und ein zweites im gleichen Stil (erzeugt mit Higgsfield, siehe
+ * README). Beim Hochscrollen wechseln sie sich ab.
  *
- * @param {{data: Buffer, width: number, height: number}} s  nahtlose Kachel
+ * Beide sind fuer sich kachelbar. An der Stossstelle wird ueber  * Zeilen ueberblendet, mit derselben Rechnung wie in , damit
+ * keine Kante durchlaeuft.
+ *
+ * @param {{data: Buffer, width: number, height: number}} a  erste Kachel
+ * @param {{data: Buffer, width: number, height: number}} b  zweite Kachel
  * @param {number} channels
- * @param {number} n      wie viele Varianten (2 oder 3 sind sinnvoll)
- * @param {number} band   Höhe der Überblendung an jeder Stossstelle
+ * @param {number} band  Hoehe der Ueberblendung an jeder Stossstelle
  */
-function stapelVarianten(s, channels, n, band) {
-  const { width: W, height: H } = s;
-  const b = Math.min(band, Math.floor(H / 3));
-  // Jede Variante verliert oben `b` Zeilen an die Überblendung.
-  const teilH = H - b;
-  const outH = teilH * n;
+function stapelZwei(a, b, channels, band) {
+  const W = a.width;
+  const H = Math.min(a.height, b.height);
+  const bnd = Math.min(band, Math.floor(H / 3));
+  const teilH = H - bnd;
+  const outH = teilH * 2;
   const out = Buffer.alloc(W * outH * channels);
+  const quellen = [a, b];
 
-  /** Pixel der um `shift` gerollten Kopie an (x, y). */
-  const hole = (x, y, shift, c) => {
-    const sx = (x + shift) % W;
-    return s.data[((y % H) * W + sx) * channels + c];
-  };
-
-  for (let k = 0; k < n; k++) {
-    const shift = Math.round((k * W) / n);
-    // Die Kopie DAVOR liefert die Zeilen, in die hineingeblendet wird.
-    const shiftVor = Math.round((((k - 1 + n) % n) * W) / n);
-
+  for (let k = 0; k < 2; k++) {
+    const eigen = quellen[k];
+    const vor = quellen[(k + 1) % 2]; // die Kachel davor liefert den Auslauf
     for (let y = 0; y < teilH; y++) {
-      const t = y < b ? y / b : 1;
+      const t = y < bnd ? y / bnd : 1;
       for (let x = 0; x < W; x++) {
         const dst = ((k * teilH + y) * W + x) * channels;
+        const se = ((y % eigen.height) * W + x) * channels;
+        const sv = (((y + teilH) % vor.height) * W + x) * channels;
         for (let c = 0; c < channels; c++) {
-          const eigen = hole(x, y, shift, c);
           out[dst + c] =
             t >= 1
-              ? eigen
-              : Math.round(eigen * t + hole(x, y + teilH, shiftVor, c) * (1 - t));
+              ? eigen.data[se + c]
+              : Math.round(eigen.data[se + c] * t + vor.data[sv + c] * (1 - t));
         }
       }
     }
@@ -356,8 +359,23 @@ async function prepareBackgrounds() {
      *
      * PREIS: die Textur wird N-mal so hoch und damit N-mal so gross. Deshalb
      * nur dort, wo ein Einzelmotiv wirklich stört. */
-    if (bg.varianten > 1) {
-      s = stapelVarianten(s, info.channels, bg.varianten, bandY);
+    if (bg.zweitbild) {
+      /* Das zweite Bild durch dieselbe Mühle drehen — aufhellen, nahtlos
+       * machen — und dann unter das erste setzen. Beide sind für sich
+       * kachelbar; die Stossstelle wird mit demselben Band überblendet. */
+      const zweiRoh = sharp(resolve(SRC, bg.zweitbild)).removeAlpha();
+      if (typeof bg.aufhellen === 'number' && bg.aufhellen > 1) {
+        zweiRoh.modulate({ brightness: bg.aufhellen }).gamma(1.12);
+      } else if (bg.aufhellen?.mul) {
+        zweiRoh.linear(bg.aufhellen.mul, bg.aufhellen.plus ?? 0);
+        if (bg.aufhellen.gamma) zweiRoh.gamma(bg.aufhellen.gamma);
+      }
+      const z = await zweiRoh
+        .resize(info.width, info.height, { fit: 'cover' })
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const s2 = makeSeamless(z.data, z.info.width, z.info.height, z.info.channels, bandX, bandY);
+      s = stapelZwei(s, s2, info.channels, bandY);
     }
 
     await sharp(s.data, { raw: { width: s.width, height: s.height, channels: info.channels } })
