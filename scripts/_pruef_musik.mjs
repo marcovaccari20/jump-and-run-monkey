@@ -76,6 +76,12 @@ const kb = (p) => statSync(p).size / 1024;
 
 const stages = CONFIG.wall.stages.map((s) => s.name);
 const goldName = CONFIG.goldbanane?.gebiet?.name ?? null;
+/* Der Bosskampf wurde entfernt; `klang.musik.boss` gibt es nicht mehr.
+ *
+ * Die Abfrage bleibt der Vollständigkeit halber stehen — falls jemand die
+ * Bossmusik wieder einträgt, prüft dieses Skript sie automatisch mit. Die
+ * AUSGABE unten sagt jetzt aber nicht mehr „FEHLT IN DER CONFIG", denn das
+ * las sich wie ein Mangel, obwohl es der gewollte Zustand ist. */
 const bossDatei = CONFIG.klang?.musik?.boss?.datei ?? null;
 
 const erwartet = [
@@ -86,7 +92,7 @@ const erwartet = [
 
 console.log(`CONFIG.wall.stages: ${stages.length} Gebiete`);
 console.log(`Gold-Gebiet: ${goldName ?? '(keins)'}`);
-console.log(`klang.musik.boss: ${bossDatei ?? 'FEHLT IN DER CONFIG'}`);
+console.log(`Bossmusik: ${bossDatei ?? '(kein Bosskampf — so gewollt)'}`);
 console.log(`Ordner: ${MUSIK}\n`);
 
 const daDrin = readdirSync(MUSIK).filter((f) => /\.(ogg|mp3)$/.test(f));
@@ -164,20 +170,41 @@ console.log(`  ogg gesamt: ${(sOgg / 1024).toFixed(2)} MB (${zeilen.filter((z) =
 console.log(`  mp3 gesamt: ${(sMp3 / 1024).toFixed(2)} MB (${zeilen.filter((z) => z.fmt === 'mp3').length} Dateien)`);
 console.log(`  beide zusammen (das liegt im Build): ${((sOgg + sMp3) / 1024).toFixed(2)} MB`);
 
-const oggs = zeilen.filter((z) => z.fmt === 'ogg').sort((a, b) => b.groesse - a.groesse);
-console.log(`  groesste ogg-Datei: ${oggs[0]?.name} ${(oggs[0]?.groesse / 1024).toFixed(2)} MB`);
-console.log(`  Schnitt je Gebiet (ogg): ${(sOgg / oggs.length / 1024).toFixed(2)} MB`);
+/* AUF DAS FORMAT ABSTELLEN, DAS WIRKLICH IM PAKET LIEGT.
+ *
+ * Hier stand fest `fmt === 'ogg'`. Seit das Spiel nur noch MP3 ausliefert
+ * (CONFIG.klang.musik.format), war diese Liste leer: der Schnitt kam als NaN
+ * heraus, und ein paar Zeilen weiter stürzte das Skript mit "Cannot read
+ * properties of undefined" ab — mitten in der Prüfung, die es durchführen
+ * sollte. Ein Prüfwerkzeug, das selbst abstürzt, prüft nichts. */
+const FMT = zeilen.some((z) => z.fmt === 'ogg') ? 'ogg' : 'mp3';
+const oggs = zeilen.filter((z) => z.fmt === FMT).sort((a, b) => b.groesse - a.groesse);
+const summeFmt = FMT === 'ogg' ? sOgg : sMp3;
+console.log(`  groesste Datei (${FMT}): ${oggs[0]?.name} ${(oggs[0]?.groesse / 1024).toFixed(2)} MB`);
+console.log(`  Schnitt je Gebiet (${FMT}): ${(summeFmt / oggs.length / 1024).toFixed(2)} MB`);
 
 /* Was ein Spieler tatsaechlich zieht: das Spiel streamt pro Gebiet.
  * Deshalb: Erstladung = nur das erste Gebiet, danach je Gebietswechsel eins. */
 const g1 = oggs.find((z) => z.name === stages[0]);
-console.log(`\n  Erstes Gebiet allein (${stages[0]}.ogg): ${(g1.groesse / 1024).toFixed(2)} MB`);
+console.log(
+  `\n  Erstes Gebiet allein (${stages[0]}.${FMT}): ` +
+    `${g1 ? (g1.groesse / 1024).toFixed(2) : '?'} MB`,
+);
 
 /* ---------------------------------------------------- 5. Dauer vs. Gebiet */
 
 console.log('\n== 5. DAUER GEGEN GEBIETSDAUER ========================');
-const sekProWand = CONFIG.difficulty?.sekundenProWand ?? null;
-console.log(`  CONFIG.difficulty.sekundenProWand: ${sekProWand}`);
+/* DIE MITTLERE ECHTE GEBIETSLÄNGE, nicht sekundenProWand.
+ *
+ * Hier stand `CONFIG.difficulty.sekundenProWand` (132). Seit die Gebiete an
+ * eigenen Grenzen hängen, dauern sie 24 bis 90 Sekunden — die Spalte
+ * "Durchläufe je Gebiet" rechnete also mit einer Gebietsdauer, die es im
+ * Spiel nirgends gibt, und meldete gut doppelt so viele Durchläufe wie
+ * tatsächlich vorkommen. Genau derselbe Fehler wie in balance.mjs. */
+const g = CONFIG.difficulty?.gebietsGrenzen;
+const sekProWand =
+  g && g.length > 1 ? g[g.length - 1] / (g.length - 1) : (CONFIG.difficulty?.sekundenProWand ?? null);
+console.log(`  mittlere Gebietsdauer: ${sekProWand?.toFixed(1)} s (aus den Gebietsgrenzen)`);
 console.log(`  Gold-Gebiet dauert: ${CONFIG.goldbanane?.sekunden} s`);
 console.log(`  schleifeFade: ${CONFIG.klang.musik.schleifeFade} s, tempoMax: ${CONFIG.klang.musik.tempoMax}`);
 for (const z of oggs.sort((a, b) => (a.d ?? 0) - (b.d ?? 0))) {

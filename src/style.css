@@ -958,10 +958,11 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
 
 .bosswarnung.is-visible {
   opacity: 1;
-  /* Blinkt dreimal pro Sekunde, wie in CONFIG.boss.warnung.blinkProSekunde
-   * beschrieben. Der Wert steht hier fest, weil eine CSS-Animation nichts
-   * aus der Config lesen kann; ändert sich der Wert dort, gehört er hier
-   * mit geändert. */
+  /* Blinkt dreimal pro Sekunde.
+   *
+   * Hier stand ein Verweis auf CONFIG.boss.warnung.blinkProSekunde. Den
+   * Abschnitt gibt es nicht mehr — der Bosskampf wurde entfernt. Wer dem
+   * Verweis folgte, suchte eine Zahl, die nirgends steht. */
   animation: bosswarnung-blink 0.3125s steps(1, end) infinite;
 }
 

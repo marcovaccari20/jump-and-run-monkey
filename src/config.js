@@ -2891,12 +2891,17 @@ export const CONFIG = {
 
     /* Nach der letzten Stufe alle X Sekunden zur nächsten (zyklisch von vorne).
      *
-     * 21 STATT 40. Hinter dem Weltall hängt das Tempo am Deckel von 18, das
-     * Wandscrollen also bei 18 × 0.42 = 7.56 m/s. 21 Sekunden sind dort rund
-     * 159 Meter und liegen damit in derselben Spanne wie jedes andere Gebiet
-     * (157–200 m). Mit 40 wären es 302 Meter gewesen — der zyklische Nachlauf
-     * wäre wieder länger als alles davor. */
-    stageLoopSeconds: 21,
+     * 26 STATT 40. Hinter dem Weltall hängt das Tempo am Deckel von 16, das
+     * Wandscrollen also bei 16 × 0.42 = 6.72 m/s. 26 Sekunden sind dort rund
+     * 175 Meter und liegen damit mitten in der Spanne, in der auch jedes
+     * andere Gebiet liegt (157–200 m). Mit 40 wären es 269 Meter gewesen —
+     * der zyklische Nachlauf wäre länger als alles davor.
+     *
+     * DIESE ZAHL HÄNGT AN tempo.max. Stand hier vorübergehend 21, als der
+     * Deckel noch 18 war; nach dem Absenken auf 16 wären daraus 141 Meter
+     * geworden, also kürzer als jedes echte Gebiet. Wer am Deckel dreht,
+     * rechnet hier nach:  Sekunden = Zielmeter / (tempo.max × scrollAnteil) */
+    stageLoopSeconds: 26,
     // Überblendzeit zwischen zwei Stufen (Sekunden). Kein harter Schnitt.
     stageFade: 1.8,
     // Seitenverhältnis der Stufentexturen (1252x676) — damit die Kacheln
