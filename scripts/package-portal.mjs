@@ -115,6 +115,20 @@ if (!existsSync(DIST) || process.argv.includes('--bauen')) {
   execFileSync('npx', ['vite', 'build'], { cwd: ROOT, stdio: 'inherit', shell: true });
 }
 
+/* Ungenutztes 3D-Modell aus dem Paket werfen.
+ *
+ * Der Spieler läuft im Sprite-Modus (CONFIG.sprite.mode === 'sprite'), dann
+ * setzt Game.js modelUrl auf null und monkey.glb wird zur Laufzeit NIE geladen
+ * — im Netz-Mitschnitt taucht es nicht auf. Vite kopiert public/ aber komplett,
+ * also läge die 1,5-MB-Datei sonst tot im ZIP und zählte auf die 20-MB-Grenze
+ * der Portale mit. Solange der Sprite-Modus gilt, fliegt sie hier raus. Wer auf
+ * 'model' zurückstellt, entfernt einfach diese Zeilen. */
+const totesModell = join(DIST, 'models', 'monkey.glb');
+if (existsSync(totesModell)) {
+  rmSync(totesModell);
+  console.log('monkey.glb entfernt (Sprite-Modus lädt es nicht).');
+}
+
 /* ------------------------------------------------------------ Prüfen */
 
 /**
