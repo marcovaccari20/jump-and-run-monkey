@@ -103,16 +103,20 @@ const BACKGROUNDS = [
      * ZWEI reicht dort, wo das Bild ohnehin ein feines, gleichmässiges
      * Muster ist (Waben, Zeltstreifen, Wolken) — dort trägt die dritte
      * Kopie nichts bei, kostet aber dasselbe. */
-    const wenigerNoetig = new Set([
-      'stage_biene.png', // Wabenraster, sehr gleichmässig
-      'stage_zirkus.png', // senkrechte Zeltstreifen
-      'stage7_clouds.png', // Wolken ohne festes Motiv
-      'stage9_ash.png', // Aschefeld
-      'stage_gold.png', // Bonus, dauert nur 30 s
-    ]);
     const opt = { ...b };
     if (stufen[b.src]) opt.aufhellen = stufen[b.src];
-    opt.varianten = wenigerNoetig.has(b.src) ? 2 : 3;
+    /* AUS — der seitliche Versatz war der falsche Weg.
+     *
+     * Er stapelt dieselbe Kachel mehrfach, nur horizontal gerollt. Das
+     * bringt zwar rechnerisch Abwechslung, sieht im Spiel aber verzogen
+     * aus: es ist erkennbar DASSELBE Bild, nur verschoben, und an den
+     * Überblendbändern wirkt es verwaschen.
+     *
+     * Was es braucht, ist ein ZWEITES, echtes Bild je Wand — gleicher Stil,
+     * andere Anordnung. Dann wechseln sich zwei verschiedene Ansichten ab
+     * statt einer verschobenen. `varianten` bleibt als Mechanik erhalten:
+     * sobald die zweiten Bilder da sind, stapelt sie das Original und das
+     * neue Bild übereinander. */
     return opt;
   });
 
