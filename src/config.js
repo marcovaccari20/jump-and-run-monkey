@@ -640,10 +640,10 @@ export const CONFIG = {
      * Dichte hingen ab Gebiet 10 am Anschlag und die letzten sieben Gebiete
      * wären untereinander völlig gleich.
      *
-     * 1.1245 über 20 Wechsel ergibt Härte 10.5 — und genau damit erreicht
-     * das Tempo im Weltall seinen Deckel von 18. Gerechnet, nicht geschätzt:
+     * 1.1148 über 20 Wechsel ergibt Härte 8.5 — und genau damit erreicht
+     * das Tempo im Weltall seinen Deckel von 16. Gerechnet, nicht geschätzt:
      *     proWand = ((tempoMax / tempoStart)^(1/tempoExponent))^(1/20) */
-    proWand: 1.1245,
+    proWand: 1.1148,
 
     /* Wie sich die Härte auf die zwei Stellschrauben verteilt: dieser Anteil
      * geht ins TEMPO, der Rest in die Menge. Nur EINE Zahl — die Dichte wird
@@ -692,25 +692,33 @@ export const CONFIG = {
        *
        * Diese Zahl gehört zu player.startPosition[1]. Wer eine ändert, muss
        * die andere nachrechnen. */
-      /* 18.0 statt 14.3 — UND DER GRUND IST EINE VERALTETE ANNAHME.
+      /* 16.0 statt 14.3 — UND DER GRUND IST EINE VERALTETE ANNAHME.
        *
        * Der Absatz oben rechnet mit einer Vorwarnstrecke von 4.094
        * Einheiten. Das stimmte, als der Affe auf y = -0.1 sass. Er sitzt
-       * längst auf y = -2.6 (player.startPosition), und der sichtbare obere
-       * Rand liegt bei y = 6.78. Nachgemessen im laufenden Spiel:
+       * längst auf y = -2.6 (player.startPosition). Nachgemessen im
+       * laufenden Spiel, durch echte Unprojektion der oberen Bildkante auf
+       * die Spielebene z = 0:
        *
-       *     sichtbar oben            6.78
-       *     Affenmitte              -2.60
-       *     minus Trefferradien     -1.16   (0.42 Affe + 0.74 grosses Objekt)
-       *     ---------------------------------
-       *     Reaktionsstrecke         8.22 Einheiten
+       *     sichtbar oben            5.051
+       *     Affenmitte              -2.600
+       *     minus Trefferradien     -1.160   (0.42 Affe + 0.74 grosses Objekt)
+       *     -----------------------------------
+       *     Reaktionsstrecke         6.491 Einheiten
        *
-       * Also doppelt so viel wie angenommen. Bei Tempo 14.3 blieben dadurch
-       * 575 ms Vorwarnung — mehr als eine halbe Sekunde. Die ganze Kurve war
-       * für ein Spiel getunt, das es nicht mehr gibt; genau deshalb liess
-       * sich der Deckel mühelos ausspielen.
+       * ACHTUNG, HIER IRRT MAN SICH LEICHT: `1.9 + 11.5 * tan(fov/2)` ergibt
+       * 6.781 und ist FALSCH. Die Kamera ist um 7.68 Grad nach unten
+       * geneigt; die halbe Bildhöhe einer ungeneigten Kamera hat mit der
+       * Sichtkante auf der Spielebene nichts zu tun. Wer nachmisst, muss
+       * unprojizieren, nicht den Tangens nehmen — sonst kommen 21 % zu viel
+       * heraus.
        *
-       * 18.0 lässt 8.22 / 18.0 = 457 ms und wird erst im letzten Gebiet
+       * Immer noch deutlich mehr als die 4.094 von damals. Bei Tempo 14.3
+       * blieben dadurch 454 ms Vorwarnung; die Kurve war für ein Spiel
+       * getunt, das es nicht mehr gibt, und genau deshalb liess sich der
+       * Deckel mühelos ausspielen.
+       *
+       * 16.0 lässt 6.491 / 16.0 = 406 ms und wird erst im letzten Gebiet
        * (Weltall) erreicht.
        *
        * WARUM NICHT MEHR — DIE ZAHL IST ERMESSEN, NICHT GESCHÄTZT.
@@ -734,7 +742,7 @@ export const CONFIG = {
        *
        * WER DEN AFFEN VERSCHIEBT ODER AN acceleration DREHT, MUSS DIESE ZAHL
        * NEU ERMESSEN:  node scripts/fairness.mjs --affe orange --format quer */
-      max: 18.0,
+      max: 16.0,
       // Anteil, der als Wandscrollen sichtbar wird. Der Rest ist
       // Eigengeschwindigkeit der Objekte. Ein fester Anteil statt zweier
       // Kurven: sonst zieht sich die Wand unter den Objekten weg.
@@ -1008,12 +1016,12 @@ export const CONFIG = {
          *
          * Der alte Wert stammt aus derselben Zeit wie der alte Tempodeckel:
          * damals blieben bei einem grossen Brocken rechnerisch 4.094 / 14.3
-         * = 286 ms, und da war Bremsen richtig. Heute sind es 8.22 / 14.3 =
-         * 575 ms, und der Brocken schleicht mit 0.82 auf 700 ms — er fiel
+         * = 286 ms, und da war Bremsen richtig. Heute sind es 6.491 / 14.3 =
+         * 454 ms, und der Brocken schleicht mit 0.82 auf 554 ms — er fiel
          * sichtbar aus dem Rhythmus und war das am leichtesten auszulassende
          * Objekt im Spiel.
          *
-         * Mit 1.0 bleiben bei vollem Tempo 457 ms. Er ist damit immer noch
+         * Mit 1.0 bleiben bei vollem Tempo 406 ms. Er ist damit immer noch
          * das langsamste der drei — klein 1.32, mittel 1.14 —, also bleibt
          * die Grössenklasse am Fallverhalten erkennbar. Er ist nur kein
          * Geschenk mehr. */
@@ -2686,49 +2694,49 @@ export const CONFIG = {
         name: 'blumen',
         // Holz statt Stein: Stock (klein), Baumscheibe (mittel), Stamm (gross).
         hazard: 'holz',
-        afterSeconds: 54.9,
+        afterSeconds: 55.1,
         near: '/textures/stage2_flowers.webp',
         far: '/textures/stage2_flowers_far.webp',
       },
       {
         name: 'aeste',
         hazard: 'kokosnuss',
-        afterSeconds: 140.7,
+        afterSeconds: 141.5,
         near: '/textures/stage3_branches.webp',
         far: '/textures/stage3_branches_far.webp',
       },
       {
         name: 'pilzwald',
         hazard: 'pilz',
-        afterSeconds: 229,
+        afterSeconds: 231,
         near: '/textures/wall_mushroom.webp',
         far: '/textures/wall_mushroom_far.webp',
       },
       {
         name: 'gift',
         hazard: 'gift',
-        afterSeconds: 298.3,
+        afterSeconds: 301.7,
         near: '/textures/stage4_poison.webp',
         far: '/textures/stage4_poison_far.webp',
       },
       {
         name: 'halloween',
         hazard: 'kuerbis',
-        afterSeconds: 378.4,
+        afterSeconds: 383.7,
         near: '/textures/stage5_halloween.webp',
         far: '/textures/stage5_halloween_far.webp',
       },
       {
         name: 'wasser',
         hazard: 'meer',
-        afterSeconds: 445.2,
+        afterSeconds: 452.5,
         near: '/textures/wall_water.webp',
         far: '/textures/wall_water_far.webp',
       },
       {
         name: 'wolken',
         hazard: 'wolken',
-        afterSeconds: 502.7,
+        afterSeconds: 512,
         near: '/textures/stage7_clouds.webp',
         far: '/textures/stage7_clouds_far.webp',
         // Weisser Hagel vor weissen Wolken ist nicht zu sehen — und was man
@@ -2739,7 +2747,7 @@ export const CONFIG = {
       {
         name: 'eiszeit',
         hazard: 'eiszapfen',
-        afterSeconds: 565.7,
+        afterSeconds: 577.6,
         near: '/textures/stage6_ice.webp',
         far: '/textures/stage6_ice_far.webp',
         // Gleicher Grund wie bei den Wolken: helle Zapfen vor heller Wand.
@@ -2748,14 +2756,14 @@ export const CONFIG = {
       {
         name: 'kristall',
         hazard: 'kristall',
-        afterSeconds: 627.1,
+        afterSeconds: 641.9,
         near: '/textures/wall_crystal.webp',
         far: '/textures/wall_crystal_far.webp',
       },
       {
         name: 'lava',
         hazard: 'feuer',
-        afterSeconds: 675,
+        afterSeconds: 692.3,
         near: '/textures/stage8_lava.webp',
         far: '/textures/stage8_lava_far.webp',
         // Feuerbälle vor einer Wand aus Feuer: die Wand muss zurücktreten,
@@ -2765,14 +2773,14 @@ export const CONFIG = {
       {
         name: 'asche',
         hazard: 'asche',
-        afterSeconds: 724.3,
+        afterSeconds: 744.5,
         near: '/textures/stage9_ash.webp',
         far: '/textures/stage9_ash_far.webp',
       },
       {
         name: 'schrott',
         hazard: 'metall',
-        afterSeconds: 763.1,
+        afterSeconds: 785.7,
         near: '/textures/stage_schrott.webp',
         far: '/textures/stage_schrott_far.webp',
         /* Die Wand ist selbst rostbraun und voller Kanten. Ohne Dämpfung
@@ -2783,7 +2791,7 @@ export const CONFIG = {
       {
         name: 'bonbon',
         hazard: 'bonbon',
-        afterSeconds: 807.8,
+        afterSeconds: 833.6,
         near: '/textures/stage_bonbon.webp',
         far: '/textures/stage_bonbon_far.webp',
         // Sehr helle, bunte Wand — sonst geht ein rosa Bonbon darin unter.
@@ -2792,14 +2800,14 @@ export const CONFIG = {
       {
         name: 'kakteen',
         hazard: 'kaktus',
-        afterSeconds: 845.1,
+        afterSeconds: 873.7,
         near: '/textures/stage_kakteen.webp',
         far: '/textures/stage_kakteen_far.webp',
       },
       {
         name: 'ruine',
         hazard: 'ruine',
-        afterSeconds: 877.2,
+        afterSeconds: 908.4,
         near: '/textures/stage_ruine.webp',
         far: '/textures/stage_ruine_far.webp',
         /* Die Ruinenwand ist die dunkelste im Spiel. Hier wird AUFGEHELLT,
@@ -2824,7 +2832,7 @@ export const CONFIG = {
       {
         name: 'pirat',
         hazard: 'pirat',
-        afterSeconds: 912.5,
+        afterSeconds: 946.7,
         near: '/textures/stage_pirat.webp',
         far: '/textures/stage_pirat_far.webp',
         /* Dunkles Nassholz. Metall davor braucht Aufhellung, sonst ist der
@@ -2834,7 +2842,7 @@ export const CONFIG = {
       {
         name: 'biene',
         hazard: 'biene',
-        afterSeconds: 946.8,
+        afterSeconds: 984.2,
         near: '/textures/stage_biene.webp',
         far: '/textures/stage_biene_far.webp',
         /* Die Wabenwand ist das hellste Bild im Spiel, und die Objekte sind
@@ -2845,7 +2853,7 @@ export const CONFIG = {
       {
         name: 'bibliothek',
         hazard: 'buch',
-        afterSeconds: 973.5,
+        afterSeconds: 1013.6,
         near: '/textures/stage_bibliothek.webp',
         far: '/textures/stage_bibliothek_far.webp',
         // Kerzenlicht auf dunklem Holz — wie die Ruine, also aufhellen.
@@ -2854,7 +2862,7 @@ export const CONFIG = {
       {
         name: 'zirkus',
         hazard: 'zirkus',
-        afterSeconds: 1001.1,
+        afterSeconds: 1044.1,
         near: '/textures/stage_zirkus.webp',
         far: '/textures/stage_zirkus_far.webp',
         /* Rot-weisses Zeltstreifenmuster, sehr unruhig. Leicht gedämpft,
@@ -2864,7 +2872,7 @@ export const CONFIG = {
       {
         name: 'weltall',
         hazard: 'meteor',
-        afterSeconds: 1022.8,
+        afterSeconds: 1068.1,
         near: '/textures/stage_weltall.webp',
         far: '/textures/stage_weltall_far.webp',
         /* DAS LETZTE GEBIET. Weiss-rote Rakete vor schwarzem All: das

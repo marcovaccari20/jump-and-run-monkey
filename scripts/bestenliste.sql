@@ -152,9 +152,9 @@ declare
    *
    * Wer hier etwas ändert, muss `npm run punkte-grenze` laufen lassen. */
   tempo_start   constant numeric := 4.18;  -- difficulty.tempo.start
-  tempo_max     constant numeric := 18.0;  -- difficulty.tempo.max
+  tempo_max     constant numeric := 16.0;  -- difficulty.tempo.max
   scroll_anteil constant numeric := 0.42;  -- difficulty.tempo.scrollAnteil
-  pro_wand      constant numeric := 1.1245; -- difficulty.proWand
+  pro_wand      constant numeric := 1.1148; -- difficulty.proWand
   /* NICHT difficulty.sekundenProWand — DAS IST ABSICHT.
    *
    * Die Härte hängt seit dem Umbau an den GEBIETEN, nicht an einer festen
@@ -164,14 +164,14 @@ declare
    * Kurve ÜBERALL überdecken, sonst weist der Server ehrliche Läufe ab.
    *
    * Die Bedingung dafür ist    sek_pro_wand <= t / wand(t)   für jedes t.
-   * Nachgerechnet über die ganze Strecke ist das Minimum 51.16, erreicht
-   * ganz am Ende bei t = 1022 s. Mit diesem Wert erreicht die Schranke ihren
-   * Deckel bei 1026 s, die echte Kurve bei 1022.8 s — sie liegt also hauteng
+   * Nachgerechnet über die ganze Strecke ist das Minimum 53.40, erreicht
+   * ganz am Ende bei t = 1068 s. Mit diesem Wert liegt die Schranke hauteng
+   * an der echten Kurve (Deckel bei 1068.1 s) — sie liegt also hauteng
    * an, ohne zu schneiden.
    *
    * WER GEBIETE HINZUFÜGT ODER IHRE LÄNGE ÄNDERT, MUSS DIESE ZAHL NEU
    * RECHNEN. `node scripts/punkte-grenze.mjs` sagt es sofort. */
-  sek_pro_wand  constant numeric := 51.1;
+  sek_pro_wand  constant numeric := 53.4;
   tempo_exp     constant numeric := 0.62;  -- difficulty.tempoExponent
   /* War 1.3 (der weisse Affe). Seit climbAssist überall 0 ist, zahlt der
    * Vertikal-Input nicht mehr auf den Punktestand ein — bliebe hier 1.3

@@ -99,15 +99,33 @@ export class DifficultyCurve {
         return i - 1 + (spanne > 0 ? (t - g[i - 1]) / spanne : 0);
       }
     }
-    /* HINTER DEM LETZTEN GEBIET geht es weiter, nicht zu Ende.
+    /* HINTER DEM LETZTEN GEBIET IST SCHLUSS — die Härte bleibt stehen.
      *
-     * Die Wände wiederholen sich ab hier (CONFIG.wall.stageLoopSeconds), das
-     * Spiel aber soll schwerer werden statt stehenzubleiben — sonst hätte
-     * ein sehr guter Spieler ab dem letzten Gebiet ewig Zeit. Weitergezählt
-     * wird mit der Länge des LETZTEN Gebiets als Taktmass. */
-    const letzte = g.length - 1;
-    const takt = letzte > 0 ? g[letzte] - g[letzte - 1] : this.cfg.sekundenProWand;
-    return letzte + (t - g[letzte]) / (takt > 0 ? takt : this.cfg.sekundenProWand);
+     * Hier stand erst eine Fortschreibung: weiterzählen mit der Länge des
+     * letzten Gebiets als Takt, damit ein sehr guter Spieler nicht ewig Zeit
+     * bekommt. Das war falsch, und der Fairness-Prüfer hat es über die volle
+     * Spielzeit auch gefunden — vorher lief er nur 300 von 1023 Sekunden und
+     * konnte es gar nicht sehen.
+     *
+     * Der Grund: das TEMPO ist gedeckelt, die DICHTE nicht. Sie nimmt jeden
+     * weiteren Härtezuwachs allein auf. Gemessen mit der Fortschreibung:
+     *
+     *     t = 1023 s (Weltall)   2.07 Objekte/s
+     *     t = 1110 s             3.31
+     *     t = 1200 s             5.38
+     *     t = 1400 s             7.11
+     *
+     * Ab rund 1070 s war das Feld nachweislich dicht: 30 von 288 Läufen
+     * hatten einen Frame ohne erreichbare Bahn. Wer alle 21 Gebiete
+     * geschafft hatte, lief also 45 Sekunden später in eine Wand, an der
+     * kein Spiel mehr stattfindet — das ist kein Schwierigkeitsgrad,
+     * sondern ein Abbruch.
+     *
+     * Das Weltall IST das Maximum: die härteste Einstellung, die beweisbar
+     * noch passierbar ist. Die Wände wiederholen sich ab hier
+     * (CONFIG.wall.stageLoopSeconds), die Härte bleibt auf diesem Stand.
+     * Wer so weit kommt, spielt ab dort um die Höhenmeter. */
+    return g.length - 1;
   }
 
   /** Gesamtdruck. Jede Wand multipliziert ihn mit `proWand`. */

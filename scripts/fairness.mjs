@@ -69,7 +69,23 @@ function arg(name, fallback) {
 }
 
 const LAEUFE = arg('laeufe', 24);
-const SEKUNDEN = arg('sekunden', 300);
+
+/* SO LANG, DASS ALLE GEBIETE VORKOMMEN — plus etwas Nachlauf.
+ *
+ * Hier standen fest 300 Sekunden. Das deckte einmal das halbe Spiel ab; seit
+ * es 21 Gebiete gibt, sind es 28 % davon, und der Beweis endete in Gebiet 4.
+ * Ausgerechnet das Weltall — das schwerste Gebiet, dessentwegen man prüft —
+ * wurde nie angefasst, und die Ausgabe meldete trotzdem BESTANDEN.
+ *
+ * Genau das ist passiert: mit 300 s bestand eine Einstellung, die im Weltall
+ * nachweislich dichte Wände hatte. Deshalb leitet sich die Vorgabe jetzt aus
+ * der letzten Gebietsgrenze ab und wächst automatisch mit, wenn Gebiete
+ * dazukommen. Der Zuschlag deckt den zyklischen Nachlauf mit ab.
+ *
+ * Mit --sekunden lässt sich das weiterhin überschreiben, etwa für einen
+ * schnellen Zwischentest oder einen Marathonlauf. */
+const LETZTE_GRENZE = CONFIG.wall.stages.at(-1)?.afterSeconds ?? 0;
+const SEKUNDEN = arg('sekunden', Math.ceil(LETZTE_GRENZE + 60));
 const DT = arg('dt', 1 / 60);
 /**
  * Welchen Anteil seiner Höchstgeschwindigkeit schafft der Affe im

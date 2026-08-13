@@ -1696,6 +1696,22 @@ export class Game {
     this._letztesGebiet = null;
     this.klang.tempoZuruecksetzen();
 
+    /* DIE BELOHNUNGSMERKER GEHÖREN HIERHER, NICHT NUR IN DEN KONSTRUKTOR.
+     *
+     * Sie standen ausschliesslich dort. Beim zweiten Lauf zeigten sie noch
+     * auf Gebietsnummern des ERSTEN — und weil `_gebietWechsel` zugleich auf
+     * 0 zurückgesetzt wird, fängt die Zählung wieder bei Gebiet 1 an. Die
+     * Bedingung `gebiet <= this[feld]` in `_belohnungenPruefen` war damit ab
+     * Lauf 2 dauerhaft erfüllt: goldene Banane und Chili kamen nie wieder,
+     * bis die Seite neu geladen wurde.
+     *
+     * Das ist die zweite Hälfte derselben Beobachtung — „die goldene Banane
+     * habe ich im ganzen Lauf nur einmal gesehen". Die erste Hälfte war der
+     * Zähler, der auch bei fehlgeschlagenem Wurf weiterschob. Wer mehrere
+     * Runden hintereinander spielt, sah sie danach gar nicht mehr. */
+    this._goldGebiet = -1;
+    this._chiliGebiet = -1;
+
     /* Ein noch offener Adler darf nicht in den neuen Lauf hineinragen.
      * Und: die Gebietszählung fängt bei 0 an, also muss auch die Liste der
      * Sturzflug-Zaehler leer sein. */

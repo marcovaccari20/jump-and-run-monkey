@@ -19,12 +19,41 @@ const d = new DifficultyCurve(CONFIG.difficulty);
 d.setRockMix(CONFIG.rock.mix);
 
 const stages = CONFIG.wall.stages;
-const proWand = CONFIG.difficulty.sekundenProWand;
+
+/* DIE TABELLE MUSS AN DEN ECHTEN GEBIETSGRENZEN ABTASTEN.
+ *
+ * Hier stand `const proWand = CONFIG.difficulty.sekundenProWand` (132) und
+ * unten `d.elapsed = i * proWand`. Seit die Härte an den Gebieten hängt, ist
+ * sekundenProWand nur noch Rückfall und im Spiel nie in Gebrauch — dieses
+ * Werkzeug tastete die Kurve also bei 0/132/264/… ab und klebte die
+ * Gebietsnamen darauf, während die echten Grenzen bei 0/54.9/140.7/… liegen.
+ *
+ * Die Folge war kein Schönheitsfehler, sondern ein falscher Tacho: Zeile
+ * "eiszeit" zeigte "ab 1056 s, Tempo am Anschlag", in Wirklichkeit beginnt
+ * eiszeit bei 565.7 s mit Tempo 7.5 und weit vom Anschlag entfernt. Die
+ * Druckschritte las man als +25/+21/+23/… — echt sind es zwanzigmal
+ * dieselben +11.5 %. Ab Zeile 8 lagen alle Zeilen jenseits des letzten
+ * Gebiets, zeigten also die Wiederholungsschleife unter fremdem Namen.
+ *
+ * Wer die Schwierigkeit mit diesem Werkzeug justiert hat, justierte blind. */
+const GRENZEN = CONFIG.difficulty.gebietsGrenzen ?? null;
 const WAENDE = Number(process.argv[2] ?? stages.length + 4);
 
+/** Sekunde, bei der Gebiet `i` beginnt (auch über die letzte Grenze hinaus). */
+function beginnVon(i) {
+  if (!GRENZEN?.length) return i * CONFIG.difficulty.sekundenProWand;
+  if (i < GRENZEN.length) return GRENZEN[i];
+  // Nachlauf: mit der Länge des letzten Gebiets weiterzählen.
+  const letzte = GRENZEN.length - 1;
+  const takt = letzte > 0 ? GRENZEN[letzte] - GRENZEN[letzte - 1] : CONFIG.difficulty.sekundenProWand;
+  return GRENZEN[letzte] + (i - letzte) * takt;
+}
+
+const laengen = stages.map((_, i) => (i === 0 ? 0 : beginnVon(i) - beginnVon(i - 1))).slice(1);
 console.log(
-  `Schwierigkeit: ${CONFIG.difficulty.proWand}x je Wand, ` +
-    `${proWand}s je Wand, Tempo gedeckelt bei ${CONFIG.difficulty.tempo.max}\n`,
+  `Schwierigkeit: ${CONFIG.difficulty.proWand}x je GEBIET, ` +
+    `Gebiete ${Math.min(...laengen).toFixed(0)}–${Math.max(...laengen).toFixed(0)}s lang, ` +
+    `Tempo gedeckelt bei ${CONFIG.difficulty.tempo.max}\n`,
 );
 console.log(
   '  #  Wand           ab      Härte   Tempo  Scroll   Obj/s  Abstand  Vorwarn   Δ Druck',
@@ -33,7 +62,7 @@ console.log('  ' + '─'.repeat(94));
 
 let vorDruck = null;
 for (let i = 0; i < WAENDE; i++) {
-  d.elapsed = i * proWand + 0.001;
+  d.elapsed = beginnVon(i) + 0.001;
   const name = stages[i % stages.length]?.name ?? '—';
   const zyklus = i >= stages.length ? ' (Runde 2+)' : '';
   const druck = d.tempo * d.dichte;
@@ -44,7 +73,7 @@ for (let i = 0; i < WAENDE; i++) {
 
   console.log(
     `  ${String(i).padStart(2)}  ${(name + zyklus).padEnd(14)} ` +
-      `${String(Math.round(i * proWand)).padStart(4)}s  ` +
+      `${String(Math.round(beginnVon(i))).padStart(4)}s  ` +
       `${d.haerte.toFixed(2).padStart(7)}  ` +
       `${d.tempo.toFixed(2).padStart(5)}  ` +
       `${d.scrollSpeed.toFixed(2).padStart(6)}  ` +

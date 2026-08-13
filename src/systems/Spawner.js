@@ -978,9 +978,21 @@ export class Spawner {
   /**
    * Sekunden zwischen zwei Münzen.
    *
-   * Abgeleitet statt konfiguriert: gewollt sind "drei Münzen je Gebiet", und
-   * wie lang ein Gebiet ist, steht woanders (difficulty.sekundenProWand).
+   * Abgeleitet statt konfiguriert: gewollt sind so und so viele Münzen JE
+   * GEBIET, und wie lang ein Gebiet ist, ergibt sich aus den Gebietsgrenzen.
    * Zwei getrennte Zahlen würden beim nächsten Verlängern auseinanderlaufen.
+   *
+   * WAS HIER FALSCH WAR: die Länge kam aus `difficulty.sekundenProWand`
+   * (132 s). Das war richtig, solange ein „Gebiet" tatsächlich 132 Sekunden
+   * dauerte. Seit die Gebiete an eigenen Grenzen hängen, dauern sie 24 bis
+   * 90 Sekunden — die Münze kam also im ersten Gebiet etwa dreimal, im
+   * letzten aber gar nicht mehr, weil das Gebiet vorbei war, bevor der Takt
+   * ablief. Der Kommentar begründete die Kopplung ausdrücklich mit
+   * sekundenProWand, und genau die Kopplung war es, die riss.
+   *
+   * Jetzt zählt die MITTLERE echte Gebietslänge. Damit stimmt „drei Münzen
+   * je Gebiet" wieder im Mittel, und die Zahl wandert automatisch mit, wenn
+   * Gebiete dazukommen oder ihre Länge sich ändert.
    */
   get muenzTakt() {
     /* IM GOLDRAUSCH REGNET ES MÜNZEN.
@@ -993,7 +1005,10 @@ export class Spawner {
      * Mit 4.5 s sind es sechs bis sieben Stück hintereinander. Das ist der
      * Unterschied zwischen "du bekommst mehr" und "sieh dir das an". */
     if (this.goldrausch) return this.cfg.goldbanane.muenzTakt;
-    return this.cfg.difficulty.sekundenProWand / Math.max(1, this.cfg.coin.proGebiet);
+    const g = this.cfg.difficulty.gebietsGrenzen;
+    const mittlereLaenge =
+      g && g.length > 1 ? g[g.length - 1] / (g.length - 1) : this.cfg.difficulty.sekundenProWand;
+    return mittlereLaenge / Math.max(1, this.cfg.coin.proGebiet);
   }
 
   /**
