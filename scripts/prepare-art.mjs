@@ -86,19 +86,33 @@ const BACKGROUNDS = [
       'stage5_halloween.png': 1.5, //  53 -> ~72
       'stage_pirat.png': 1.25, //  75 -> ~91  (dunkles Nassholz)
     };
-    /* WELCHE WÄNDE MEHRERE VARIANTEN BEKOMMEN — siehe `varianten` weiter
-     * unten. Nur Bilder mit EINEM auffälligen Einzelmotiv: dort fällt die
-     * Wiederholung sofort auf. Bei einer Ziegelmauer oder einer Wabenwand
-     * sieht man ohnehin kein "dasselbe schon wieder", und die dreifache
-     * Dateigrösse wäre verschenkt. */
-    const abwechslung = {
-      'stage_weltall.png': 3, // Astronaut und Mondfenster
-      'stage_pirat.png': 3, // Papagei im Segel
-      'stage_bibliothek.png': 2, // die beiden Kerzen
-    };
+    /* ABWECHSLUNG FÜR JEDE WAND — siehe `varianten` weiter unten.
+     *
+     * Die Wand wiederholt EINE Kachel. Alles, was darin auffällt, kommt
+     * dadurch alle paar Sekunden an genau derselben Stelle wieder: der
+     * Astronaut, der Papagei, eine markante Ranke, ein heller Fleck. Auch
+     * bei scheinbar gleichförmigen Wänden merkt man das nach kurzer Zeit —
+     * das Auge findet solche Muster von selbst.
+     *
+     * DREI ist der Normalfall: die Kachel wird dreimal so hoch, und ein
+     * Motiv steht bei jedem Durchlauf an einer anderen Stelle. Der Preis
+     * sind rund 8 MB mehr im Paket; die Ladegrösse bis zum Spielstart bleibt
+     * weit unter der 20-MB-Grenze für die Mobil-Startseite, weil immer nur
+     * die Wand des aktuellen Gebiets geladen wird.
+     *
+     * ZWEI reicht dort, wo das Bild ohnehin ein feines, gleichmässiges
+     * Muster ist (Waben, Zeltstreifen, Wolken) — dort trägt die dritte
+     * Kopie nichts bei, kostet aber dasselbe. */
+    const wenigerNoetig = new Set([
+      'stage_biene.png', // Wabenraster, sehr gleichmässig
+      'stage_zirkus.png', // senkrechte Zeltstreifen
+      'stage7_clouds.png', // Wolken ohne festes Motiv
+      'stage9_ash.png', // Aschefeld
+      'stage_gold.png', // Bonus, dauert nur 30 s
+    ]);
     const opt = { ...b };
     if (stufen[b.src]) opt.aufhellen = stufen[b.src];
-    if (abwechslung[b.src]) opt.varianten = abwechslung[b.src];
+    opt.varianten = wenigerNoetig.has(b.src) ? 2 : 3;
     return opt;
   });
 
