@@ -111,6 +111,69 @@
             <p><b>Esc</b> / <b>P</b> — pause &nbsp;·&nbsp; <b>F1</b> — hitboxes</p>
             <p class="controls-hint--touch">Tap anywhere and drag left or right</p>
           </div>
+
+          <!-- Datenschutzhinweis.
+               PFLICHT, SOBALD DAS SPIEL DATEN AN EINEN EIGENEN SERVER SCHICKT.
+               Genau das tut die weltweite Bestenliste (Name und Höhe gehen an
+               unsere Supabase-Instanz), und deshalb greift die Regel der
+               Portale. Bewusst ein LINK und kein Fenster, das den Start
+               blockiert — CrazyGames verlangt ausdrücklich, keine
+               aufdringlichen Einblendungen zu bauen. -->
+          <button id="btn-privacy" class="link-leise" type="button">
+            Privacy &amp; data
+          </button>
+        </section>
+
+        <!-- ---------------------------------------------------- Datenschutz -->
+        <section id="screen-privacy" class="screen screen--center screen--dim">
+          <h2 class="headline">Privacy &amp; data</h2>
+
+          <div class="panel panel--text">
+            <p>
+              Jungle Climber has no accounts, no sign-up and no e-mail. You can
+              play it without giving away anything about yourself.
+            </p>
+
+            <h3 class="panel__title panel__title--spaced">What is stored</h3>
+            <p>
+              Your coins and unlocked monkeys are kept under a random number
+              that this game makes up on your device. That number is not tied
+              to your name, your e-mail or your account anywhere else.
+            </p>
+            <p>
+              If you enter a name for the worldwide leaderboard, that name and
+              the height you reached are sent to our server and shown to other
+              players. Pick any name you like — it does not have to be your
+              real one.
+            </p>
+
+            <h3 class="panel__title panel__title--spaced">What is not</h3>
+            <p>
+              No e-mail address, no password, no location, no contacts, no
+              tracking across other websites. We do not sell anything to
+              anyone.
+            </p>
+
+            <h3 class="panel__title panel__title--spaced">Advertising</h3>
+            <p>
+              Ads come from the games portal you are playing on, not from us.
+              What they collect is covered by their own privacy policy.
+            </p>
+
+            <h3 class="panel__title panel__title--spaced">Removing your data</h3>
+            <p>
+              Clearing your browser data removes the number on your device. To
+              have a leaderboard entry taken down, write to
+              <span class="mail">info@mycallmanager.ch</span>
+              with the name and the score.
+            </p>
+          </div>
+
+          <div class="button-row">
+            <button id="btn-privacy-back" class="btn btn--primary" type="button">
+              Back
+            </button>
+          </div>
         </section>
 
         <!-- -------------------------------------------------- Charaktere -->

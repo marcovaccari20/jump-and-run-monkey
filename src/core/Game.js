@@ -1560,6 +1560,11 @@ export class Game {
     this.ui.callbacks.onMenu = () => this._toMenu();
     this.ui.callbacks.onSubmitName = (name) => this._submitName(name);
     this.ui.callbacks.onCharacters = () => this._openCharacters();
+    /* Datenschutz. Erreichbar aus dem Menue, und von dort geht es zurueck
+     * ins Menue — der Bildschirm haengt an keinem Spielzustand und darf
+     * deshalb nichts anderes anfassen. */
+    this.ui.callbacks.onPrivacy = () => this.ui.showScreen('privacy');
+    this.ui.callbacks.onPrivacyBack = () => this.ui.showMenu(this.score.loadHighscores());
     this.ui.callbacks.onCharactersBack = () => this._closeCharacters();
     this.ui.callbacks.onPickCharacter = (id) => this._pickCharacter(id);
     this.ui.callbacks.onPickSkin = (id) => this._pickSkin(id);

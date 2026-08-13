@@ -552,6 +552,75 @@ body {
   box-shadow: var(--shadow);
 }
 
+/* Fliesstext in einer Tafel — Datenschutzhinweis.
+ *
+ * Die gewöhnliche Tafel ist für Listen und kurze Zeilen gemacht; hier stehen
+ * ganze Absätze. Sie bekommt deshalb mehr Breite, linksbündigen Satz und
+ * genug Zeilenabstand zum Lesen. Scrollbar, weil der Text auf einem Telefon
+ * im Hochformat länger ist als die Bühne hoch. */
+.panel--text {
+  width: min(460px, 100%);
+  max-height: 62cqh;
+  overflow-y: auto;
+  /* WAAGERECHT NICHTS. Ein zu breites Wort — die Kontaktadresse — erzeugte
+   * sonst einen zweiten Scrollbalken quer unter dem Text. */
+  overflow-x: hidden;
+  text-align: left;
+  /* Innerhalb dieser Tafel darf gewischt werden — überall sonst steuert ein
+   * Fingerzug den Affen. */
+  touch-action: pan-y;
+}
+
+/* Kontaktadresse. Sie ist ein einzelnes langes Wort und muss umbrechen
+ * dürfen, sonst schiebt sie die ganze Tafel auseinander. */
+.mail {
+  color: var(--leaf);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+  user-select: all; /* ein Klick markiert die ganze Adresse */
+}
+
+.panel--text p {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.panel--text p:last-child {
+  margin-bottom: 0;
+}
+
+/* Zurückhaltender Textlink. Er soll auffindbar sein, aber im Menü nicht mit
+ * "Play" konkurrieren — deshalb klein, gedämpft und ohne Knopfrahmen. */
+.link-leise {
+  margin-top: 12px;
+  padding: 6px 10px;
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.link-leise:hover {
+  opacity: 1;
+  color: var(--leaf);
+}
+
+.link-leise:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .panel__title {
   margin: 0 0 10px;
   font-size: 0.82rem;

@@ -14,6 +14,7 @@ const SCREEN_SETS = {
   loading: ['screen-loading'],
   menu: ['screen-menu'],
   characters: ['screen-characters'],
+  privacy: ['screen-privacy'],
   playing: ['screen-hud'],
   paused: ['screen-hud', 'screen-paused'],
   // Zwischenschritt vor dem Game Over, solange ein zweites Leben übrig ist.
@@ -41,6 +42,8 @@ export class UI {
       skinList: $('skin-list'),
       characterError: $('character-error'),
       btnCharactersBack: $('btn-characters-back'),
+      btnPrivacy: $('btn-privacy'),
+      btnPrivacyBack: $('btn-privacy-back'),
 
       hudScore: $('hud-score'),
       hudRevive: $('hud-revive'),
@@ -103,6 +106,8 @@ export class UI {
       onMenu: () => {},
       onSubmitName: () => {},
       onCharacters: () => {},
+      onPrivacy: () => {},
+      onPrivacyBack: () => {},
       onCharactersBack: () => {},
       onPickCharacter: () => {},
       onPickSkin: () => {},
@@ -189,6 +194,8 @@ export class UI {
 
     this.el.btnCharacters.addEventListener('click', () => this.callbacks.onCharacters());
     this.el.btnCharactersBack.addEventListener('click', () => this.callbacks.onCharactersBack());
+    this.el.btnPrivacy.addEventListener('click', () => this.callbacks.onPrivacy());
+    this.el.btnPrivacyBack.addEventListener('click', () => this.callbacks.onPrivacyBack());
     this.el.btnCharactersGo.addEventListener('click', () => this.callbacks.onCharactersGo());
 
     // EIN Listener auf dem Container statt einer pro Kachel: die Kacheln
