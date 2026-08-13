@@ -68,7 +68,23 @@ const BACKGROUNDS = [
   // Das Gold-Gebiet. Kein gewöhnliches Gebiet der Reihe nach, sondern der
   // Bonus, in den die goldene Banane für 30 Sekunden versetzt.
   'stage_gold',
-].map((name) => ({ src: `${name}.png`, out: `${name}.webp` }));
+]
+  .map((name) => ({ src: `${name}.png`, out: `${name}.webp` }))
+  /* WELCHE WÄNDE ANGEHOBEN WERDEN — die Begründung steht unten bei
+   * `aufhellen`. Der Faktor ist so gewählt, dass die fertige Wand im Spiel
+   * bei 70 bis 90 landet (mittlere Helligkeit 0–255); darunter verschwinden
+   * die fallenden Objekte darin, darüber wird das Bild flau. */
+  .map((b) => {
+    const stufen = {
+      'stage_ruine.png': 2.9, //  21 -> ~72
+      'stage8_lava.png': 2.0, //  32 -> ~74  (die Lava hat zusätzlich einen Dämpfer)
+      'stage_schrott.png': 1.7, //  43 -> ~73
+      'stage_bibliothek.png': 1.6, //  50 -> ~78
+      'stage5_halloween.png': 1.5, //  53 -> ~78
+      'stage_pirat.png': 1.25, //  75 -> ~90  (dunkles Nassholz)
+    };
+    return stufen[b.src] ? { ...b, aufhellen: stufen[b.src] } : b;
+  });
 
 /* Kletter-Frames: bereits freigestellte Einzelbilder aus den Bewegungsvideos.
  * Siehe README, Abschnitt "Kletteranimation aus dem Video".
@@ -204,9 +220,34 @@ async function prepareBackgrounds() {
     const bandX = Math.round(info.width * 0.09);
     const s = makeSeamless(data, info.width, info.height, info.channels, bandX, bandY);
 
-    await sharp(s.data, { raw: { width: s.width, height: s.height, channels: info.channels } })
-      .webp({ quality: 88 })
-      .toFile(dst);
+    /* AUFHELLEN — für Vorlagen, die von Haus aus zu dunkel sind.
+     *
+     * WARUM DAS HIER PASSIEREN MUSS UND NICHT IN DER CONFIG
+     * CONFIG.wall.stages[*].tint wird über `material.color.multiply()`
+     * angewendet (PlantWall._tint). Das ist eine MULTIPLIKATION: jeder Wert
+     * unter 0xffffff macht dunkler, und heller als die Vorlage geht damit
+     * grundsätzlich nicht. Bei mehreren Wänden stand trotzdem „hier wird
+     * aufgehellt" im Kommentar — die Werte 0xd6dae0 und 0xdae0e8 dämpften in
+     * Wirklichkeit um 12 bis 14 Prozent.
+     *
+     * Wer eine Wand wirklich heller haben will, muss deshalb die TEXTUR
+     * anheben, und das ist hier die Stelle. Gemessen wurde die mittlere
+     * Helligkeit der fertigen Wand im Spiel (0–255):
+     *
+     *     ruine 21    lava 32    schrott 43    bibliothek 43    halloween 53
+     *
+     * Bei 21 ist von einem Steinkopf vor Mauerwerk nichts mehr zu erkennen.
+     *
+     * `brightness` multipliziert linear; `gamma` hebt zusätzlich die
+     * Mitteltöne an, ohne die Lichter auszufressen. Beides zusammen hellt
+     * auf, ohne dass das Bild ausbleicht. */
+    const heller = sharp(s.data, {
+      raw: { width: s.width, height: s.height, channels: info.channels },
+    });
+    if (bg.aufhellen && bg.aufhellen > 1) {
+      heller.modulate({ brightness: bg.aufhellen }).gamma(1.12);
+    }
+    await heller.webp({ quality: 88 }).toFile(dst);
 
     // Fernvariante für die hintere Parallax-Ebene: dieselbe Vorlage, nur
     // unscharf, dunkler und entsättigt. Dadurch entsteht Tiefe, ohne

@@ -2854,7 +2854,7 @@ export const CONFIG = {
         /* Die Ruinenwand ist die dunkelste im Spiel. Hier wird AUFGEHELLT,
          * nicht gedämpft: ein grauer Steinkopf vor fast schwarzem Mauerwerk
          * ist sonst nur ein Schatten. */
-        tint: 0xd8dee6,
+        tint: 0xffffff,
       },
 
       /* ================================================================ *
@@ -2878,7 +2878,7 @@ export const CONFIG = {
         far: '/textures/stage_pirat_far.webp',
         /* Dunkles Nassholz. Metall davor braucht Aufhellung, sonst ist der
          * graue Anker vor der grauen Planke nicht zu sehen. */
-        tint: 0xd6dae0,
+        tint: 0xffffff,
       },
       {
         name: 'biene',
@@ -2889,7 +2889,7 @@ export const CONFIG = {
         /* Die Wabenwand ist das hellste Bild im Spiel, und die Objekte sind
          * derselbe Bernstein. Hier wird deshalb GEDÄMPFT statt aufgehellt —
          * sonst löst sich der fallende Honig in der Wand auf. */
-        tint: 0x8c7048,
+        tint: 0xdcd0c4,
       },
       {
         name: 'bibliothek',
@@ -2898,7 +2898,7 @@ export const CONFIG = {
         near: '/textures/stage_bibliothek.webp',
         far: '/textures/stage_bibliothek_far.webp',
         // Kerzenlicht auf dunklem Holz — wie die Ruine, also aufhellen.
-        tint: 0xdae0e8,
+        tint: 0xffffff,
       },
       {
         name: 'zirkus',
@@ -2908,7 +2908,7 @@ export const CONFIG = {
         far: '/textures/stage_zirkus_far.webp',
         /* Rot-weisses Zeltstreifenmuster, sehr unruhig. Leicht gedämpft,
          * damit die bunten Objekte davor überhaupt herausstechen. */
-        tint: 0xb9b2ae,
+        tint: 0xdedad6,
       },
       {
         name: 'weltall',
@@ -2919,7 +2919,7 @@ export const CONFIG = {
         /* DAS LETZTE GEBIET. Weiss-rote Rakete vor schwarzem All: das
          * hellste Umfeld überhaupt für die grauen Asteroiden. Kräftig
          * gedämpft, sonst verschwimmt der Asteroid mit der Bordwand. */
-        tint: 0x9aa2ac,
+        tint: 0xd2d8de,
       },
     ],
     /* Reihenfolge der einundzwanzig Gebiete, wie sie oben steht:
