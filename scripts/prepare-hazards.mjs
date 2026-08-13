@@ -280,6 +280,85 @@ const BILDER = [
      * dem Scheitel voran herunter — das liest sich als stuerzender Block. */
     dreh: [0, 0, 180],
   },
+
+  /* ---------------------------------------------------------------- *
+   *  DIE FÜNF ENDGEBIETE
+   *
+   *  Alle fünf Vorlagen stehen vor demselben Studiograu (gemessen: 126–147,
+   *  über die ganze Fläche schwankt es um höchstens 5). Deshalb liegt t0
+   *  überall knapp darüber — Hintergrund kann so nie versehentlich als
+   *  Objekt durchgehen.
+   * ---------------------------------------------------------------- */
+  {
+    quelle: 'pirat.png',
+    // Enterhaken mit Tau, Pulverfass, schwerer Anker.
+    ziele: ['pirat_klein', 'pirat_mittel', 'pirat_gross'],
+    objekte: 3,
+    t0: 10,
+    t1: 34,
+    /* Der grosse Anker steht in der Vorlage aufrecht, Ring oben, Flunken
+     * unten — das ist bereits die Fallhaltung. Der Enterhaken liegt schräg;
+     * bei 90° zeigten seine Spitzen nach OBEN und das Tau hing nach unten,
+     * was wie „aufgehängt" aussah statt wie fallend. 270° dreht ihn um: die
+     * Spitzen laufen voran, das Tau schleppt hinterher. */
+    dreh: [270, 0, 0],
+  },
+  {
+    quelle: 'biene.png',
+    // Honigtropfen, Wabenstück, triefende Grosswabe.
+    ziele: ['biene_klein', 'biene_mittel', 'biene_gross'],
+    objekte: 3,
+    t0: 10,
+    t1: 34,
+    /* Honig ist durchscheinend und liegt stellenweise nah am Grau —
+     * dieselbe Lage wie bei Eis und Gifttropfen. */
+    boden: 0.85,
+  },
+  {
+    quelle: 'bibliothek.png',
+    // Schreibfeder, rotes Buch, beschlagener Wälzer.
+    ziele: ['buch_klein', 'buch_mittel', 'buch_gross'],
+    objekte: 3,
+    t0: 10,
+    t1: 34,
+    /* Die Feder steht mit der Spitze nach unten — Fallhaltung stimmt schon.
+     * Die beiden Bücher liegen flach und haben keine Vorzugsrichtung. */
+  },
+  {
+    quelle: 'zirkus.png',
+    // Kegel, Wasserball, Kanonenkugel.
+    ziele: ['zirkus_klein', 'zirkus_mittel', 'zirkus_gross'],
+    objekte: 3,
+    t0: 10,
+    t1: 34,
+    /* Der Kegel steht in der Vorlage auf seinem Fuss, die Spitze nach oben.
+     * Gekippt fällt er mit der Spitze voran. */
+    kippen: [true, false, false],
+  },
+  {
+    quelle: 'weltall.png',
+    // Brennender Meteor, Lavabrocken, grauer Asteroid.
+    ziele: ['meteor_klein', 'meteor_mittel', 'meteor_gross'],
+    objekte: 3,
+    /* EMPFINDLICHER ALS DIE ÜBRIGEN, UND ZWAR GEMESSEN.
+     *
+     * Der grosse Asteroid ist selbst grau: innen sinkt sein Abstand zum
+     * Hintergrund stellenweise auf 9, im Mittel liegt er bei 49. Der
+     * Hintergrund dagegen kommt über 5 nie hinaus. t0 = 8 trennt beides
+     * sicher; mit dem Standardwert 10 wären die hellsten Kraterränder
+     * durchsichtig geworden.
+     *
+     * `boden` füllt zusätzlich, was die Silhouette einschliesst — sonst
+     * bekäme der Asteroid Löcher, wo sein Grau das des Hintergrunds
+     * zufällig genau trifft. */
+    t0: 8,
+    t1: 26,
+    boden: 0.9,
+    /* Der kleine Meteor zieht seinen Feuerschweif in der Vorlage nach rechts
+     * oben. Beim Fallen muss der Schweif nach OBEN zeigen, also entgegen der
+     * Flugrichtung — die Drehung stellt ihn senkrecht. */
+    dreh: [-45, 0, 0],
+  },
 ];
 
 mkdirSync(OUT, { recursive: true });

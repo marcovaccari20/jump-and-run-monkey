@@ -75,6 +75,11 @@ const STUECKE = [
   { datei: 'Candy Land Loop.mp3', gebiet: 'bonbon', was: 'Süssigkeiten' },
   { datei: 'Desert of Alhambra.mp3', gebiet: 'kakteen', was: 'Kakteen, Wüste' },
   { datei: 'Echoes of the Obsidian Cavern.mp3', gebiet: 'ruine', was: 'Ruine' },
+  { datei: "Captain's Quest.mp3", gebiet: 'pirat', was: 'Piratenschiff' },
+  { datei: 'Golden Hive.mp3', gebiet: 'biene', was: 'Bienenwaben' },
+  { datei: 'The Silent Archive.mp3', gebiet: 'bibliothek', was: 'Bibliothek' },
+  { datei: 'Carnival of Bits.mp3', gebiet: 'zirkus', was: 'Zirkus' },
+  { datei: 'Stardust Arpeggio.mp3', gebiet: 'weltall', was: 'Weltall — letztes Gebiet' },
   /* Das Gold-Gebiet dauert 30 s. Die Vorlage ist 480 s lang — ungekürzt wären
    * das 5,6 MB je Format für Musik, von der niemand je mehr als die erste
    * halbe Minute hört. 40 s lassen der Schleifenblende (3 s) Luft. */
@@ -249,7 +254,15 @@ if (ergebnis.length) {
 if (fehlend.length) {
   console.log(`\nOhne Vorlage, deshalb übersprungen (${fehlend.length}):`);
   for (const f of fehlend) {
-    const da = existsSync(join(ZIEL, `${f.gebiet}.ogg`));
+    /* BEIDE Formate prüfen, nicht nur Ogg.
+     *
+     * Seit `--nur mp3` liegt im Spiel gar kein Ogg mehr. Die Prüfung auf
+     * allein `.ogg` meldete deshalb „FEHLT AUCH IM SPIEL" für Stücke, die
+     * in Wahrheit als MP3 danebenlagen und einwandfrei spielten — ein
+     * Fehlalarm, der zu einer überflüssigen Suche nach verlorenen Dateien
+     * verleitet. */
+    const da =
+      existsSync(join(ZIEL, `${f.gebiet}.ogg`)) || existsSync(join(ZIEL, `${f.gebiet}.mp3`));
     console.log(`  ${f.gebiet.padEnd(10)} ${f.datei}   ${da ? '— fertige Datei bleibt liegen' : '— FEHLT AUCH IM SPIEL'}`);
   }
   // Kein Abbruch: Übersprungene Stücke sind der Normalfall, sobald die

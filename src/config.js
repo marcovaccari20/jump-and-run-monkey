@@ -621,8 +621,29 @@ export const CONFIG = {
      * Wer die Zahl ändert, ändert das ganze Spiel — sie ist der Nenner in
      * `haerte = proWand ^ (t / sekundenProWand)`. Die Gebietslängen dagegen
      * rechnet scripts/_gebietsmeter.mjs aus. */
+    /* NUR NOCH RÜCKFALL. Solange `gebietsGrenzen` gesetzt ist (das ist im
+     * Spiel immer der Fall, siehe Ende dieser Datei), zählt die Härte an den
+     * echten Gebieten und diese Zahl wird nicht benutzt. Sie bleibt für
+     * Werkzeuge stehen, die die Kurve ohne Gebietsliste bauen. */
     sekundenProWand: 132,
-    proWand: 1.25, // +25 % je Wand
+
+    /* +13 % JE GEBIET — und „Gebiet" heisst jetzt wirklich Gebiet.
+     *
+     * Vorher stand hier 1.25, aber die Härte lief an einer 132-Sekunden-Uhr,
+     * während ein Gebiet 37 bis 87 Sekunden dauert. Pro Gebiet kamen davon
+     * je nach Länge nur 7 bis 19 % an, und der Schritt lag irgendwo mitten
+     * im Gebiet statt an seinem Anfang. Deshalb war die Steigerung nicht zu
+     * spüren, obwohl sie rechnerisch da war.
+     *
+     * Jetzt greift der Faktor genau am Gebietswechsel. 1.25 wäre damit
+     * masslos: über 20 Wechsel ergäbe das die 87-fache Härte, Tempo und
+     * Dichte hingen ab Gebiet 10 am Anschlag und die letzten sieben Gebiete
+     * wären untereinander völlig gleich.
+     *
+     * 1.1245 über 20 Wechsel ergibt Härte 10.5 — und genau damit erreicht
+     * das Tempo im Weltall seinen Deckel von 18. Gerechnet, nicht geschätzt:
+     *     proWand = ((tempoMax / tempoStart)^(1/tempoExponent))^(1/20) */
+    proWand: 1.1245,
 
     /* Wie sich die Härte auf die zwei Stellschrauben verteilt: dieser Anteil
      * geht ins TEMPO, der Rest in die Menge. Nur EINE Zahl — die Dichte wird
@@ -671,11 +692,49 @@ export const CONFIG = {
        *
        * Diese Zahl gehört zu player.startPosition[1]. Wer eine ändert, muss
        * die andere nachrechnen. */
-      /* 14.3 statt 13.6 (+5 %). Zusammen mit dem höheren Startwert läuft
-       * das ganze Spiel spürbar flotter, ohne die Vorwarnzeit zu sprengen:
-       * bei der neuen Affenhöhe (siehe player.startPosition) ist die
-       * Vorwarnstrecke wieder länger, das gleicht das Tempo aus. */
-      max: 14.3,
+      /* 18.0 statt 14.3 — UND DER GRUND IST EINE VERALTETE ANNAHME.
+       *
+       * Der Absatz oben rechnet mit einer Vorwarnstrecke von 4.094
+       * Einheiten. Das stimmte, als der Affe auf y = -0.1 sass. Er sitzt
+       * längst auf y = -2.6 (player.startPosition), und der sichtbare obere
+       * Rand liegt bei y = 6.78. Nachgemessen im laufenden Spiel:
+       *
+       *     sichtbar oben            6.78
+       *     Affenmitte              -2.60
+       *     minus Trefferradien     -1.16   (0.42 Affe + 0.74 grosses Objekt)
+       *     ---------------------------------
+       *     Reaktionsstrecke         8.22 Einheiten
+       *
+       * Also doppelt so viel wie angenommen. Bei Tempo 14.3 blieben dadurch
+       * 575 ms Vorwarnung — mehr als eine halbe Sekunde. Die ganze Kurve war
+       * für ein Spiel getunt, das es nicht mehr gibt; genau deshalb liess
+       * sich der Deckel mühelos ausspielen.
+       *
+       * 18.0 lässt 8.22 / 18.0 = 457 ms und wird erst im letzten Gebiet
+       * (Weltall) erreicht.
+       *
+       * WARUM NICHT MEHR — DIE ZAHL IST ERMESSEN, NICHT GESCHÄTZT.
+       * Erst standen hier 22.0 (374 ms). Der Fairness-Prüfer wies das ab,
+       * und zwar aus einem Grund, der beim Rechnen mit Vorwarnzeiten nicht
+       * auffällt: nicht das SEHEN ist die Grenze, sondern das AUSWEICHEN.
+       * Der orange Affe beschleunigt am trägsten (acceleration 22.0 gegen
+       * 30.0 beim braunen). Im kürzesten Fenster, das im Spiel vorkommt,
+       * erreicht er damit nur noch diesen Anteil seiner Höchstgeschwindigkeit:
+       *
+       *     Tempodeckel   14.3    18      19      20      22
+       *     braun        0.508  0.395   0.367   0.339   0.286
+       *     weiss        0.596  0.498   0.473   0.448   0.400
+       *     orange       0.353  0.223   0.192   0.161   0.150 (Boden)
+       *
+       * Gemessen mit je 240 Läufen (orange, Querformat):
+       *     18 -> bestanden      19 -> 4 dichte Wände      20 -> 42
+       * Die Grenze liegt also zwischen 18 und 19, und sie hängt am trägsten
+       * Affen. Wer sie höher will, muss dessen `acceleration` anheben — dann
+       * ist er aber nicht mehr der träge Affe.
+       *
+       * WER DEN AFFEN VERSCHIEBT ODER AN acceleration DREHT, MUSS DIESE ZAHL
+       * NEU ERMESSEN:  node scripts/fairness.mjs --affe orange --format quer */
+      max: 18.0,
       // Anteil, der als Wandscrollen sichtbar wird. Der Rest ist
       // Eigengeschwindigkeit der Objekte. Ein fester Anteil statt zweier
       // Kurven: sonst zieht sich die Wand unter den Objekten weg.
@@ -750,21 +809,30 @@ export const CONFIG = {
        * derselben Liste freier Bahnen, die auch der Einzelabwurf benutzt
        * (Spawner._freieStelle -> _letzteFreie).
        *
-       * `abWand` und `vollAbWand` sind WANDINDIZES (Spielzeit geteilt durch
-       * sekundenProWand), keine Gebietsnummern: die Härte hängt an der Zeit,
-       * und dieser Reiz gehört zur Härte. Bei 132 s je Wand sind 1.5 rund
-       * dreieinhalb Minuten, 6.0 rund dreizehn Minuten Spielzeit. */
+       * `abWand` und `vollAbWand` sind WANDINDIZES — und die zählen jetzt
+       * GEBIETE: 0 = erstes Gebiet, 20 = Weltall. Vorher waren es
+       * 132-Sekunden-Blöcke; die alten Werte 1.0 und 5.0 lagen damit bei
+       * rund zwei und elf Minuten Spielzeit. */
       doppel: {
-        /* Gemessen mit abWand 1.5 / vollAbWand 6.0 / chanceMax 0.42: über
-         * zwölf Minuten kamen nur 9.7 % der Abwurfmomente doppelt, weil die
-         * Rampe erst nach dreieinhalb Minuten anfängt und über zehn Minuten
-         * läuft. Für "es ist zu einfach" ist das zu wenig und zu spät.
+        /* AB GEBIET 2, VOLL AB GEBIET 8.
          *
-         * Jetzt ab Wand 1.0 (rund zwei Minuten, etwa Gebiet 3 — nach dem
-         * Einstieg, aber lange bevor es zäh wird) und voll ab Wand 5.0. */
+         * Auf der alten Zeitskala fing die Rampe nach zwei Minuten an und
+         * war nach elf Minuten fertig — gemessen kamen über zwölf Minuten
+         * nur 9.7 % der Abwurfmomente doppelt. Auf der Gebietsskala
+         * bedeuteten dieselben Zahlen sogar noch weniger, weil ein Gebiet
+         * kürzer ist als ein 132-Sekunden-Block.
+         *
+         * 1.0 heisst: gleich nach dem Einstiegsgebiet fällt zum ersten Mal
+         * etwas von zwei Seiten. 8.0 heisst: ab der Spielmitte ist es der
+         * Normalfall. chanceMax 0.7 statt 0.5, damit „von zwei Seiten" im
+         * Endspiel wirklich die Regel ist und nicht die Ausnahme.
+         *
+         * Die Lückengarantie bleibt davon unberührt — beide Objekte kommen
+         * aus derselben Liste freier Bahnen. Nachgewiesen mit
+         * npm run test:fair. */
         abWand: 1.0,
-        vollAbWand: 5.0,
-        chanceMax: 0.5,
+        vollAbWand: 8.0,
+        chanceMax: 0.7,
       },
     },
   },
@@ -920,7 +988,7 @@ export const CONFIG = {
         radius: 0.30,
         color: 0xa79c8f, // hell und sandig — liest sich als leicht
         detail: 0, // grobes Ikosaeder, kantig
-        fallFactor: 1.25, // schnell und flink
+        fallFactor: 1.32, // schnell und flink
         spin: { min: 2.2, max: 4.4 },
       },
       {
@@ -928,7 +996,7 @@ export const CONFIG = {
         radius: 0.48,
         color: 0x6b6259, // die Referenzfarbe
         detail: 1, // runder
-        fallFactor: 1.0,
+        fallFactor: 1.14,
         spin: { min: 0.9, max: 2.2 },
       },
       {
@@ -936,10 +1004,20 @@ export const CONFIG = {
         radius: 0.74,
         color: 0x3f3934, // dunkel und schwer
         detail: 0,
-        // Bewusst LANGSAMER als die anderen. Ein grosser Brocken, der auch
-        // noch schnell fällt, ist nicht mehr auszuweichen, sondern nur noch
-        // Glückssache. Langsam heisst: man sieht ihn kommen und muss handeln.
-        fallFactor: 0.82,
+        /* 0.82 -> 1.0. NICHT MEHR LANGSAMER ALS DER REST.
+         *
+         * Der alte Wert stammt aus derselben Zeit wie der alte Tempodeckel:
+         * damals blieben bei einem grossen Brocken rechnerisch 4.094 / 14.3
+         * = 286 ms, und da war Bremsen richtig. Heute sind es 8.22 / 14.3 =
+         * 575 ms, und der Brocken schleicht mit 0.82 auf 700 ms — er fiel
+         * sichtbar aus dem Rhythmus und war das am leichtesten auszulassende
+         * Objekt im Spiel.
+         *
+         * Mit 1.0 bleiben bei vollem Tempo 457 ms. Er ist damit immer noch
+         * das langsamste der drei — klein 1.32, mittel 1.14 —, also bleibt
+         * die Grössenklasse am Fallverhalten erkennbar. Er ist nur kein
+         * Geschenk mehr. */
+        fallFactor: 1.0,
         spin: { min: 0.3, max: 0.9 },
       },
     ],
@@ -1134,6 +1212,67 @@ export const CONFIG = {
         leuchten: 0,
         glanz: 0.05,
       },
+
+      /* ---------------------------------------------------------------- *
+       *  DIE FÜNF ENDGEBIETE
+       *
+       *  Alle fünf liegen HINTER dem bisherigen Spielende. Wer sie sieht,
+       *  ist schon weiter gekommen als die alte Reihe überhaupt reichte —
+       *  entsprechend ist hier nichts mehr freundlich gemeint.
+       * ---------------------------------------------------------------- */
+      pirat: {
+        // Enterhaken, Pulverfass, Anker.
+        bilder: ['pirat_klein', 'pirat_mittel', 'pirat_gross'],
+        bildScale: 1.05,
+        taumeln: 12,
+        form: 'dodekaeder',
+        farben: [0x8a8f96, 0xa9713f, 0x9aa0a6],
+        leuchten: 0,
+        glanz: 0.12, // Metall
+      },
+      biene: {
+        // Honigtropfen, Wabenstück, triefende Grosswabe.
+        bilder: ['biene_klein', 'biene_mittel', 'biene_gross'],
+        bildScale: 1.05,
+        taumeln: 9, // zäh, kein hektisches Trudeln
+        form: 'ikosaeder',
+        farben: [0xe8a33d, 0xf0b545, 0xd98f2a],
+        leuchten: 0.05,
+        glanz: 0.2, // Honig glänzt
+      },
+      buch: {
+        // Schreibfeder, rotes Buch, beschlagener Wälzer.
+        bilder: ['buch_klein', 'buch_mittel', 'buch_gross'],
+        bildScale: 1.05,
+        taumeln: 15, // Bücher überschlagen sich
+        form: 'wuerfel',
+        farben: [0xe8e8ee, 0x9c3b39, 0x7a5638],
+        leuchten: 0,
+        glanz: 0.04,
+        /* Die Bibliothekswand ist dunkles Holz bei Kerzenlicht — dieselbe
+         * Lage wie bei der Ruine. Die Objekte werden deshalb aufgehellt,
+         * sonst verschwindet der braune Wälzer im Regal. */
+      },
+      zirkus: {
+        // Kegel, Wasserball, Kanonenkugel.
+        bilder: ['zirkus_klein', 'zirkus_mittel', 'zirkus_gross'],
+        bildScale: 1.05,
+        taumeln: 16,
+        form: 'ikosaeder',
+        farben: [0xe04b4b, 0x3fa9e0, 0x2a2a2e],
+        leuchten: 0,
+        glanz: 0.16,
+      },
+      meteor: {
+        // Brennender Meteor, Lavabrocken, grauer Asteroid.
+        bilder: ['meteor_klein', 'meteor_mittel', 'meteor_gross'],
+        bildScale: 1.05,
+        taumeln: 7, // im Vakuum trudelt nichts hektisch
+        form: 'ikosaeder',
+        farben: [0xff7a2a, 0xd8452a, 0x9a9086],
+        leuchten: 0.35, // der brennende Meteor glüht
+        glanz: 0,
+      },
       feuer: {
         // Der Glutschweif reicht über den Ball hinaus — das Bild darf
         // deshalb grösser sein, ohne dass der Kern unfair wirkt.
@@ -1194,16 +1333,23 @@ export const CONFIG = {
      * Jetzt sind die drei Grössen von Anfang an fast gleich verteilt und
      * bleiben es. Die Lückengarantie hängt nicht an der Grössenmischung,
      * sondern am Korridor — geprüft mit npm run test:fair. */
+    /* ACHTUNG, DIE SKALA HAT SICH GEÄNDERT.
+     *
+     * `abWand` zählt jetzt GEBIETE: 0 = erstes Gebiet, 20 = Weltall. Vorher
+     * zählte es 132-Sekunden-Blöcke und kam am Spielende gerade auf 6.7 —
+     * die beiden letzten Zeilen (9 und 12) waren toter Code, sie wurden nie
+     * erreicht. Auf die neue Skala gestreckt bleibt die Mischung bis ins
+     * letzte Gebiet in Bewegung. */
     mix: [
       { abWand: 0, weights: [40, 35, 25] },
-      { abWand: 1.5, weights: [35, 35, 30] },
-      { abWand: 3.5, weights: [32, 34, 34] },
-      { abWand: 6, weights: [30, 35, 35] },
+      { abWand: 3, weights: [35, 35, 30] },
+      { abWand: 6, weights: [32, 34, 34] },
+      { abWand: 9, weights: [30, 35, 35] },
       // Ganz spät verschiebt sich der Druck von der Menge auf das Gewicht:
       // mehr Brocken statt noch mehr Objekte. Ein Brocken sperrt mehr Breite
       // und zwingt zu früherem Ausweichen, ohne den Bildschirm zuzustellen.
-      { abWand: 9, weights: [26, 35, 39] },
-      { abWand: 12, weights: [22, 35, 43] },
+      { abWand: 13, weights: [26, 35, 39] },
+      { abWand: 17, weights: [22, 35, 43] },
     ],
   },
 
@@ -1352,9 +1498,21 @@ export const CONFIG = {
        * Der Deckel ist Pflicht, nicht Vorsicht: die Wände laufen zyklisch
        * endlos weiter. Ohne ihn wäre die Musik nach einer halben Stunde
        * unhörbar schnell. */
-      tempoProGebiet: 0.032,
+      /* 0.0275 JE GEBIET, DECKEL 1.55 — so gewählt, dass der Deckel exakt im
+       * letzten Gebiet erreicht wird:  1 + 20 × 0.0275 = 1.55.
+       *
+       * Vorher: 0.032 mit Deckel 1.35. Der Deckel fiel damit schon in
+       * Gebiet 12, und die letzten zehn Gebiete liefen alle gleich schnell —
+       * ausgerechnet dort, wo der Druck am stärksten steigen soll, stand die
+       * Musik still. Jetzt zieht sie über die ganze Strecke mit an: jedes
+       * einzelne Gebiet ist hörbar schneller als das davor.
+       *
+       * Der Deckel bleibt Pflicht, weil die Wände hinter dem Weltall
+       * zyklisch weiterlaufen — ohne ihn wäre die Musik nach einer halben
+       * Stunde unhörbar schnell. */
+      tempoProGebiet: 0.0275,
 
-      tempoMax: 1.35,
+      tempoMax: 1.55,
       /* Wie lange das neue Tempo braucht (Sekunden). Ein Sprung mitten im
        * Takt ist deutlich hörbar; über die Wechselblende hinweg fällt die
        * Änderung nicht auf. */
@@ -1578,6 +1736,18 @@ export const CONFIG = {
      * Polster spielt man anders, nämlich schlechter. */
     proGebiet: 1,
 
+    /* SPERRFRIST NACH EINEM VERBRAUCHTEN EXTRALEBEN, gezählt in Gebieten.
+     *
+     * Wer einen Treffer mit der Banane überlebte, fand im nächsten Gebiet
+     * sofort die nächste — `proGebiet` wird beim Gebietswechsel ja
+     * zurückgesetzt, und eine weitere Regel gab es nicht. Ein Treffer kostete
+     * damit nur eine Schrecksekunde statt des Laufs.
+     *
+     * Ein bis zwei Gebiete, zufällig gewählt: bei einem festen Wert wüsste
+     * man nach dem zweiten Wechsel genau, dass sie wieder kommt, und spielte
+     * bis dahin auf Sicherheit. So bleibt der Zeitpunkt offen. */
+    sperreGebiete: { min: 1, max: 2 },
+
     radius: 0.38,
     hitRadiusFactor: 1.15, // Einsammeln soll grosszügig sein
     fallSpeedFactor: 0.72, // Bananen fallen langsamer als Steine
@@ -1742,11 +1912,18 @@ export const CONFIG = {
     spriteScale: 1.7,
     poolSize: 2,
 
-    /* AB GEBIET 2, dann jede zweite bis dritte Welt. Im ersten Gebiet
-     * lernt man das Spiel; ein Sonderobjekt, dessen Wirkung man noch nicht
-     * einordnen kann, ist dort verschenkt. */
+    /* AB GEBIET 2, dann jedes vierte bis fünfte. Im ersten Gebiet lernt man
+     * das Spiel; ein Sonderobjekt, dessen Wirkung man noch nicht einordnen
+     * kann, ist dort verschenkt.
+     *
+     * Vorher stand hier 2 bis 3. Auf dem Papier war das häufiger — in
+     * Wirklichkeit kam die Banane fast nie, weil jeder fehlgeschlagene Wurf
+     * den Zähler trotzdem weiterschob (siehe Game._belohnungenPruefen). Der
+     * Fehler ist behoben; damit die Belohnung jetzt nicht ins Gegenteil
+     * kippt und alle zwei Gebiete kommt, steht hier der Abstand, der auch
+     * gespielt so ankommt: alle vier bis fünf Gebiete. */
     abGebiet: 2,
-    jedesXteGebiet: { min: 2, max: 3 },
+    jedesXteGebiet: { min: 4, max: 5 },
 
     /* ─── DAS GOLD-GEBIET ───────────────────────────────────────────────
      *
@@ -2509,49 +2686,49 @@ export const CONFIG = {
         name: 'blumen',
         // Holz statt Stein: Stock (klein), Baumscheibe (mittel), Stamm (gross).
         hazard: 'holz',
-        afterSeconds: 55.3,
+        afterSeconds: 54.9,
         near: '/textures/stage2_flowers.webp',
         far: '/textures/stage2_flowers_far.webp',
       },
       {
         name: 'aeste',
         hazard: 'kokosnuss',
-        afterSeconds: 141.6,
+        afterSeconds: 140.7,
         near: '/textures/stage3_branches.webp',
         far: '/textures/stage3_branches_far.webp',
       },
       {
         name: 'pilzwald',
         hazard: 'pilz',
-        afterSeconds: 228.8,
+        afterSeconds: 229,
         near: '/textures/wall_mushroom.webp',
         far: '/textures/wall_mushroom_far.webp',
       },
       {
         name: 'gift',
         hazard: 'gift',
-        afterSeconds: 296.7,
+        afterSeconds: 298.3,
         near: '/textures/stage4_poison.webp',
         far: '/textures/stage4_poison_far.webp',
       },
       {
         name: 'halloween',
         hazard: 'kuerbis',
-        afterSeconds: 374.8,
+        afterSeconds: 378.4,
         near: '/textures/stage5_halloween.webp',
         far: '/textures/stage5_halloween_far.webp',
       },
       {
         name: 'wasser',
         hazard: 'meer',
-        afterSeconds: 439.8,
+        afterSeconds: 445.2,
         near: '/textures/wall_water.webp',
         far: '/textures/wall_water_far.webp',
       },
       {
         name: 'wolken',
         hazard: 'wolken',
-        afterSeconds: 496.3,
+        afterSeconds: 502.7,
         near: '/textures/stage7_clouds.webp',
         far: '/textures/stage7_clouds_far.webp',
         // Weisser Hagel vor weissen Wolken ist nicht zu sehen — und was man
@@ -2562,7 +2739,7 @@ export const CONFIG = {
       {
         name: 'eiszeit',
         hazard: 'eiszapfen',
-        afterSeconds: 558.9,
+        afterSeconds: 565.7,
         near: '/textures/stage6_ice.webp',
         far: '/textures/stage6_ice_far.webp',
         // Gleicher Grund wie bei den Wolken: helle Zapfen vor heller Wand.
@@ -2571,14 +2748,14 @@ export const CONFIG = {
       {
         name: 'kristall',
         hazard: 'kristall',
-        afterSeconds: 620.3,
+        afterSeconds: 627.1,
         near: '/textures/wall_crystal.webp',
         far: '/textures/wall_crystal_far.webp',
       },
       {
         name: 'lava',
         hazard: 'feuer',
-        afterSeconds: 669,
+        afterSeconds: 675,
         near: '/textures/stage8_lava.webp',
         far: '/textures/stage8_lava_far.webp',
         // Feuerbälle vor einer Wand aus Feuer: die Wand muss zurücktreten,
@@ -2588,14 +2765,14 @@ export const CONFIG = {
       {
         name: 'asche',
         hazard: 'asche',
-        afterSeconds: 720.1,
+        afterSeconds: 724.3,
         near: '/textures/stage9_ash.webp',
         far: '/textures/stage9_ash_far.webp',
       },
       {
         name: 'schrott',
         hazard: 'metall',
-        afterSeconds: 761.3,
+        afterSeconds: 763.1,
         near: '/textures/stage_schrott.webp',
         far: '/textures/stage_schrott_far.webp',
         /* Die Wand ist selbst rostbraun und voller Kanten. Ohne Dämpfung
@@ -2606,7 +2783,7 @@ export const CONFIG = {
       {
         name: 'bonbon',
         hazard: 'bonbon',
-        afterSeconds: 810,
+        afterSeconds: 807.8,
         near: '/textures/stage_bonbon.webp',
         far: '/textures/stage_bonbon_far.webp',
         // Sehr helle, bunte Wand — sonst geht ein rosa Bonbon darin unter.
@@ -2615,14 +2792,14 @@ export const CONFIG = {
       {
         name: 'kakteen',
         hazard: 'kaktus',
-        afterSeconds: 851.8,
+        afterSeconds: 845.1,
         near: '/textures/stage_kakteen.webp',
         far: '/textures/stage_kakteen_far.webp',
       },
       {
         name: 'ruine',
         hazard: 'ruine',
-        afterSeconds: 888.8,
+        afterSeconds: 877.2,
         near: '/textures/stage_ruine.webp',
         far: '/textures/stage_ruine_far.webp',
         /* Die Ruinenwand ist die dunkelste im Spiel. Hier wird AUFGEHELLT,
@@ -2630,20 +2807,88 @@ export const CONFIG = {
          * ist sonst nur ein Schatten. */
         tint: 0xd8dee6,
       },
+
+      /* ================================================================ *
+       *  DAS ENDSPIEL — fünf Gebiete hinter dem bisherigen Schluss.
+       *
+       *  Hierhin kam bisher niemand, weil es hier nichts gab. Die Reihe
+       *  endete bei `ruine` und begann von vorn. Wer jetzt so weit kommt,
+       *  läuft in fünf Wände, die härter sind als alles davor — und ganz
+       *  am Ende ins Weltall, das absichtlich an der Grenze des Machbaren
+       *  liegt.
+       *
+       *  Die afterSeconds errechnet scripts/_gebietsmeter.mjs --ziel; sie
+       *  stehen nicht willkürlich hier. Wer sie von Hand ändert, ändert
+       *  damit auch die Länge JEDES Gebiets in Metern.
+       * ================================================================ */
+      {
+        name: 'pirat',
+        hazard: 'pirat',
+        afterSeconds: 912.5,
+        near: '/textures/stage_pirat.webp',
+        far: '/textures/stage_pirat_far.webp',
+        /* Dunkles Nassholz. Metall davor braucht Aufhellung, sonst ist der
+         * graue Anker vor der grauen Planke nicht zu sehen. */
+        tint: 0xd6dae0,
+      },
+      {
+        name: 'biene',
+        hazard: 'biene',
+        afterSeconds: 946.8,
+        near: '/textures/stage_biene.webp',
+        far: '/textures/stage_biene_far.webp',
+        /* Die Wabenwand ist das hellste Bild im Spiel, und die Objekte sind
+         * derselbe Bernstein. Hier wird deshalb GEDÄMPFT statt aufgehellt —
+         * sonst löst sich der fallende Honig in der Wand auf. */
+        tint: 0x8c7048,
+      },
+      {
+        name: 'bibliothek',
+        hazard: 'buch',
+        afterSeconds: 973.5,
+        near: '/textures/stage_bibliothek.webp',
+        far: '/textures/stage_bibliothek_far.webp',
+        // Kerzenlicht auf dunklem Holz — wie die Ruine, also aufhellen.
+        tint: 0xdae0e8,
+      },
+      {
+        name: 'zirkus',
+        hazard: 'zirkus',
+        afterSeconds: 1001.1,
+        near: '/textures/stage_zirkus.webp',
+        far: '/textures/stage_zirkus_far.webp',
+        /* Rot-weisses Zeltstreifenmuster, sehr unruhig. Leicht gedämpft,
+         * damit die bunten Objekte davor überhaupt herausstechen. */
+        tint: 0xb9b2ae,
+      },
+      {
+        name: 'weltall',
+        hazard: 'meteor',
+        afterSeconds: 1022.8,
+        near: '/textures/stage_weltall.webp',
+        far: '/textures/stage_weltall_far.webp',
+        /* DAS LETZTE GEBIET. Weiss-rote Rakete vor schwarzem All: das
+         * hellste Umfeld überhaupt für die grauen Asteroiden. Kräftig
+         * gedämpft, sonst verschwimmt der Asteroid mit der Bordwand. */
+        tint: 0x9aa2ac,
+      },
     ],
-    /* Reihenfolge der sechzehn Gebiete, wie sie oben steht:
-     *   1 gruen    2 blumen   3 aeste     4 pilzwald  5 gift     6 halloween
-     *   7 wasser   8 wolken   9 eiszeit  10 kristall 11 lava    12 asche
-     *  13 schrott 14 bonbon  15 kakteen  16 ruine
+    /* Reihenfolge der einundzwanzig Gebiete, wie sie oben steht:
+     *   1 gruen    2 blumen     3 aeste       4 pilzwald  5 gift
+     *   6 halloween 7 wasser    8 wolken      9 eiszeit  10 kristall
+     *  11 lava     12 asche    13 schrott    14 bonbon   15 kakteen
+     *  16 ruine    17 pirat    18 biene      19 bibliothek 20 zirkus
+     *  21 weltall  ← das letzte und schwerste
      * Die Nummern zählen für goldbanane/chili/sturzflug (abGebiet). */
 
     /* Nach der letzten Stufe alle X Sekunden zur nächsten (zyklisch von vorne).
      *
-     * 40 STATT 132 — dieselbe Umstellung wie bei `afterSeconds` oben.
-     * Ab Gebiet 16 hängt das Tempo am Deckel (6.01 m/s), 40 Sekunden sind
-     * dort rund 240 Meter. Mit 132 wären es 793 gewesen — dreimal so lang wie
-     * jedes andere Gebiet, ausgerechnet dort, wo man am längsten spielt. */
-    stageLoopSeconds: 40,
+     * 21 STATT 40. Hinter dem Weltall hängt das Tempo am Deckel von 18, das
+     * Wandscrollen also bei 18 × 0.42 = 7.56 m/s. 21 Sekunden sind dort rund
+     * 159 Meter und liegen damit in derselben Spanne wie jedes andere Gebiet
+     * (157–200 m). Mit 40 wären es 302 Meter gewesen — der zyklische Nachlauf
+     * wäre wieder länger als alles davor. */
+    stageLoopSeconds: 21,
     // Überblendzeit zwischen zwei Stufen (Sekunden). Kein harter Schnitt.
     stageFade: 1.8,
     // Seitenverhältnis der Stufentexturen (1252x676) — damit die Kacheln
@@ -2731,5 +2976,22 @@ export const CONFIG = {
     showStats: false, // FPS/Entity-Zähler im HUD
   },
 };
+
+/* ==================================================================== *
+ *  ABGELEITETES
+ *
+ *  Was sich aus dem Obigen ERRECHNET, steht hier — nicht im Objekt selbst.
+ *  Innerhalb eines Objektliterals kann ein Abschnitt nicht auf einen
+ *  späteren zugreifen (difficulty steht vor wall), und zwei von Hand
+ *  gepflegte Kopien derselben Zahlenreihe wären genau die Stelle, an der
+ *  später jemand nur eine von beiden ändert.
+ * ==================================================================== */
+
+/* Die Sekundenmarken der Gebietswechsel, für DifficultyCurve.
+ *
+ * Damit läuft die Schwierigkeit an den GEBIETEN statt an einer festen Uhr:
+ * `difficulty.proWand` gilt wörtlich je Gebiet. Siehe die ausführliche
+ * Begründung im Konstruktor von DifficultyCurve. */
+CONFIG.difficulty.gebietsGrenzen = CONFIG.wall.stages.map((s) => s.afterSeconds ?? 0);
 
 export default CONFIG;

@@ -42,6 +42,26 @@ export class DifficultyCurve {
     // Mischung der Objektarten (CONFIG.rock.mix) — wird von aussen gesetzt,
     // weil sie nicht zur Difficulty-Config gehört, aber derselben Achse folgt.
     this.rockMix = null;
+
+    /* DIE GEBIETSGRENZEN — hier steckt die eigentliche Steigerung.
+     *
+     * VORHER lief die Härte an einer festen Uhr: `elapsed / sekundenProWand`
+     * mit sekundenProWand = 132. Die Gebiete dauern aber 37 bis 87 Sekunden.
+     * Ein Gebietswechsel und ein Härteschritt hatten deshalb nichts
+     * miteinander zu tun — mal fielen zwei Gebiete in einen Schritt, mal lag
+     * der Schritt mitten in einem Gebiet. Gespielt fühlt sich das an, als
+     * bliebe alles gleich und nur die Tapete wechsle.
+     *
+     * JETZT ist der Wandindex der ECHTE Gebietsindex (siehe `wand`). Damit
+     * ist `proWand` wörtlich zu nehmen: jedes Gebiet ist um diesen Faktor
+     * schwerer als das davor, und der Wechsel ist die Ansage.
+     *
+     * Die Liste hängt an CONFIG.difficulty und wird am Ende von config.js
+     * aus CONFIG.wall.stages gefüllt — nicht hier importiert, sonst hinge
+     * die Kurve an der ganzen Konfiguration statt nur an ihrem eigenen
+     * Abschnitt. Fehlt sie, gilt die alte feste Uhr; damit laufen Werkzeuge
+     * weiter, die die Kurve mit einer selbstgebauten Config bauen. */
+    this.grenzen = cfg.gebietsGrenzen?.length ? cfg.gebietsGrenzen : null;
   }
 
   /** @param {Array<{abWand:number, weights:number[]}>} mix */
@@ -67,7 +87,27 @@ export class DifficultyCurve {
    * mitten in einer Welle, die plötzlich nach anderen Regeln fällt.
    */
   get wand() {
-    return this.elapsed / this.cfg.sekundenProWand;
+    const g = this.grenzen;
+    if (!g) return this.elapsed / this.cfg.sekundenProWand;
+
+    const t = this.elapsed;
+    // Vor dem ersten Wechsel: linear vom Start in Gebiet 1 hinein.
+    if (t <= g[0]) return 0;
+    for (let i = 1; i < g.length; i++) {
+      if (t < g[i]) {
+        const spanne = g[i] - g[i - 1];
+        return i - 1 + (spanne > 0 ? (t - g[i - 1]) / spanne : 0);
+      }
+    }
+    /* HINTER DEM LETZTEN GEBIET geht es weiter, nicht zu Ende.
+     *
+     * Die Wände wiederholen sich ab hier (CONFIG.wall.stageLoopSeconds), das
+     * Spiel aber soll schwerer werden statt stehenzubleiben — sonst hätte
+     * ein sehr guter Spieler ab dem letzten Gebiet ewig Zeit. Weitergezählt
+     * wird mit der Länge des LETZTEN Gebiets als Taktmass. */
+    const letzte = g.length - 1;
+    const takt = letzte > 0 ? g[letzte] - g[letzte - 1] : this.cfg.sekundenProWand;
+    return letzte + (t - g[letzte]) / (takt > 0 ? takt : this.cfg.sekundenProWand);
   }
 
   /** Gesamtdruck. Jede Wand multipliziert ihn mit `proWand`. */

@@ -58,6 +58,13 @@ const BACKGROUNDS = [
   'stage_bonbon',
   'stage_kakteen',
   'stage_ruine',
+  // Fünf weitere Wände für das Endspiel. Weltall ist das LETZTE Gebiet —
+  // siehe CONFIG.wall.stages.
+  'stage_pirat',
+  'stage_biene',
+  'stage_bibliothek',
+  'stage_zirkus',
+  'stage_weltall',
   // Das Gold-Gebiet. Kein gewöhnliches Gebiet der Reihe nach, sondern der
   // Bonus, in den die goldene Banane für 30 Sekunden versetzt.
   'stage_gold',

@@ -129,6 +129,10 @@ export class Spawner {
     // Wie viele gelbe Bananen in DIESEM Gebiet schon gefallen sind.
     this._bananenImGebiet = 0;
 
+    /* Noch so viele Gebiete lang kommt keine Banane — nach einem
+     * verbrauchten Extraleben. Siehe `bananeSperren`. */
+    this._bananenSperre = 0;
+
     /* Die garantierte freie Bahn. Siehe Korridor.js — sie ist der Grund,
      * warum die Objekte nicht mehr zufällig verteilt werden. */
     this.korridor = new Korridor(cfg.rock.korridor);
@@ -176,6 +180,7 @@ export class Spawner {
     // fängt ohne Schuldenstand an.
     this._bahnZaehler = null;
     this._bananenImGebiet = 0;
+    this._bananenSperre = 0;
 
     // Taktgeber für den Einzelstrom (siehe _einzelnesObjekt).
     this._salveRest = 0;
@@ -312,6 +317,8 @@ export class Spawner {
       const bananaAllowed =
         this.bananasEnabled &&
         !(bananaCfg.suppressWhenStocked && playerHasRevive) &&
+        // Sperrfrist nach einem verbrauchten Extraleben — siehe `bananeSperren`.
+        this._bananenSperre <= 0 &&
         this.difficulty.elapsed >= (bananaCfg.abSekunde ?? 0) &&
         this._bananenImGebiet < (bananaCfg.proGebiet ?? Infinity) &&
         Math.random() < bananaCfg.spawnChance;
@@ -999,6 +1006,28 @@ export class Spawner {
    */
   neuesGebiet() {
     this._bananenImGebiet = 0;
+    // Sperrfrist nach verbrauchtem Extraleben abbauen — siehe `bananeSperren`.
+    if (this._bananenSperre > 0) this._bananenSperre--;
+  }
+
+  /**
+   * SPERRFRIST NACH EINEM VERBRAUCHTEN EXTRALEBEN.
+   *
+   * Wer die Banane hatte, einen Treffer damit überlebt und ins nächste
+   * Gebiet kam, bekam dort sofort die nächste angeboten. Der Fehler war
+   * nicht ein Versehen im Code, sondern eine fehlende Regel: die einzige
+   * Bedingung war „höchstens eine je Gebiet", und ein neues Gebiet setzte
+   * den Zähler zurück. Ein zweites Leben direkt nach dem ersten nimmt dem
+   * Treffer aber sein Gewicht — man verliert nichts, man pausiert nur kurz.
+   *
+   * Jetzt bleiben ein bis zwei Gebiete lang gesperrt, zufällig gewählt,
+   * damit es nicht abzählbar wird. Die Spanne steht in
+   * CONFIG.banana.sperreGebiete.
+   */
+  bananeSperren() {
+    const s = this.cfg.banana.sperreGebiete;
+    if (!s) return;
+    this._bananenSperre = s.min + Math.floor(Math.random() * (s.max - s.min + 1));
   }
 
   /**

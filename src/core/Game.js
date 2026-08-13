@@ -660,10 +660,31 @@ export class Game {
       if (this[feld] < 0) this[feld] = cfg.abGebiet - 1;
       if (gebiet <= this[feld]) continue;
 
+      /* NUR WEITERZÄHLEN, WENN DER WURF AUCH GEKLAPPT HAT.
+       *
+       * `powerupWerfen` gibt false zurück und tut nichts, wenn noch eine
+       * Belohnung im Bild ist, wenn der Bildschirm gerade freigeräumt wird
+       * (Sturzflug, Chili) oder wenn das Gold-Gebiet läuft — dort darf nur
+       * Geld fallen.
+       *
+       * Vorher wurde der Zähler in allen diesen Fällen trotzdem
+       * weitergesetzt: der Wurf war ersatzlos verloren und der nächste kam
+       * erst zwei bis drei Gebiete später. Besonders bösartig beim Gold-
+       * Gebiet, denn dessen 30 Sekunden sind länger als ein spätes Gebiet
+       * und überdecken den nächsten Wechsel vollständig. Wer eine goldene
+       * Banane fing, verlor damit fast immer auch die übernächste.
+       *
+       * Gemessen: mit dieser Zeile kommt die goldene Banane über 21 Gebiete
+       * planmässig, ohne sie blieb es bei ein bis zwei je Lauf — genau das,
+       * was im Spiel auffiel.
+       *
+       * Klappt es nicht, bleibt der Zähler stehen und der nächste
+       * Gebietswechsel versucht es erneut. */
+      if (!this.spawner.powerupWerfen(art)) break;
+
       const j = cfg.jedesXteGebiet;
       const abstand = j.min + Math.floor(Math.random() * (j.max - j.min + 1));
       this[feld] = gebiet + abstand - 1;
-      this.spawner.powerupWerfen(art);
       break; // nie beide im selben Gebiet
     }
   }
@@ -2446,6 +2467,13 @@ export class Game {
     if (result === 'revived') {
       this.ui.setRevive(false);
       this.ui.toast('Revived!', 'revive');
+      /* SPERRFRIST STARTEN.
+       *
+       * Ohne sie lag im nächsten Gebiet sofort die nächste Banane bereit —
+       * der Zähler „höchstens eine je Gebiet" wird beim Wechsel ja
+       * zurückgesetzt. Ein Treffer kostete damit praktisch nichts. Jetzt
+       * bleiben ein bis zwei Gebiete gesperrt (CONFIG.banana.sperreGebiete). */
+      this.spawner.bananeSperren();
     } else if (result === 'dead') {
       this._deathTimer = this.cfg.flow.gameOverDelay;
     }

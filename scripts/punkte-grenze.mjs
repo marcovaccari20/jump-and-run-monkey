@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { CONFIG } from '../src/config.js';
+import { DifficultyCurve } from '../src/systems/DifficultyCurve.js';
 
 const D = CONFIG.difficulty;
 const HIER = dirname(fileURLToPath(import.meta.url));
@@ -63,12 +64,22 @@ const sqlWerte = {
  *   climbed     = assisted * dt
  */
 function simuliere(sekunden, climbAssist, dt = 1 / 60) {
+  /* ÜBER DifficultyCurve, NICHT ÜBER EINE ZWEITE FORMEL.
+   *
+   * Hier stand die Kurve früher noch einmal nachgebaut: `wand = t /
+   * sekundenProWand`. Genau das ist der Fehler, vor dem dieses Skript
+   * warnt — nur eine Ebene höher. Als die Härte an die Gebiete gekoppelt
+   * wurde, rechnete diese Kopie unbeirrt weiter mit der alten Uhr und hätte
+   * „bestanden" gemeldet, während Spiel und Schranke längst auseinander
+   * liefen.
+   *
+   * Jetzt läuft dieselbe Klasse wie im Spiel. Wer die Kurve ändert, ändert
+   * damit automatisch auch die Simulation. */
+  const d = new DifficultyCurve(D);
   let hoehe = 0;
-  for (let t = 0; t < sekunden; t += dt) {
-    const wand = t / D.sekundenProWand;
-    const haerte = Math.pow(D.proWand, wand);
-    const tempo = Math.min(D.tempo.max, D.tempo.start * Math.pow(haerte, D.tempoExponent));
-    hoehe += (tempo * D.tempo.scrollAnteil + climbAssist) * dt;
+  while (d.elapsed < sekunden) {
+    hoehe += (d.scrollSpeed + climbAssist) * dt;
+    d.update(dt);
   }
   return hoehe;
 }
@@ -79,7 +90,11 @@ const RESERVE = sqlWerte.reserve ?? 1.08;
 
 function maxHoehe(sekunden, climbAssist) {
   const t = Math.max(0, sekunden);
-  const k = (Math.log(D.proWand) * D.tempoExponent) / D.sekundenProWand;
+  /* AUS DEM SQL, nicht aus der Konfiguration: die Schranke benutzt hier
+   * bewusst einen eigenen Wert (siehe Abgleich weiter unten). Läse dieses
+   * Skript stattdessen die Konfiguration, prüfte es eine Formel, die so
+   * nirgends läuft. */
+  const k = (Math.log(D.proWand) * D.tempoExponent) / sqlWerte.sek_pro_wand;
   const v0 = D.tempo.start * D.tempo.scrollAnteil;
   const tDeckel = Math.log(D.tempo.max / D.tempo.start) / k;
   const sDeckel = (v0 / k) * (Math.exp(k * tDeckel) - 1) + climbAssist * tDeckel;
@@ -112,12 +127,23 @@ console.log('Für die Schranke zählt der grösste:', climbAssist);
 console.log('');
 
 /* --- Abgleich SQL gegen Konfiguration ---------------------------------- */
+/* `sek_pro_wand` FEHLT HIER MIT ABSICHT.
+ *
+ * Alle anderen Konstanten sind Kopien aus der Konfiguration und müssen ihr
+ * gleichen. `sek_pro_wand` nicht: seit die Härte an den Gebieten hängt, ist
+ * `wand(t)` stückweise linear und keine Gerade mehr. Die SQL-Formel kennt
+ * aber nur eine Exponentialkurve in der Zeit und braucht deshalb einen
+ * eigenen, kleineren Wert, damit sie die echte Kurve überall überdeckt
+ * (Begründung und Rechnung stehen im SQL).
+ *
+ * Dass er RICHTIG gewählt ist, prüft nicht dieser Abgleich, sondern Frage 1
+ * weiter unten: dort läuft die echte Kurve gegen die Schranke. Ein zu grosser
+ * Wert fällt dort sofort auf, weil ehrliche Läufe über die Schranke geraten. */
 const erwartet = {
   tempo_start: D.tempo.start,
   tempo_max: D.tempo.max,
   scroll_anteil: D.tempo.scrollAnteil,
   pro_wand: D.proWand,
-  sek_pro_wand: D.sekundenProWand,
   tempo_exp: D.tempoExponent,
   klettern_max: climbAssist,
   tick_sekunden: CONFIG.bestenliste.tickSekunden,
