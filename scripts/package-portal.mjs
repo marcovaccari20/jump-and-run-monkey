@@ -123,11 +123,23 @@ if (!existsSync(DIST) || process.argv.includes('--bauen')) {
  * also läge die 1,5-MB-Datei sonst tot im ZIP und zählte auf die 20-MB-Grenze
  * der Portale mit. Solange der Sprite-Modus gilt, fliegt sie hier raus. Wer auf
  * 'model' zurückstellt, entfernt einfach diese Zeilen. */
-const totesModell = join(DIST, 'models', 'monkey.glb');
-if (existsSync(totesModell)) {
-  rmSync(totesModell);
+function totesModellEntfernen() {
+  const datei = join(DIST, 'models', 'monkey.glb');
+  if (!existsSync(datei)) return;
+  rmSync(datei);
+  /* Auch den Ordner selbst, wenn er dadurch leer wird. Ein leerer Ordner ist
+   * nicht bloss unschön: beim Hochladen per Drag-and-Drop übergibt der Browser
+   * nur DATEIEN, ein leeres Verzeichnis fällt dabei ersatzlos weg — manche
+   * Portale zählen dann Soll und Ist gegeneinander und brechen ab. */
+  const ordner = join(DIST, 'models');
+  if (existsSync(ordner) && readdirSync(ordner).length === 0) rmSync(ordner, { recursive: true });
   console.log('monkey.glb entfernt (Sprite-Modus lädt es nicht).');
 }
+/* MUSS nach JEDEM Bauen laufen, nicht nur einmal: die Play-Store-Fassung baut
+ * am Ende erneut (VITE_ZIEL=playstore) und Vite kopiert public/ dabei wieder
+ * vollständig — die Datei wäre sonst nur aus den ersten beiden Paketen raus
+ * und läge im dritten wieder drin. Genau das war der Fall. */
+totesModellEntfernen();
 
 /* ------------------------------------------------------------ Prüfen */
 
@@ -286,6 +298,7 @@ for (const key of [...webZiele, ...appZiele]) {
       shell: true,
       env: { ...process.env, VITE_ZIEL: 'playstore' },
     });
+    totesModellEntfernen();
     dateienJetzt = alleDateien(DIST);
   }
   const dateien_ = dateienJetzt;

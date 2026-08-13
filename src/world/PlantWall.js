@@ -31,6 +31,7 @@ import {
 } from 'three';
 
 import { visibleRectAt } from '../core/viewport.js';
+import { assetUrl } from '../core/AssetLoader.js';
 
 /** Wiederverwendet — Stufenwechsel darf nichts allokieren. */
 const HILFSFARBE = new Color();
@@ -313,9 +314,22 @@ export class PlantWall {
      * Genommen wird die UNSCHARFE Fassung: sie ist kleiner, wird ohnehin
      * geladen, und der Browser hat sie im Zwischenspeicher, sobald die Stufe
      * im Spiel steht. Es kommt also kein einziger Download dazu. */
+    /* ÜBER assetUrl, NICHT der rohe Pfad.
+     *
+     * In stage.far steht "/textures/stage1_green_far.webp" — mit führendem
+     * Schrägstrich. Als CSS-url() löst der Browser das gegen die WURZEL der
+     * Domäne auf, nicht gegen den Ordner der Seite. Solange das Spiel unter
+     * "/" liegt, fällt das nicht auf; die Portale liefern es aber aus einem
+     * Unterordner aus (CrazyGames etwa unter /games/<name>/), und dort ist
+     * es dann ein 404 — der Rahmen neben der Bühne bliebe schwarz. Genau
+     * davor warnt auch deren Doku: nur relative Pfade verwenden.
+     *
+     * assetUrl hängt den Pfad an die Vite-Base (base: './'), macht also
+     * daraus eine Adresse relativ zur Seite. Geprüft mit einem Server, der
+     * das Bündel unter /games/<name>/ ausliefert. */
     const rahmen = stage.far ?? stage.near;
     if (rahmen && typeof document !== 'undefined') {
-      document.documentElement.style.setProperty('--wand-bild', `url(${rahmen})`);
+      document.documentElement.style.setProperty('--wand-bild', `url("${assetUrl(rahmen)}")`);
     }
 
     if (immediate) {
