@@ -101,17 +101,28 @@ const basen = [...new Set(daDrin.map((f) => f.replace(/\.(ogg|mp3)$/, '')))].sor
 /* -------------------------------------------------------- 1. Deckung */
 
 console.log('== 1. DECKUNG =========================================');
+
+/* NUR DAS AUSGELIEFERTE FORMAT ZÄHLT.
+ *
+ * Hier wurden früher BEIDE Formate verlangt. Seit das Spiel bewusst nur MP3
+ * ausliefert (`CONFIG.klang.musik.format` — Ogg fehlt auf älteren iPhones,
+ * und beides doppelt zu liefern machte 54 von 63 MB aus), meldete die
+ * Prüfung „fehlend: 22" für Dateien, die absichtlich nicht da sind. Ein
+ * Daueralarm, der immer leuchtet, wird nicht mehr gelesen — und verdeckt
+ * dann den Tag, an dem wirklich ein Stück fehlt. */
+const FORMAT = CONFIG.klang?.musik?.format ?? 'mp3';
 const fehlend = [];
 for (const g of erwartet) {
-  const o = join(MUSIK, `${g.name}.ogg`);
-  const m = join(MUSIK, `${g.name}.mp3`);
-  const hatO = existsSync(o);
-  const hatM = existsSync(m);
-  if (!hatO || !hatM) fehlend.push({ ...g, hatO, hatM });
+  const hat = existsSync(join(MUSIK, `${g.name}.${FORMAT}`));
+  const andere = FORMAT === 'mp3' ? 'ogg' : 'mp3';
+  const hatAndere = existsSync(join(MUSIK, `${g.name}.${andere}`));
+  if (!hat) fehlend.push({ ...g, hat });
   console.log(
-    `  ${g.name.padEnd(11)} ogg:${hatO ? 'ja ' : 'NEIN'} mp3:${hatM ? 'ja ' : 'NEIN'}  ${g.quelle}`,
+    `  ${g.name.padEnd(11)} ${FORMAT}:${hat ? 'ja ' : 'NEIN'}` +
+      `  ${hatAndere ? `(${andere} liegt daneben, wird nicht ausgeliefert)` : ''}  ${g.quelle}`,
   );
 }
+console.log(`\n  ausgeliefertes Format laut CONFIG.klang.musik.format: ${FORMAT}`);
 const ueberzaehlig = basen.filter((b) => !erwartet.some((g) => g.name === b));
 console.log(`\n  fehlend: ${fehlend.length}`);
 console.log(`  Dateien ohne Gebiet: ${ueberzaehlig.length ? ueberzaehlig.join(', ') : '(keine)'}`);

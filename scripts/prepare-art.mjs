@@ -71,20 +71,25 @@ const BACKGROUNDS = [
 ]
   .map((name) => ({ src: `${name}.png`, out: `${name}.webp` }))
   /* WELCHE WÄNDE ANGEHOBEN WERDEN — die Begründung steht unten bei
-   * `aufhellen`. Der Faktor ist so gewählt, dass die fertige Wand im Spiel
-   * bei 70 bis 90 landet (mittlere Helligkeit 0–255); darunter verschwinden
-   * die fallenden Objekte darin, darüber wird das Bild flau. */
+   * `aufhellen`. Untergrenze ist rund 70 (mittlere Helligkeit 0–255):
+   * darunter verschwinden die fallenden Objekte in der Wand. Nach oben gibt
+   * es keine feste Grenze — Ruine und Bibliothek sind auf Wunsch bis 95 bzw.
+   * 140 gezogen worden, weil sie sonst düster wirkten.
+   *
+   * Die Zahlen hinter den Zeilen sind GEMESSEN (roh -> fertig), nicht
+   * geschätzt. Nachmessen: mittlere Helligkeit von assets-src/art/X.png
+   * gegen public/textures/X.webp. Wer einen Faktor ändert, misst neu. */
   .map((b) => {
     const stufen = {
       /* Die beiden dunkelsten bekommen den Schatten-Hub statt einer reinen
        * Multiplikation — bei ihnen liegt zu viel Bildfläche auf schwarz,
        * und die bleibt schwarz, egal wie hoch man multipliziert. */
-      'stage_ruine.png': { mul: 2.6, plus: 38, gamma: 1.1 }, //  21 -> ~93
-      'stage_bibliothek.png': { mul: 2.2, plus: 46, gamma: 1.1 }, //  43 -> ~155
-      'stage8_lava.png': 2.0, //  32 -> ~57  (die Lava hat zusätzlich einen Dämpfer)
-      'stage_schrott.png': 1.7, //  43 -> ~69
-      'stage5_halloween.png': 1.5, //  53 -> ~72
-      'stage_pirat.png': 1.25, //  75 -> ~91  (dunkles Nassholz)
+      'stage_ruine.png': { mul: 2.6, plus: 38, gamma: 1.1 }, //  23 -> 95
+      'stage_bibliothek.png': { mul: 2.2, plus: 46, gamma: 1.1 }, //  46 -> 140
+      'stage8_lava.png': 2.0, //  53 -> 105
+      'stage_schrott.png': 1.7, //  72 -> 113
+      'stage5_halloween.png': 1.5, //  49 -> 72
+      'stage_pirat.png': 1.25, //  73 -> 91  (dunkles Nassholz)
     };
     const opt = { ...b };
     if (stufen[b.src]) opt.aufhellen = stufen[b.src];
@@ -157,9 +162,10 @@ async function seamError(file) {
 /**
  * Macht eine Textur in beiden Achsen kachelbar.
  *
- * Die gelieferten Bilder sind NICHT nahtlos (gemessen 21–45 von 255 Differenz
- * zwischen oberster und unterster Zeile) — beim endlosen Hochscrollen liefe
- * sonst eine sichtbare waagerechte Kante durchs Bild.
+ * Die gelieferten Bilder sind NICHT nahtlos (gemessen über alle 22 Vorlagen:
+ * 18 bis 83 von 255 Differenz zwischen oberster und unterster Zeile) — beim
+ * endlosen Hochscrollen liefe sonst eine sichtbare waagerechte Kante durchs
+ * Bild.
  *
  * Spiegeln (MirroredRepeatWrapping) scheidet aus: in gespiegelten Kacheln
  * läuft der Inhalt bei wachsendem Offset rückwärts, die Wand würde also
@@ -217,16 +223,22 @@ async function prepareBackgrounds() {
     const dst = resolve(OUT, bg.out);
     const vorher = await seamError(src);
 
-    /* ZUERST AUFHELLEN, DANN NAHTLOS MACHEN — die Reihenfolge ist wichtig.
+    /* ZUERST AUFHELLEN, DANN NAHTLOS MACHEN — für die Naht ist die
+     * Reihenfolge egal, hier stand einmal das Gegenteil.
      *
-     * Umgekehrt herum multipliziert das Aufhellen den Restfehler der Naht
-     * gleich mit: bei der Bibliothek stieg er dadurch von 4.7 auf 10.3 von
-     * 255, und die Kachelgrenze wurde als Streifen sichtbar. Die Wand
-     * scrollt endlos, ein Streifen läuft also alle paar Sekunden durchs
-     * Bild.
+     * Die Behauptung war, umgekehrt herum multipliziere das Aufhellen den
+     * Restfehler der Naht mit. Nachgemessen stimmt das nicht: Bibliothek
+     * 9.30 gegen 9.31, Ruine 3.59 gegen 3.60, Lava 12.94 gegen 12.97 von 255
+     * — kein Unterschied.
      *
-     * So herum arbeitet `makeSeamless` auf den endgültigen Tönen und blendet
-     * genau die Werte ineinander, die später auch zu sehen sind. */
+     * Rechnerisch kann es auch keinen geben: `linear(mul, plus)` und die
+     * Überblendung in `makeSeamless` sind beide affin, und affine Rechnungen
+     * lassen sich vertauschen. Das `gamma` danach ist zwar nicht affin,
+     * ändert an der Naht aber praktisch nichts.
+     *
+     * Diese Reihenfolge bleibt trotzdem, weil sie das Naheliegende tut:
+     * `makeSeamless` blendet die Werte ineinander, die später auch zu sehen
+     * sind. Wer sie umdreht, macht nichts kaputt. */
     const roh = sharp(src).removeAlpha();
     if (typeof bg.aufhellen === 'number' && bg.aufhellen > 1) {
       roh.modulate({ brightness: bg.aufhellen }).gamma(1.12);
@@ -254,7 +266,7 @@ async function prepareBackgrounds() {
 
     const bandY = Math.round(info.height * 0.12);
     const bandX = Math.round(info.width * 0.09);
-    let s = makeSeamless(data, info.width, info.height, info.channels, bandX, bandY);
+    const s = makeSeamless(data, info.width, info.height, info.channels, bandX, bandY);
 
     /* EINE KACHEL JE WAND, IN DAUERSCHLEIFE — so ist es gewollt.
      *

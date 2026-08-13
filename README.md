@@ -1198,11 +1198,16 @@ npm run prep:art
 sonst leicht übersehen werden:
 
 1. **Nahtlos kacheln.** Die gelieferten Bilder waren es *nicht* (gemessene
-   Kantendifferenz 21–45 von 255) — beim endlosen Scrollen liefe eine
-   sichtbare waagerechte Kante durchs Bild. Das Skript kürzt das Bild um ein
-   Überblendband und blendet den Anfang in das abgeschnittene Ende über;
-   danach grenzen zwei im Original *benachbarte* Zeilen aneinander
-   (Restfehler 4–5 von 255).
+   Kantendifferenz 18–83 von 255 über alle 22 Vorlagen) — beim endlosen
+   Scrollen liefe eine sichtbare waagerechte Kante durchs Bild. Das Skript
+   kürzt das Bild um ein Überblendband und blendet den Anfang in das
+   abgeschnittene Ende über; danach grenzen zwei im Original *benachbarte*
+   Zeilen aneinander (Restfehler 3.8–13.9 von 255).
+
+   > Die drei über 10 — Lava 13.9, Schrott 13.3, Bibliothek 10.3 — melden im
+   > Skript `(PRUEFEN!)` statt `(nahtlos)`. Das ist der bekannte Ist-Zustand,
+   > kein neuer Fehler: es sind genau die stark aufgehellten Wände, bei denen
+   > der Restfehler mitwächst. Im Spiel ist davon nichts zu sehen.
 
    > Spiegeln (`MirroredRepeatWrapping`) wäre der naheliegende Trick, ist hier
    > aber falsch: in gespiegelten Kacheln läuft der Inhalt bei wachsendem
@@ -1213,8 +1218,8 @@ sonst leicht übersehen werden:
    hängende Fläche genommen, dilatiert (rettet den dünnen Schwanz), Löcher
    gefüllt, Kante geglättet und auf die Silhouette zugeschnitten.
 
-Zusätzlich entsteht je Stufe eine unscharfe, dunklere `*_far.png` für die
-Vordergrundebene.
+Zusätzlich entsteht je Stufe eine unscharfe, dunklere `*_far.webp` (halbe
+Kantenlänge) für die Vordergrundebene.
 
 ### Ebenen
 

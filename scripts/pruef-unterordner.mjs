@@ -68,11 +68,33 @@ server.listen(PORT, async () => {
   console.log('Danach Strg+C — der Bericht kommt beim Beenden.\n');
 });
 
+/* Wie viele Anfragen ein echter Seitenaufruf mindestens auslöst. Ein Lauf mit
+ * Browser zeichnet rund 130 auf (index.html, Bündel, Sprites, Texturen des
+ * ersten Gebiets). Alles darunter heisst: es hat niemand geladen. */
+const MINDESTENS = 20;
+
 const bericht = () => {
-  const fehler = angefragt.filter((a) => !a.gefunden);
+  /* favicon.ico ist HIER genauso auszunehmen wie unten bei `ausserhalb`.
+   * Jeder Browser fragt es von sich aus an, dist liefert keins, und ohne
+   * diese Ausnahme endet ausgerechnet der aussagekräftige Lauf — der mit
+   * echtem Seitenaufruf — dauerhaft mit Fehlercode. */
+  const fehler = angefragt.filter((a) => !a.gefunden && a.pfad !== '/favicon.ico');
   const ausserhalb = angefragt.filter((a) => !a.imUnterordner && a.pfad !== '/favicon.ico');
 
   console.log(`\n${angefragt.length} Anfragen, ${fehler.length} davon ohne Datei.\n`);
+
+  /* NICHTS AUFGEZEICHNET IST KEIN BESTEHEN.
+   *
+   * Ohne diese Schranke war die Prüfung wertlos: wer das Skript startet und
+   * die Seite NICHT aufruft — also genau der automatisierte Fall — bekam
+   * "keine Anfrage hat den Unterordner verlassen ✓" und Rückgabewert 0. Eine
+   * Prüfung, die grün meldet, ohne etwas geprüft zu haben, ist schlimmer als
+   * gar keine: sie deckt den Fehler zu, den sie finden soll. */
+  if (angefragt.length < MINDESTENS) {
+    console.log(`NICHT GEPRÜFT — nur ${angefragt.length} Anfragen, erwartet mindestens ${MINDESTENS}.`);
+    console.log(`Die Seite muss dafür wirklich geladen werden: http://localhost:${PORT}${UNTERPFAD}`);
+    process.exit(1);
+  }
 
   if (ausserhalb.length) {
     console.log('AUSSERHALB DES UNTERORDNERS ANGEFRAGT — das sind die Fehler:');
@@ -90,5 +112,7 @@ const bericht = () => {
 };
 
 process.on('SIGINT', bericht);
-// Ohne Eingriff nach 25 s selbst beenden, damit es auch automatisiert läuft.
+/* Ohne Eingriff nach 25 s selbst beenden, damit das Skript nicht ewig hängt.
+ * Es öffnet den Browser NICHT selbst — bleibt der Aufruf aus, meldet der
+ * Bericht "nicht geprüft" und einen Fehlercode, kein Bestehen. */
 setTimeout(bericht, 25000);
