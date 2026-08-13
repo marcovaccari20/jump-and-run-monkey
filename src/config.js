@@ -949,6 +949,23 @@ export const CONFIG = {
        * Schlagseite, das hier ist eine Nuance. Bleibt bei 0.32; ein anderer
        * Wert würde nur Rauschen nachfahren. */
       randSog: 0.32,
+
+      /* BAHNZIELE — die Bahn zielt auf Spuren statt auf beliebige Punkte.
+       *
+       * STEHT AUF false, es ändert sich also nichts. Eingebaut, weil die
+       * Objekte sich ungleich über die Breite verteilen und `randSog` das
+       * nachweislich nicht richten kann (Messung und Herleitung stehen bei
+       * Korridor._bahnZiel).
+       *
+       * Auf true gestellt wählt die Bahn ihr Ziel unter den Spuren aus, mit
+       * demselben Ausgleichszähler, den der Spawner für die Objekte benutzt:
+       * wer selten dran war, kommt eher dran. Die Bahn GLEITET weiterhin —
+       * sie springt nicht, sie zielt nur anders.
+       *
+       * Wer umschaltet, misst danach beides nach:
+       *     node scripts/_bahnverteilung.mjs     Verteilung je Bahn
+       *     npm run test:fair                    bleibt jedes Bild passierbar */
+      bahnZiele: false,
       haltMin: 0.14,
       haltMax: 0.55,
       horizont: 3.8,

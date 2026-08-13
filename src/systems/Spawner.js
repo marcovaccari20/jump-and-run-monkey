@@ -296,6 +296,8 @@ export class Spawner {
       world.bounds.minX,
       world.bounds.maxX,
       this.cfg.rock.korridor.horizont,
+      // Nur nötig, wenn korridor.bahnZiele an ist — siehe Korridor._bahnZiel.
+      world.bahnX,
     );
 
     /* ------------------------------------------------------------- Spawn */

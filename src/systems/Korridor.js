@@ -59,6 +59,8 @@ export class Korridor {
     this._kopf = 0;
     this._anzahl = 0;
     this._wandert = true;
+    // Ein neuer Lauf fängt ohne Schuldenstand an (siehe `_bahnZiel`).
+    this._bahnZaehler = null;
     this._anfuegen(0, x);
   }
 
@@ -104,13 +106,15 @@ export class Korridor {
    * @param {number} maxX    rechte Grenze
    * @param {number} horizont wie weit die Bahn im Voraus stehen muss (s)
    */
-  update(dt, tempo, minX, maxX, horizont) {
+  update(dt, tempo, minX, maxX, horizont, bahnen = null) {
     this.jetzt += dt;
     // Für spaeter merken: `sicherstellen()` und `grenzenAendern()` brauchen
     // dieselben Werte, werden aber vom Spawner gerufen, nicht von hier.
     this._tempo = tempo;
     this._minX = minX;
     this._maxX = maxX;
+    // Nur für `bahnZiele` gebraucht — siehe `_bahnZiel`.
+    if (bahnen) this._bahnen = bahnen;
 
     // Vergangenes wegwerfen, aber IMMER eine Stützstelle vor `jetzt` behalten
     // — sonst liesse sich der laufende Abschnitt nicht mehr interpolieren.
@@ -128,6 +132,65 @@ export class Korridor {
     }
   }
 
+  /**
+   * BAHNZIELE — die gleichmässige Verteilung über die Breite.
+   *
+   * GEMESSEN, WARUM ES DIE BRAUCHT
+   * Objekte fallen nur dort, wo die Bahn NICHT ist. Wie oft eine Spur
+   * getroffen wird, ist deshalb das Spiegelbild davon, wie oft die Bahn dort
+   * steht. Gemessen über je zwei Stunden Spielzeit:
+   *
+   *              Bahn steht                Steine dort
+   *   quer       l 36 / M  8 / r 56 %      l 32 / M 45 / r 24 %
+   *   hoch       l 29 / M 44 / r 27 %      l 37 / M 25 / r 38 %
+   *
+   * In beiden Formaten schief, und zwar gegenläufig. Der vorhandene Regler
+   * `randSog` kann das nicht richten: im Hochformat bewegt er über den
+   * ganzen Bereich nichts (44 % → 42 %), im Querformat kippt er
+   * unkontrolliert (bei 0.5 stehen 83 % an einem Rand).
+   *
+   * DER GRUND liegt tiefer: die Bahn ist fast immer UNTERWEGS. Ihr Tempo ist
+   * `tempo × tempoAnteil` = 0.71 Einheiten/s im ersten Gebiet; die Strecke
+   * zwischen zwei Aussenbahnen im Querformat ist 8.31 Einheiten, also 11.7
+   * Sekunden Transit — gegen 0.14 bis 0.55 Sekunden Halt. Wo sie STEHT,
+   * entscheidet damit kaum etwas; es entscheidet, WORÜBER SIE LÄUFT. Und
+   * gelaufen wird über die Mitte, in beiden Formaten unterschiedlich viel.
+   *
+   * DIE LÖSUNG ist, die Ziele auf die Bahnen zu legen statt auf beliebige
+   * Punkte, und sie mit einem Ausgleichszähler zu wählen — dieselbe Regel,
+   * die der Spawner für die Objekte längst benutzt (Spawner._bahnWaehlen).
+   * Wer selten dran war, kommt eher dran.
+   *
+   * ABGESCHALTET, BIS ES JEMAND EINSCHALTET. `korridor.bahnZiele` steht auf
+   * false; dann läuft alles exakt wie bisher. Die Bahn GLEITET auch mit
+   * Bahnzielen weiter — sie springt nicht, sie zielt nur anders.
+   *
+   * @param {number[]} bahnen  erlaubte x-Werte, oder null
+   * @param {number} x0        aktuelle Stelle
+   */
+  _bahnZiel(bahnen, x0) {
+    if (!this._bahnZaehler || this._bahnZaehler.length !== bahnen.length) {
+      this._bahnZaehler = new Array(bahnen.length).fill(0);
+    }
+    let summe = 0;
+    const gewichte = bahnen.map((_, i) => {
+      const g = 1 / (this._bahnZaehler[i] + 1);
+      summe += g;
+      return g;
+    });
+    let r = Math.random() * summe;
+    let treffer = bahnen.length - 1;
+    for (let i = 0; i < gewichte.length; i++) {
+      r -= gewichte[i];
+      if (r <= 0) {
+        treffer = i;
+        break;
+      }
+    }
+    this._bahnZaehler[treffer]++;
+    return bahnen[treffer];
+  }
+
   _naechsterAbschnitt(tempo, minX, maxX) {
     const cfg = this.cfg;
     const t0 = this.letzteZeit;
@@ -138,6 +201,16 @@ export class Korridor {
       const halt = cfg.haltMin + Math.random() * (cfg.haltMax - cfg.haltMin);
       this._anfuegen(t0 + Math.max(0.02, halt), x0);
       this._wandert = true;
+      return;
+    }
+
+    /* Mit Bahnzielen: geradewegs zur ausgeglichenen Bahn, weiterhin gleitend. */
+    if (cfg.bahnZiele && this._bahnen?.length) {
+      const ziel = this._bahnZiel(this._bahnen, x0);
+      const weg = Math.abs(ziel - x0);
+      const v = Math.max(0.05, tempo);
+      this._anfuegen(t0 + Math.max(cfg.haltMin, weg / v), ziel);
+      this._wandert = false;
       return;
     }
 
