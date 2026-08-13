@@ -22,7 +22,10 @@
     "prep:sturz": "node scripts/prepare-sturzflug.mjs",
     "prep:weiss": "node scripts/prepare-weiss.mjs",
     "pruef:bilder": "node scripts/pruef-bilder.mjs",
-    "pruef:werbung": "node scripts/pruef-werbung.mjs"
+    "pruef:werbung": "node scripts/pruef-werbung.mjs",
+    "titelbilder": "node scripts/titelbilder.mjs",
+    "video:empfang": "node scripts/video-empfang.mjs",
+    "video:fassungen": "node scripts/video-fassungen.mjs"
   },
   "type": "module",
   "dependencies": {
