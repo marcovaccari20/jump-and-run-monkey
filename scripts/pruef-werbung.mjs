@@ -14,7 +14,7 @@
  *
  * Run mit:  npm run pruef:werbung
  */
-import { GameMonetize } from '../src/systems/Portal.js';
+import { CrazyGames, GameMonetize, umgebungLesen } from '../src/systems/Portal.js';
 
 /* Das Portal-Modul greift auf document/window zu. Ein Minimalersatz genügt —
  * geprüft wird die Zustandslogik, nicht das Laden eines Skripts. */
@@ -165,6 +165,120 @@ console.log('\nGameMonetize-Anbindung gegen nachgebautes SDK:\n');
   const lauf = p.werbung();
   p.abbrechen();
   pruefe('von aussen abgebrochen', await lauf, 'abgebrochen');
+}
+
+/* =====================================================================
+ *  CRAZYGAMES: WELCHE UMGEBUNG WIRD ERKANNT?
+ *
+ *  Das hat einmal die ganze Portalanbindung gekostet, und zwar lautlos.
+ *  Geladen wird das SDK v3, abgefragt wurde es mit der v2-Schreibweise
+ *  `getEnvironment()`. Am ausgelieferten SDK nachgemessen:
+ *
+ *      typeof SDK.getEnvironment  ->  "undefined"
+ *      SDK.getEnvironment()       ->  wirft "is not a function"
+ *      typeof SDK.environment     ->  "string"
+ *
+ *  Der Aufruf warf jedes Mal, ein `catch` schluckte es, die Umgebung blieb
+ *  "unbekannt" — und der CrazyGames-Adapter wurde nie aktiv. Beim Portal kam
+ *  deshalb kein einziges `gameplayStart()` an: in deren Prüfliste stand
+ *  "No detected SDK functionalities" und "First Gameplay Start: No".
+ * ===================================================================== */
+
+console.log('\nCrazyGames-Umgebung erkennen:\n');
+
+pruefe('v3: environment als Eigenschaft', umgebungLesen({ environment: 'crazygames' }), 'crazygames');
+pruefe('v3: local', umgebungLesen({ environment: 'local' }), 'local');
+pruefe('v3: vor init() ("uninitialized")', umgebungLesen({ environment: 'uninitialized' }), 'unbekannt');
+pruefe('v2: getEnvironment als Funktion', umgebungLesen({ getEnvironment: () => 'crazygames' }), 'crazygames');
+
+/* DER FALL, DER ES KAPUTT GEMACHT HAT: das echte v3-SDK. `getEnvironment`
+ * fehlt ganz, `environment` trägt den Wert. Wer hier die Funktion ruft,
+ * bekommt einen Fehler statt einer Antwort. */
+pruefe(
+  'echtes v3 (getEnvironment fehlt ganz)',
+  umgebungLesen({ environment: 'crazygames', sdk: {}, logger: {} }),
+  'crazygames',
+);
+
+/* Und wenn wirklich beides fehlt, muss ehrlich "unbekannt" herauskommen —
+ * NICHT "crazygames". Sonst würde auf jedem fremden Portal fälschlich der
+ * CrazyGames-Adapter aktiv. */
+pruefe('gar nichts vorhanden', umgebungLesen({}), 'unbekannt');
+pruefe('kein SDK', umgebungLesen(null), 'unbekannt');
+
+/* Eine werfende Funktion darf den Start nicht mitreissen. */
+pruefe(
+  'getEnvironment wirft',
+  umgebungLesen({ getEnvironment: () => { throw new Error('kaputt'); } }),
+  'unbekannt',
+);
+
+/* =====================================================================
+ *  CRAZYGAMES: KOMMEN DIE MELDUNGEN WIRKLICH AM SDK AN?
+ *
+ *  Die Prüfliste des Portals hakt "First Gameplay Start" nur ab, wenn
+ *  `sdk.game.gameplayStart()` tatsächlich gerufen wurde. Vorher stand dort
+ *  "No" — nicht weil der Aufruf fehlte, sondern weil der Adapter wegen der
+ *  falsch gelesenen Umgebung nie aktiv wurde.
+ *
+ *  Die Namen unten sind am ausgelieferten v3-SDK nachgesehen, nicht geraten:
+ *  game.loadingStart, game.loadingStop, game.gameplayStart, game.gameplayStop,
+ *  ad.requestAd, data.getItem, data.setItem — alle vorhanden und Funktionen.
+ * ===================================================================== */
+
+console.log('\nCrazyGames-Meldungen an das SDK:\n');
+
+/** Ein SDK-Doppel, das mitschreibt, was gerufen wurde. */
+function sdkDoppel() {
+  const rufe = [];
+  return {
+    rufe,
+    sdk: {
+      game: {
+        loadingStart: () => rufe.push('loadingStart'),
+        loadingStop: () => rufe.push('loadingStop'),
+        gameplayStart: () => rufe.push('gameplayStart'),
+        gameplayStop: () => rufe.push('gameplayStop'),
+      },
+      ad: { requestAd: (art) => rufe.push('requestAd:' + art) },
+      data: { getItem: () => null, setItem: () => {} },
+    },
+  };
+}
+
+{
+  const { rufe, sdk } = sdkDoppel();
+  const p = new CrazyGames(CFG);
+  p.sdk = sdk;
+  p.bereit = true;
+
+  p.ladenStart();
+  p.ladenFertig();
+  p.spielStart();
+  p.spielStop();
+
+  pruefe('ladenStart meldet loadingStart', rufe[0], 'loadingStart');
+  pruefe('ladenFertig meldet loadingStop', rufe[1], 'loadingStop');
+  pruefe('spielStart meldet gameplayStart', rufe[2], 'gameplayStart');
+  pruefe('spielStop meldet gameplayStop', rufe[3], 'gameplayStop');
+}
+
+/* DIE WERBEART MUSS BIS ZUM SDK DURCHKOMMEN.
+ * Ein Zwischenspot als 'rewarded' zu melden wäre eine Falschangabe — das
+ * Portal rechnet beide verschieden ab. */
+{
+  const { rufe, sdk } = sdkDoppel();
+  const p = new CrazyGames(CFG);
+  p.sdk = sdk;
+  p.bereit = true;
+
+  p.werbung('midgame');
+  pruefe('werbung("midgame") reicht die Art durch', rufe.at(-1), 'requestAd:midgame');
+
+  p.abbrechen();
+  p.werbung('rewarded');
+  pruefe('werbung("rewarded") ebenso', rufe.at(-1), 'requestAd:rewarded');
+  p.abbrechen();
 }
 
 console.log(fehler === 0 ? '\nAlle Fälle bestanden.\n' : `\n${fehler} FEHLER.\n`);

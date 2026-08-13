@@ -69,6 +69,51 @@ const SPERRE_MS = 60000;
  * und der kuerzeste ausgelieferte liegt bei 5 Sekunden. */
 const MIN_SPOTDAUER = 2000;
 
+/**
+ * Wo läuft das Spiel? — 'local' | 'crazygames' | 'disabled' | 'unbekannt'
+ *
+ * HIER STAND `sdk.getEnvironment()`, UND DAS HAT DAS PORTAL GEKOSTET.
+ *
+ * Geladen wird `crazygames-sdk-v3.js`. In v3 ist die Umgebung eine schlichte
+ * EIGENSCHAFT (`SDK.environment`); die Funktion `getEnvironment()` stammt aus
+ * v2 und existiert dort nicht mehr. Am ausgelieferten SDK nachgesehen:
+ *
+ *     typeof SDK.getEnvironment   ->  "undefined"
+ *     SDK.getEnvironment()        ->  wirft "is not a function"
+ *     typeof SDK.environment      ->  "string"
+ *
+ * Der Aufruf warf also JEDES MAL, das umschliessende `catch` schluckte es
+ * kommentarlos, die Umgebung blieb auf "unbekannt" — und die Abfrage
+ * `=== 'crazygames'` konnte nie zutreffen. Folge: auf CrazyGames wurde der
+ * CrazyGames-Adapter nie aktiv, sondern GameMonetize. Damit kam nie ein
+ * `gameplayStart()` beim Portal an.
+ *
+ * Sichtbar war das erst in deren Prüfliste, als "No detected SDK
+ * functionalities" und "First Gameplay Start: No" — und daran, dass beim Tod
+ * kein Angebot für ein zweites Leben erschien.
+ *
+ * Beide Schreibweisen werden gelesen, damit ein SDK-Wechsel in die eine oder
+ * andere Richtung das nicht wieder still kippt.
+ */
+export function umgebungLesen(sdk) {
+  if (!sdk) return 'unbekannt';
+
+  // v3: schlichte Eigenschaft. Vor init() steht dort "uninitialized".
+  const wert = sdk.environment;
+  if (typeof wert === 'string' && wert && wert !== 'uninitialized') return wert;
+
+  // v2: Funktion. Nur rufen, wenn es wirklich eine ist.
+  if (typeof sdk.getEnvironment === 'function') {
+    try {
+      const alt = sdk.getEnvironment();
+      if (typeof alt === 'string' && alt) return alt;
+    } catch {
+      /* dann eben nicht */
+    }
+  }
+  return 'unbekannt';
+}
+
 /** Lädt ein Skript und gibt auf, wenn es zu lange dauert. */
 function skriptLaden(url, timeoutMs) {
   return new Promise((resolve, reject) => {
@@ -535,12 +580,8 @@ export class AutoPortal {
   async init() {
     const cg = new CrazyGames(this.cfg);
     if (await cg.init()) {
-      let umgebung = 'unbekannt';
-      try {
-        umgebung = cg.sdk.getEnvironment();
-      } catch {
-        /* ältere SDK-Fassung ohne die Funktion */
-      }
+      const umgebung = umgebungLesen(cg.sdk);
+
       if (umgebung === 'crazygames') {
         this.inner = cg;
         this.name = 'crazygames';
