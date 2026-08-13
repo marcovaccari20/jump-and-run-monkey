@@ -86,44 +86,9 @@ const BACKGROUNDS = [
       'stage5_halloween.png': 1.5, //  53 -> ~72
       'stage_pirat.png': 1.25, //  75 -> ~91  (dunkles Nassholz)
     };
-    /* ABWECHSLUNG FÜR JEDE WAND — siehe `varianten` weiter unten.
-     *
-     * Die Wand wiederholt EINE Kachel. Alles, was darin auffällt, kommt
-     * dadurch alle paar Sekunden an genau derselben Stelle wieder: der
-     * Astronaut, der Papagei, eine markante Ranke, ein heller Fleck. Auch
-     * bei scheinbar gleichförmigen Wänden merkt man das nach kurzer Zeit —
-     * das Auge findet solche Muster von selbst.
-     *
-     * DREI ist der Normalfall: die Kachel wird dreimal so hoch, und ein
-     * Motiv steht bei jedem Durchlauf an einer anderen Stelle. Der Preis
-     * sind rund 8 MB mehr im Paket; die Ladegrösse bis zum Spielstart bleibt
-     * weit unter der 20-MB-Grenze für die Mobil-Startseite, weil immer nur
-     * die Wand des aktuellen Gebiets geladen wird.
-     *
-     * ZWEI reicht dort, wo das Bild ohnehin ein feines, gleichmässiges
-     * Muster ist (Waben, Zeltstreifen, Wolken) — dort trägt die dritte
-     * Kopie nichts bei, kostet aber dasselbe. */
     const opt = { ...b };
     if (stufen[b.src]) opt.aufhellen = stufen[b.src];
 
-    /* EIN ZWEITES, ECHTES BILD JE WAND — falls vorhanden.
-     *
-     * Der erste Versuch stapelte dieselbe Kachel mehrfach, nur horizontal
-     * gerollt. Rechnerisch ist das Abwechslung, im Spiel aber erkennbar
-     * DASSELBE Bild, nur verschoben; an den Überblendbändern wirkte es
-     * verwaschen. Rückmeldung: "es sieht verzogen aus".
-     *
-     * Was es braucht, ist eine zweite ANSICHT: gleicher Stil, gleiche
-     * Palette, andere Anordnung. Liegt neben `stage_x.png` auch
-     * `stage_x_b.png`, werden beide untereinander gesetzt und die
-     * Stossstelle überblendet. Die Wand zeigt dann abwechselnd zwei
-     * verschiedene Bilder statt eines verschobenen.
-     *
-     * Die zweiten Bilder entstehen mit Higgsfield (flux_2_pro_outpaint):
-     * das Original wird nach unten hinaus weitergemalt, dadurch stimmen
-     * Stil, Farben und Lichtführung von selbst. Siehe scripts/zweitbild.mjs. */
-    const zweit = b.src.replace(/\.png$/, '_b.png');
-    if (existsSync(resolve(SRC, zweit))) opt.zweitbild = zweit;
     return opt;
   });
 
@@ -205,53 +170,6 @@ async function seamError(file) {
  * Zeilen vom Ende überblendet. Danach grenzen im Ergebnis zwei im Original
  * BENACHBARTE Zeilen aneinander — die Kachelung ist exakt nahtlos.
  */
-/**
- * Setzt ZWEI verschiedene, jeweils nahtlose Kacheln untereinander.
- *
- * Der erste Versuch stapelte dieselbe Kachel mehrfach, nur horizontal
- * gerollt — das sah verzogen aus, weil es erkennbar dasselbe Bild blieb.
- * Hier kommen stattdessen zwei ECHTE Ansichten zusammen: das gelieferte
- * Bild und ein zweites im gleichen Stil (erzeugt mit Higgsfield, siehe
- * README). Beim Hochscrollen wechseln sie sich ab.
- *
- * Beide sind fuer sich kachelbar. An der Stossstelle wird ueber  * Zeilen ueberblendet, mit derselben Rechnung wie in , damit
- * keine Kante durchlaeuft.
- *
- * @param {{data: Buffer, width: number, height: number}} a  erste Kachel
- * @param {{data: Buffer, width: number, height: number}} b  zweite Kachel
- * @param {number} channels
- * @param {number} band  Hoehe der Ueberblendung an jeder Stossstelle
- */
-function stapelZwei(a, b, channels, band) {
-  const W = a.width;
-  const H = Math.min(a.height, b.height);
-  const bnd = Math.min(band, Math.floor(H / 3));
-  const teilH = H - bnd;
-  const outH = teilH * 2;
-  const out = Buffer.alloc(W * outH * channels);
-  const quellen = [a, b];
-
-  for (let k = 0; k < 2; k++) {
-    const eigen = quellen[k];
-    const vor = quellen[(k + 1) % 2]; // die Kachel davor liefert den Auslauf
-    for (let y = 0; y < teilH; y++) {
-      const t = y < bnd ? y / bnd : 1;
-      for (let x = 0; x < W; x++) {
-        const dst = ((k * teilH + y) * W + x) * channels;
-        const se = ((y % eigen.height) * W + x) * channels;
-        const sv = (((y + teilH) % vor.height) * W + x) * channels;
-        for (let c = 0; c < channels; c++) {
-          out[dst + c] =
-            t >= 1
-              ? eigen.data[se + c]
-              : Math.round(eigen.data[se + c] * t + vor.data[sv + c] * (1 - t));
-        }
-      }
-    }
-  }
-  return { data: out, width: W, height: outH };
-}
-
 function makeSeamless(data, width, height, channels, bandX, bandY) {
   // ---- vertikal ----
   const outH = height - bandY;
@@ -338,45 +256,23 @@ async function prepareBackgrounds() {
     const bandX = Math.round(info.width * 0.09);
     let s = makeSeamless(data, info.width, info.height, info.channels, bandX, bandY);
 
-    /* ABWECHSLUNG BEIM ENDLOSEN SCROLLEN.
+    /* EINE KACHEL JE WAND, IN DAUERSCHLEIFE — so ist es gewollt.
      *
-     * Die Wand wiederholt EINE Kachel. Bei einem Bild mit einem auffälligen
-     * Einzelmotiv — dem Astronauten an der Rakete — kommt damit alle paar
-     * Sekunden exakt dasselbe Motiv an derselben Stelle vorbei, und das
-     * Mondfenster daneben sieht man nie an anderer Position. Gemeldet als
-     * "dann kommt nicht ständig dasselbe Bild wie vom Astronaut, damit auch
-     * mal das Fenster mit dem Mond kommt".
+     * Zwei Versuche, das aufzubrechen, sind beide zurückgenommen worden:
      *
-     * `varianten: N` stapelt N Kopien der Kachel übereinander, jede
-     * horizontal um 1/N der Breite weitergerollt. Weil die Kachel bereits
-     * waagerecht nahtlos ist, ist jede gerollte Kopie für sich wieder ein
-     * gültiges Bild — nur zeigt sie das Motiv an einer anderen Stelle. Beim
-     * Hochscrollen wandert der Astronaut also durchs Bild, und dazwischen
-     * steht das Mondfenster dort, wo vorher er war.
+     *   1. Dieselbe Kachel seitlich versetzt mehrfach gestapelt. Sah verzogen
+     *      aus, weil es erkennbar dasselbe Bild blieb, nur verschoben.
+     *   2. Ein zweites, mit Higgsfield erzeugtes Bild daruntergesetzt.
+     *      Technisch sauber und nahtlos, aber ausdrücklich nicht gewollt:
+     *      "einfach ein Bild rein, und das kommt in Dauerschleife, solange
+     *      das Gebiet da ist. Das sah besser aus."
      *
-     * Die Übergänge zwischen den Kopien werden mit demselben Band überblendet
-     * wie die Aussenkanten, sonst liefe an jeder Stossstelle eine Kante durch.
-     *
-     * PREIS: die Textur wird N-mal so hoch und damit N-mal so gross. Deshalb
-     * nur dort, wo ein Einzelmotiv wirklich stört. */
-    if (bg.zweitbild) {
-      /* Das zweite Bild durch dieselbe Mühle drehen — aufhellen, nahtlos
-       * machen — und dann unter das erste setzen. Beide sind für sich
-       * kachelbar; die Stossstelle wird mit demselben Band überblendet. */
-      const zweiRoh = sharp(resolve(SRC, bg.zweitbild)).removeAlpha();
-      if (typeof bg.aufhellen === 'number' && bg.aufhellen > 1) {
-        zweiRoh.modulate({ brightness: bg.aufhellen }).gamma(1.12);
-      } else if (bg.aufhellen?.mul) {
-        zweiRoh.linear(bg.aufhellen.mul, bg.aufhellen.plus ?? 0);
-        if (bg.aufhellen.gamma) zweiRoh.gamma(bg.aufhellen.gamma);
-      }
-      const z = await zweiRoh
-        .resize(info.width, info.height, { fit: 'cover' })
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-      const s2 = makeSeamless(z.data, z.info.width, z.info.height, z.info.channels, bandX, bandY);
-      s = stapelZwei(s, s2, info.channels, bandY);
-    }
+     * Wer es doch noch einmal versucht, sollte wissen, woran es liegt: nicht
+     * am Stapeln, sondern an der ÜBERBLENDUNG an der Stossstelle. Sie macht
+     * einen Streifen des Bildes weich, und der läuft beim Scrollen sichtbar
+     * durch. `makeSeamless` hat dasselbe Band nur an EINER Stelle, und die
+     * liegt genau auf der Kachelgrenze, wo ohnehin zwei Bildhälften
+     * zusammenstossen — dort fällt es nicht auf. */
 
     await sharp(s.data, { raw: { width: s.width, height: s.height, channels: info.channels } })
       .webp({ quality: 88 })
