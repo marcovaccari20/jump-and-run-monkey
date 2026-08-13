@@ -179,6 +179,7 @@ export class Spawner {
     // Bahnzähler für den Ausgleich (siehe _bahnWaehlen) — ein neuer Lauf
     // fängt ohne Schuldenstand an.
     this._bahnZaehler = null;
+    this._bahnTrocken = null;
     this._bananenImGebiet = 0;
     this._bananenSperre = 0;
 
@@ -299,6 +300,16 @@ export class Spawner {
       // Nur nötig, wenn korridor.bahnZiele an ist — siehe Korridor._bahnZiel.
       world.bahnX,
     );
+
+    /* Trockenzeit je Bahn fortschreiben — siehe `_bahnWaehlen`.
+     *
+     * Läuft AUCH bei abgeschaltetem Nachschub weiter. Das ist Absicht: nach
+     * einem Sturzflug oder Chili-Durchflug ist jede Bahn lange leer, und
+     * genau dann soll es danach sofort wieder überall herunterkommen statt
+     * erst nach und nach. */
+    if (this._bahnTrocken) {
+      for (let i = 0; i < this._bahnTrocken.length; i++) this._bahnTrocken[i] += dt;
+    }
 
     /* ------------------------------------------------------------- Spawn */
     // Bei abgeschaltetem Nachschub steht der Takt STILL, statt weiterzulaufen:
@@ -810,6 +821,53 @@ export class Spawner {
     if (!this._bahnZaehler || this._bahnZaehler.length !== alle.length) {
       this._bahnZaehler = new Array(alle.length).fill(0);
     }
+    if (!this._bahnTrocken || this._bahnTrocken.length !== alle.length) {
+      this._bahnTrocken = new Array(alle.length).fill(0);
+    }
+
+    /* KEINE BAHN DARF LANGE TROCKEN BLEIBEN.
+     *
+     * DAS WAR DER GRÖSSTE EINZELFEHLER IM SPIELGEFÜHL, und der Ausgleich
+     * über `_bahnZaehler` allein hat ihn nicht verhindert. Gemessen über je
+     * zwei Stunden Spielzeit, längste Zeit ohne ein einziges Objekt:
+     *
+     *     quer   links 187 s    Mitte 33 s    rechts 243 s
+     *     hoch   links  21 s    Mitte 27 s    rechts  29 s
+     *
+     * Vier Minuten lang fiel auf der rechten Bahn nichts. Wer das merkt,
+     * stellt sich dorthin und wartet — und genau so hat es sich gespielt:
+     * "manchmal kommt lange auf eine Seite nichts, dann kann ich lange bei
+     * links sein".
+     *
+     * Der Zähler mittelt über den ganzen Lauf und ist damit blind für
+     * LÜCKEN: er ist zufrieden, wenn jede Bahn am Ende gleich oft dran war,
+     * auch wenn eine davon vier Minuten am Stück leer stand.
+     *
+     * Deshalb hier eine harte Schranke: überschreitet eine freie Bahn
+     * `maxTrockenZeit`, bekommt sie das nächste Objekt — ohne Würfeln. Ist
+     * mehr als eine überfällig, gewinnt die trockenste.
+     *
+     * Die Lückengarantie bleibt unangetastet: gewählt wird ausschliesslich
+     * unter den Bahnen, die `_freieStelle` freigegeben hat. Eine Bahn, auf
+     * der gerade der Korridor liegt, ist hier gar nicht erst dabei. */
+    const grenze = this.cfg.rock.korridor.maxTrockenZeit ?? 0;
+    if (grenze > 0 && frei.length > 1) {
+      let duerrste = null;
+      let maxTrocken = grenze;
+      for (const x of frei) {
+        const i = alle.indexOf(x);
+        if (i >= 0 && this._bahnTrocken[i] > maxTrocken) {
+          maxTrocken = this._bahnTrocken[i];
+          duerrste = x;
+        }
+      }
+      if (duerrste !== null) {
+        const i = alle.indexOf(duerrste);
+        this._bahnZaehler[i]++;
+        this._bahnTrocken[i] = 0;
+        return duerrste;
+      }
+    }
 
     /* AUCH DIE EINZIGE FREIE BAHN WIRD GEZÄHLT.
      *
@@ -821,7 +879,10 @@ export class Spawner {
      * verstärkte genau die Schlagseite, gegen die er gebaut ist. */
     if (frei.length === 1) {
       const i = alle.indexOf(frei[0]);
-      if (i >= 0) this._bahnZaehler[i]++;
+      if (i >= 0) {
+        this._bahnZaehler[i]++;
+        this._bahnTrocken[i] = 0;
+      }
       return frei[0];
     }
 
@@ -846,7 +907,10 @@ export class Spawner {
 
     const x = frei[treffer];
     const idx = alle.indexOf(x);
-    if (idx >= 0) this._bahnZaehler[idx]++;
+    if (idx >= 0) {
+      this._bahnZaehler[idx]++;
+      this._bahnTrocken[idx] = 0;
+    }
     return x;
   }
 

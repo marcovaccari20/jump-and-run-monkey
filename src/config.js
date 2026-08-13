@@ -310,11 +310,11 @@ export const CONFIG = {
      * dauert, und er ist zugleich die Grösse, mit der scripts/fairness.mjs
      * die erreichbare Restmenge aufweitet. Wer ihn senkt, macht das Spiel
      * nicht nur träger, sondern verschiebt die bewiesene Grenze. */
-    moveSpeed: 8.4,
+    moveSpeed: 10.76,
     // Glättungsraten in 1/s (nicht Beschleunigung im physikalischen Sinn):
     // v nähert sich dem Zielwert mit 1 - e^(-rate * dt).
     // Höher = direkter. acceleration gilt bei gedrückter Taste, damping beim Loslassen.
-    acceleration: 30.0,
+    acceleration: 38.4,
     damping: 20.0,
     // Unterhalb dieser Geschwindigkeit gilt der Affe als stehend (climbIdle).
     idleThreshold: 0.55,
@@ -467,8 +467,8 @@ export const CONFIG = {
         player: {
           spriteHeight: 2.5, // 1.00
           modelHeight: 1.5, // 1.00
-          moveSpeed: 8.4, // 1.00
-          acceleration: 30.0, // 1.00
+          moveSpeed: 10.76, // 1.00
+          acceleration: 38.4, // 1.00
           damping: 20.0, // 1.00
           // Alle drei auf 0: siehe CONFIG.player.climbAssist. Objekte müssen
           // gleich schnell fallen, egal wo der Affe steht — und die drei
@@ -522,8 +522,8 @@ export const CONFIG = {
         player: {
           spriteHeight: 1.25, // x0.50  halb so gross
           modelHeight: 0.75, // x0.50
-          moveSpeed: 10.9, // x1.30  flinker
-          acceleration: 37.0, // x1.23  spitzeres Anfahren
+          moveSpeed: 13.97, // x1.30  flinker
+          acceleration: 47.4, // x1.23  spitzeres Anfahren
           damping: 25.0, // x1.25
           climbAssist: 0.0, // war 1.3 — gab ihm einen Punktevorteil
           minScrollFactor: 1.0,
@@ -566,8 +566,8 @@ export const CONFIG = {
         player: {
           spriteHeight: 2.5, // 1.00  (Breite folgt dem Seitenverhältnis)
           modelHeight: 1.5,
-          moveSpeed: 6.7, // x0.80  langsamer in x UND y
-          acceleration: 22.0, // x0.73  träge
+          moveSpeed: 8.58, // x0.80  langsamer in x UND y
+          acceleration: 28.2, // x0.73  träge
           damping: 15.0, // x0.75  rollt länger aus
           climbAssist: 0.0, // war 0.8 // x0.80  steigt auch wirklich langsamer
           minScrollFactor: 1.0,
@@ -640,10 +640,10 @@ export const CONFIG = {
      * Dichte hingen ab Gebiet 10 am Anschlag und die letzten sieben Gebiete
      * wären untereinander völlig gleich.
      *
-     * 1.1148 über 20 Wechsel ergibt Härte 8.5 — und genau damit erreicht
-     * das Tempo im Weltall seinen Deckel von 16. Gerechnet, nicht geschätzt:
+     * 1.0905 über 20 Wechsel ergibt Härte 5.6 — und genau damit erreicht
+     * das Tempo im Weltall seinen Deckel von 20.5. Gerechnet, nicht geschätzt:
      *     proWand = ((tempoMax / tempoStart)^(1/tempoExponent))^(1/20) */
-    proWand: 1.1148,
+    proWand: 1.0905,
 
     /* Wie sich die Härte auf die zwei Stellschrauben verteilt: dieser Anteil
      * geht ins TEMPO, der Rest in die Menge. Nur EINE Zahl — die Dichte wird
@@ -674,9 +674,31 @@ export const CONFIG = {
      * wieviel davon übrig ist.
      */
     tempo: {
-      /* 4.18 statt 3.8 — der Anfang war zu zäh (+10 %).
-       * Der Rest der Kurve zieht mit +5 % nach, siehe max. */
-      start: 4.18,
+      /* 7.0 STATT 4.18 — DER ANFANG WAR DER EIGENTLICHE FEHLER.
+       *
+       * Drei Runden lang lautete die Rückmeldung "immer noch zu einfach",
+       * zuletzt: "ich kam locker auf Stufe 5". Nachgemessen war das kein
+       * Gefühl, sondern Arithmetik. Vorwarnzeit = Reaktionsstrecke / Tempo,
+       * mit 6.491 Einheiten Strecke:
+       *
+       *     Gebiet 1   4.18  ->  1553 ms
+       *     Gebiet 5   5.47  ->  1186 ms
+       *
+       * Anderthalb Sekunden, um einem Stein auszuweichen, der aus drei
+       * möglichen Bahnen fällt. Das ist kein Geschicklichkeitsspiel, das ist
+       * Zusehen. Und weil die Kurve beim Startwert beginnt, half jede
+       * Erhöhung am OBEREN Ende nichts für die ersten fünf Minuten — genau
+       * die Minuten, die jeder Spieler sieht.
+       *
+       * Mit 7.0:
+       *     Gebiet 1  ->  927 ms
+       *     Gebiet 5  ->  743 ms   (-37 %)
+       *
+       * Der Preis steht im Kommentar zu `proWand`: ein höherer Start staucht
+       * die Kurve, der Schritt je Gebiet sinkt von 11.4 auf 9.1 %. Das ist
+       * der richtige Tausch — die absolute Härte an jeder Stelle zählt mehr
+       * als die Grösse des Sprungs zwischen zwei Gebieten. */
+      start: 7.0,
       /* 16.0 -> 13.6, WEIL DER AFFE HÖHER SITZT.
        *
        * Seit er senkrecht festgenagelt ist, steht er auf y = -0.1 statt -1.4,
@@ -692,7 +714,7 @@ export const CONFIG = {
        *
        * Diese Zahl gehört zu player.startPosition[1]. Wer eine ändert, muss
        * die andere nachrechnen. */
-      /* 16.0 statt 14.3 — UND DER GRUND IST EINE VERALTETE ANNAHME.
+      /* 20.5 statt 16.0 — UND DIE WENDIGKEIT WÄCHST MIT.
        *
        * Der Absatz oben rechnet mit einer Vorwarnstrecke von 4.094
        * Einheiten. Das stimmte, als der Affe auf y = -0.1 sass. Er sitzt
@@ -718,31 +740,29 @@ export const CONFIG = {
        * getunt, das es nicht mehr gibt, und genau deshalb liess sich der
        * Deckel mühelos ausspielen.
        *
-       * 16.0 lässt 6.491 / 16.0 = 406 ms und wird erst im letzten Gebiet
+       * 20.5 lässt 6.491 / 20.5 = 317 ms und wird erst im letzten Gebiet
        * (Weltall) erreicht.
        *
-       * WARUM NICHT MEHR — DIE ZAHL IST ERMESSEN, NICHT GESCHÄTZT.
-       * Erst standen hier 22.0 (374 ms). Der Fairness-Prüfer wies das ab,
-       * und zwar aus einem Grund, der beim Rechnen mit Vorwarnzeiten nicht
-       * auffällt: nicht das SEHEN ist die Grenze, sondern das AUSWEICHEN.
-       * Der orange Affe beschleunigt am trägsten (acceleration 22.0 gegen
-       * 30.0 beim braunen). Im kürzesten Fenster, das im Spiel vorkommt,
-       * erreicht er damit nur noch diesen Anteil seiner Höchstgeschwindigkeit:
+       * WARUM DAS TROTZDEM FAIR BLEIBT — und warum es vorher bei 16 endete.
        *
-       *     Tempodeckel   14.3    18      19      20      22
-       *     braun        0.508  0.395   0.367   0.339   0.286
-       *     weiss        0.596  0.498   0.473   0.448   0.400
-       *     orange       0.353  0.223   0.192   0.161   0.150 (Boden)
+       * Der Fairness-Prüfer wies 18 einmal ab, und zwar wegen des trägsten
+       * Affen: der orange erreichte im kürzesten Fenster nur noch 15 % seiner
+       * Höchstgeschwindigkeit. Der Engpass war also nicht das SEHEN, sondern
+       * das AUSWEICHEN.
        *
-       * Gemessen mit je 240 Läufen (orange, Querformat):
-       *     18 -> bestanden      19 -> 4 dichte Wände      20 -> 42
-       * Die Grenze liegt also zwischen 18 und 19, und sie hängt am trägsten
-       * Affen. Wer sie höher will, muss dessen `acceleration` anheben — dann
-       * ist er aber nicht mehr der träge Affe.
+       * Deshalb wächst jetzt die Wendigkeit mit: moveSpeed und acceleration
+       * aller drei Affen sind mit demselben Faktor 20.5/16 = 1.28 skaliert.
+       * Der Trägheitsfaktor hängt am Produkt a×T mit T = mindestAbstand /
+       * tempo.max — steigen a und tempo.max gemeinsam, bleibt a×T gleich und
+       * die Geometrie damit unverändert fair.
        *
-       * WER DEN AFFEN VERSCHIEBT ODER AN acceleration DREHT, MUSS DIESE ZAHL
-       * NEU ERMESSEN:  node scripts/fairness.mjs --affe orange --format quer */
-      max: 16.0,
+       * SCHWERER WIRD ES TROTZDEM, denn eines skaliert nicht mit: die
+       * menschliche Reaktionszeit. Die Vorwarnung sinkt von 406 auf 317 ms,
+       * und das ist der ganze Punkt.
+       *
+       * WER HIER DREHT, MUSS DIE WENDIGKEIT MITZIEHEN und danach messen:
+       *     node scripts/fairness.mjs --sekunden 1100 */
+      max: 20.5,
       // Anteil, der als Wandscrollen sichtbar wird. Der Rest ist
       // Eigengeschwindigkeit der Objekte. Ein fester Anteil statt zweier
       // Kurven: sonst zieht sich die Wand unter den Objekten weg.
@@ -766,7 +786,7 @@ export const CONFIG = {
        * eine Reaktion — ein Ausweichmanöver alle 11 Sekunden. "Am Anfang
        * langsamer" ist eine Aussage über die REAKTIONSZEIT (die bleibt bei
        * 1.17 s), nicht über Leere. */
-      start: 0.85,
+      start: 1.0,
 
       /* DIE ZENTRALE REGEL: Mindestabstand zwischen zwei Objekten, gemessen
        * als Fallstrecke in Welt-Einheiten.
@@ -950,6 +970,10 @@ export const CONFIG = {
        * Wert würde nur Rauschen nachfahren. */
       randSog: 0.32,
 
+      /* Keine Bahn laenger als so viele Sekunden ohne Objekt.
+       * Siehe Spawner._bahnWaehlen; 0 schaltet die Schranke ab. */
+      maxTrockenZeit: 2.5,
+
       /* BAHNZIELE — die Bahn zielt auf Spuren statt auf beliebige Punkte.
        *
        * STEHT AUF false, es ändert sich also nichts. Eingebaut, weil die
@@ -965,7 +989,7 @@ export const CONFIG = {
        * Wer umschaltet, misst danach beides nach:
        *     node scripts/_bahnverteilung.mjs     Verteilung je Bahn
        *     npm run test:fair                    bleibt jedes Bild passierbar */
-      bahnZiele: false,
+      bahnZiele: true,
       haltMin: 0.14,
       haltMax: 0.55,
       horizont: 3.8,
@@ -1038,7 +1062,7 @@ export const CONFIG = {
          * sichtbar aus dem Rhythmus und war das am leichtesten auszulassende
          * Objekt im Spiel.
          *
-         * Mit 1.0 bleiben bei vollem Tempo 406 ms. Er ist damit immer noch
+         * Mit 1.0 bleiben bei vollem Tempo 317 ms. Er ist damit immer noch
          * das langsamste der drei — klein 1.32, mittel 1.14 —, also bleibt
          * die Grössenklasse am Fallverhalten erkennbar. Er ist nur kein
          * Geschenk mehr. */
@@ -2711,49 +2735,49 @@ export const CONFIG = {
         name: 'blumen',
         // Holz statt Stein: Stock (klein), Baumscheibe (mittel), Stamm (gross).
         hazard: 'holz',
-        afterSeconds: 55.1,
+        afterSeconds: 33.1,
         near: '/textures/stage2_flowers.webp',
         far: '/textures/stage2_flowers_far.webp',
       },
       {
         name: 'aeste',
         hazard: 'kokosnuss',
-        afterSeconds: 141.5,
+        afterSeconds: 85.8,
         near: '/textures/stage3_branches.webp',
         far: '/textures/stage3_branches_far.webp',
       },
       {
         name: 'pilzwald',
         hazard: 'pilz',
-        afterSeconds: 231,
+        afterSeconds: 141.1,
         near: '/textures/wall_mushroom.webp',
         far: '/textures/wall_mushroom_far.webp',
       },
       {
         name: 'gift',
         hazard: 'gift',
-        afterSeconds: 301.7,
+        afterSeconds: 185.4,
         near: '/textures/stage4_poison.webp',
         far: '/textures/stage4_poison_far.webp',
       },
       {
         name: 'halloween',
         hazard: 'kuerbis',
-        afterSeconds: 383.7,
+        afterSeconds: 237.5,
         near: '/textures/stage5_halloween.webp',
         far: '/textures/stage5_halloween_far.webp',
       },
       {
         name: 'wasser',
         hazard: 'meer',
-        afterSeconds: 452.5,
+        afterSeconds: 281.8,
         near: '/textures/wall_water.webp',
         far: '/textures/wall_water_far.webp',
       },
       {
         name: 'wolken',
         hazard: 'wolken',
-        afterSeconds: 512,
+        afterSeconds: 320.6,
         near: '/textures/stage7_clouds.webp',
         far: '/textures/stage7_clouds_far.webp',
         // Weisser Hagel vor weissen Wolken ist nicht zu sehen — und was man
@@ -2764,7 +2788,7 @@ export const CONFIG = {
       {
         name: 'eiszeit',
         hazard: 'eiszapfen',
-        afterSeconds: 577.6,
+        afterSeconds: 364,
         near: '/textures/stage6_ice.webp',
         far: '/textures/stage6_ice_far.webp',
         // Gleicher Grund wie bei den Wolken: helle Zapfen vor heller Wand.
@@ -2773,14 +2797,14 @@ export const CONFIG = {
       {
         name: 'kristall',
         hazard: 'kristall',
-        afterSeconds: 641.9,
+        afterSeconds: 407.1,
         near: '/textures/wall_crystal.webp',
         far: '/textures/wall_crystal_far.webp',
       },
       {
         name: 'lava',
         hazard: 'feuer',
-        afterSeconds: 692.3,
+        afterSeconds: 441.4,
         near: '/textures/stage8_lava.webp',
         far: '/textures/stage8_lava_far.webp',
         // Feuerbälle vor einer Wand aus Feuer: die Wand muss zurücktreten,
@@ -2790,14 +2814,14 @@ export const CONFIG = {
       {
         name: 'asche',
         hazard: 'asche',
-        afterSeconds: 744.5,
+        afterSeconds: 477.4,
         near: '/textures/stage9_ash.webp',
         far: '/textures/stage9_ash_far.webp',
       },
       {
         name: 'schrott',
         hazard: 'metall',
-        afterSeconds: 785.7,
+        afterSeconds: 506.2,
         near: '/textures/stage_schrott.webp',
         far: '/textures/stage_schrott_far.webp',
         /* Die Wand ist selbst rostbraun und voller Kanten. Ohne Dämpfung
@@ -2808,7 +2832,7 @@ export const CONFIG = {
       {
         name: 'bonbon',
         hazard: 'bonbon',
-        afterSeconds: 833.6,
+        afterSeconds: 540.1,
         near: '/textures/stage_bonbon.webp',
         far: '/textures/stage_bonbon_far.webp',
         // Sehr helle, bunte Wand — sonst geht ein rosa Bonbon darin unter.
@@ -2817,14 +2841,14 @@ export const CONFIG = {
       {
         name: 'kakteen',
         hazard: 'kaktus',
-        afterSeconds: 873.7,
+        afterSeconds: 568.9,
         near: '/textures/stage_kakteen.webp',
         far: '/textures/stage_kakteen_far.webp',
       },
       {
         name: 'ruine',
         hazard: 'ruine',
-        afterSeconds: 908.4,
+        afterSeconds: 594.2,
         near: '/textures/stage_ruine.webp',
         far: '/textures/stage_ruine_far.webp',
         /* Die Ruinenwand ist die dunkelste im Spiel. Hier wird AUFGEHELLT,
@@ -2849,7 +2873,7 @@ export const CONFIG = {
       {
         name: 'pirat',
         hazard: 'pirat',
-        afterSeconds: 946.7,
+        afterSeconds: 622.4,
         near: '/textures/stage_pirat.webp',
         far: '/textures/stage_pirat_far.webp',
         /* Dunkles Nassholz. Metall davor braucht Aufhellung, sonst ist der
@@ -2859,7 +2883,7 @@ export const CONFIG = {
       {
         name: 'biene',
         hazard: 'biene',
-        afterSeconds: 984.2,
+        afterSeconds: 650.5,
         near: '/textures/stage_biene.webp',
         far: '/textures/stage_biene_far.webp',
         /* Die Wabenwand ist das hellste Bild im Spiel, und die Objekte sind
@@ -2870,7 +2894,7 @@ export const CONFIG = {
       {
         name: 'bibliothek',
         hazard: 'buch',
-        afterSeconds: 1013.6,
+        afterSeconds: 672.8,
         near: '/textures/stage_bibliothek.webp',
         far: '/textures/stage_bibliothek_far.webp',
         // Kerzenlicht auf dunklem Holz — wie die Ruine, also aufhellen.
@@ -2879,7 +2903,7 @@ export const CONFIG = {
       {
         name: 'zirkus',
         hazard: 'zirkus',
-        afterSeconds: 1044.1,
+        afterSeconds: 696.2,
         near: '/textures/stage_zirkus.webp',
         far: '/textures/stage_zirkus_far.webp',
         /* Rot-weisses Zeltstreifenmuster, sehr unruhig. Leicht gedämpft,
@@ -2889,7 +2913,7 @@ export const CONFIG = {
       {
         name: 'weltall',
         hazard: 'meteor',
-        afterSeconds: 1068.1,
+        afterSeconds: 714.9,
         near: '/textures/stage_weltall.webp',
         far: '/textures/stage_weltall_far.webp',
         /* DAS LETZTE GEBIET. Weiss-rote Rakete vor schwarzem All: das
@@ -2918,7 +2942,7 @@ export const CONFIG = {
      * Deckel noch 18 war; nach dem Absenken auf 16 wären daraus 141 Meter
      * geworden, also kürzer als jedes echte Gebiet. Wer am Deckel dreht,
      * rechnet hier nach:  Sekunden = Zielmeter / (tempo.max × scrollAnteil) */
-    stageLoopSeconds: 26,
+    stageLoopSeconds: 21,
     // Überblendzeit zwischen zwei Stufen (Sekunden). Kein harter Schnitt.
     stageFade: 1.8,
     // Seitenverhältnis der Stufentexturen (1252x676) — damit die Kacheln
