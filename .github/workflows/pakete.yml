@@ -56,13 +56,49 @@ jobs:
       - name: Bilder prüfen
         run: npm run pruef:bilder
 
+      # Die Werbeanbindung gegen ein nachgebautes SDK. Der einzige Teil des
+      # Spiels, den man sonst NIE zu sehen bekommt, ohne es hochzuladen — und
+      # genau dort ist zuletzt ein Fehler bis auf die Live-Seite durchgekommen.
+      - name: Werbung prüfen
+        run: npm run pruef:werbung
+
       # Baut und schnürt alle drei Ziele. Das Skript prüft dabei selbst:
       # index.html in der Wurzel, alle Pfade relativ, keine unerwarteten
       # Fremdserver, Grösse innerhalb der Portalgrenzen.
       - name: Pakete schnüren
         run: npm run paket -- --bauen
 
-      - name: CrazyGames
+      # ENTPACKT, WEIL CRAZYGAMES KEIN ARCHIV NIMMT.
+      #
+      # Deren Einreichungsformular lehnt ZIPs ausdrücklich ab ("Archive files
+      # are not supported, please drag and drop the files directly in the
+      # upload zone") — anders als GameMonetize, das genau umgekehrt ein ZIP
+      # will. Wer hier das Archiv herunterlädt, muss es also erst auspacken,
+      # und wegen der GitHub-Eigenheit sogar ZWEIMAL (siehe Kopf dieser
+      # Datei). Das ist die Stelle, an der es schon einmal schiefgegangen ist.
+      #
+      # NICHT `dist/` NEHMEN. Nach `npm run paket` steht dort die
+      # PLAY-STORE-Fassung: die wird zuletzt gebaut, mit VITE_ZIEL=playstore,
+      # und hat die Werbung fest abgeschaltet (CONFIG.ad.provider = 'none').
+      # Ein Ordner daraus sähe richtig aus und wäre der falsche Build.
+      # Entpackt wird deshalb das fertige CrazyGames-Archiv.
+      - name: CrazyGames-Ordner entpacken
+        run: |
+          mkdir -p pakete/crazygames-dateien
+          unzip -q pakete/jungle-climber-crazygames.zip -d pakete/crazygames-dateien
+          test -f pakete/crazygames-dateien/index.html
+          echo "Dateien: $(find pakete/crazygames-dateien -type f | wc -l)"
+
+      # Das ist der Download für CrazyGames: einmal auspacken, fertig — darin
+      # liegen index.html und die Ordner direkt, zum Hineinziehen ins Formular.
+      - name: CrazyGames (Dateien zum Ziehen)
+        uses: actions/upload-artifact@v4
+        with:
+          name: jungle-climber-crazygames-DATEIEN
+          path: pakete/crazygames-dateien/
+          retention-days: 30
+
+      - name: CrazyGames (Archiv)
         uses: actions/upload-artifact@v4
         with:
           name: jungle-climber-crazygames
