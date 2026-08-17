@@ -114,6 +114,30 @@ export function umgebungLesen(sdk) {
   return 'unbekannt';
 }
 
+/**
+ * Läuft das Spiel in der Android-Hülle statt im Browser?
+ *
+ * Capacitor legt dafür `window.Capacitor` an. Gefragt wird aber nicht danach,
+ * ob das Objekt existiert, sondern nach `isNativePlatform()` — in einer
+ * Web-Ausgabe von Capacitor gäbe es das Objekt nämlich auch, und die Antwort
+ * wäre dort korrekt `false`.
+ *
+ * Der Import ist bewusst dynamisch und in try/catch: im Bündel für die
+ * Web-Portale ist Capacitor gar nicht dabei, und ein fehlgeschlagener Import
+ * darf den Start nicht aufhalten — er heisst schlicht "kein App-Gehäuse".
+ */
+async function istNativeApp() {
+  try {
+    if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform) {
+      return window.Capacitor.isNativePlatform() === true;
+    }
+    const { Capacitor } = await import('@capacitor/core');
+    return Capacitor.isNativePlatform() === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Lädt ein Skript und gibt auf, wenn es zu lange dauert. */
 function skriptLaden(url, timeoutMs) {
   return new Promise((resolve, reject) => {
@@ -550,6 +574,161 @@ export class GameMonetize {
 }
 
 /**
+ * AdMob — die Werbung der ANDROID-APP, nicht der Web-Portale.
+ *
+ * WARUM DAS EIN EIGENER ADAPTER IST
+ *
+ * Im Play Store läuft dasselbe Spiel, aber in einer nativen Hülle
+ * (Capacitor, siehe scripts/app-huelle.md). Die Web-SDKs von CrazyGames und
+ * GameMonetize würden dort nicht einmal laden — und dürften es auch nicht,
+ * der Play Store verlangt für App-Werbung AdMob.
+ *
+ * DIE GUTE NACHRICHT gegenüber GameMonetize: hier muss nichts erschlossen
+ * werden. `showRewardVideoAd()` LÖST ERST AUF, WENN DIE BELOHNUNG WIRKLICH
+ * VERDIENT IST — bricht der Spieler ab, kommt stattdessen `Dismissed` und
+ * das Versprechen wird abgelehnt. Die ganze Zeitmesserei aus dem
+ * GameMonetize-Adapter (SDK_GAME_PAUSE, Mindestdauer, "die eigene Pause darf
+ * nicht zählen") entfällt deshalb ersatzlos.
+ *
+ * ANZEIGEN WERDEN VORGELADEN. `prepare…` holt den Spot im Hintergrund,
+ * `show…` zeigt ihn. Ohne Vorladen wartet der Spieler nach dem Klick
+ * mehrere Sekunden vor einem leeren Bildschirm — deshalb wird direkt nach
+ * jedem Spot der nächste vorbereitet.
+ */
+export class AdMobPortal {
+  constructor(cfg) {
+    this.name = 'admob';
+    this.cfg = cfg;
+    this.bereit = false;
+    this.admob = null;
+    /** Liegt ein belohnter Spot abrufbereit? */
+    this._belohntBereit = false;
+    /** Liegt ein Zwischenspot abrufbereit? */
+    this._zwischenBereit = false;
+    this._letzterSpot = 0;
+  }
+
+  async init() {
+    const ids = this.cfg.admob;
+    if (!ids?.belohnt || !ids?.zwischen) {
+      console.info('[Portal] AdMob: keine Anzeigen-IDs in CONFIG.ad.admob — übersprungen.');
+      return false;
+    }
+    try {
+      /* Erst HIER laden, nicht oben als fester Import.
+       *
+       * Das Modul zieht Capacitor mit, und das gehört nicht in das Bündel
+       * für die Web-Portale — dort läuft es nie. Der dynamische Import
+       * landet in einem eigenen Stück, das im Browser gar nicht angefasst
+       * wird. */
+      const modul = await import('@capacitor-community/admob');
+      this.admob = modul.AdMob;
+
+      await this.admob.initialize({
+        // Testgeräte und Testanzeigen steuert CONFIG.ad.admob.test.
+        initializeForTesting: ids.test === true,
+      });
+
+      this.bereit = true;
+      // Beide Sorten schon einmal vorladen, damit der erste Spot sofort da ist.
+      this._vorladen('belohnt');
+      this._vorladen('zwischen');
+      return true;
+    } catch (err) {
+      console.info('[Portal] AdMob nicht verfügbar:', err?.message ?? err);
+      return false;
+    }
+  }
+
+  /** Holt einen Spot im Hintergrund, damit `show` später nicht wartet. */
+  async _vorladen(art) {
+    const ids = this.cfg.admob;
+    try {
+      if (art === 'belohnt') {
+        await this.admob.prepareRewardVideoAd({ adId: ids.belohnt, isTesting: ids.test === true });
+        this._belohntBereit = true;
+      } else {
+        await this.admob.prepareInterstitial({ adId: ids.zwischen, isTesting: ids.test === true });
+        this._zwischenBereit = true;
+      }
+    } catch (err) {
+      // Kein Spot verfügbar ist ein normaler Zustand, kein Fehler.
+      if (art === 'belohnt') this._belohntBereit = false;
+      else this._zwischenBereit = false;
+      console.info(`[Portal] AdMob ${art} nicht ladbar:`, err?.message ?? err);
+    }
+  }
+
+  /* AdMob hat keinen Spielerspeicher — der Fortschritt läuft weiter über
+   * Supabase bzw. den Browser der Hülle. */
+  datenSpeicher() {
+    return null;
+  }
+
+  /* AdMob will nicht wissen, wann gespielt wird — es legt keine eigenen
+   * Spots. Alles Werbliche geht ausschliesslich über werbung(). */
+  ladenStart() {}
+  ladenFertig() {}
+  spielStart() {}
+  spielStop() {}
+
+  hatWerbung() {
+    return (
+      this.bereit &&
+      this._belohntBereit &&
+      Date.now() - this._letzterSpot >= SPERRE_MS
+    );
+  }
+
+  /**
+   * @param {'rewarded'|'midgame'} art
+   * @returns {Promise<'belohnt'|'abgebrochen'|'fehler'>}
+   */
+  async werbung(art = 'rewarded') {
+    if (!this.bereit) return 'fehler';
+    const zwischenspot = art === 'midgame';
+
+    if (zwischenspot) {
+      if (!this._zwischenBereit) return 'fehler';
+      this._letzterSpot = Date.now();
+      this._zwischenBereit = false;
+      try {
+        await this.admob.showInterstitial();
+        return 'belohnt'; // gelaufen; für den Zwischenspot zählt nur das
+      } catch (err) {
+        console.info('[Portal] AdMob Zwischenspot:', err?.message ?? err);
+        return 'fehler';
+      } finally {
+        this._vorladen('zwischen');
+      }
+    }
+
+    if (!this._belohntBereit) return 'fehler';
+    this._letzterSpot = Date.now();
+    this._belohntBereit = false;
+    try {
+      /* HIER LIEGT DER GANZE UNTERSCHIED ZU GAMEMONETIZE.
+       *
+       * Diese Zusage löst NUR auf, wenn der Spieler den Spot wirklich zu
+       * Ende gesehen hat — AdMob liefert dann den verdienten Lohn. Wer
+       * abbricht, landet im catch. Es gibt hier also nichts zu erschliessen
+       * und keine Mindestdauer zu messen. */
+      const lohn = await this.admob.showRewardVideoAd();
+      return lohn ? 'belohnt' : 'abgebrochen';
+    } catch (err) {
+      console.info('[Portal] AdMob belohnter Spot:', err?.message ?? err);
+      return 'abgebrochen';
+    } finally {
+      this._vorladen('belohnt');
+    }
+  }
+
+  /* Ein laufender AdMob-Spot gehört dem Anbieter — er lässt sich von aussen
+   * nicht abbrechen, und das ist bei einem belohnten Spot auch richtig so. */
+  abbrechen() {}
+}
+
+/**
  * Erkennt das Portal SELBST, statt sich sagen zu lassen, wo es läuft.
  *
  * WARUM DAS NÖTIG IST — der erste Entwurf war hier falsch.
@@ -566,6 +745,7 @@ export class GameMonetize {
  * 'disabled'. Genau dafür ist die Funktion gedacht.
  *
  * Reihenfolge:
+ *   0. Läuft das Ganze als ANDROID-APP? Dann AdMob, und sonst nichts.
  *   1. CrazyGames-SDK laden und fragen, ob wir dort sind.
  *   2. Sonst GameMonetize, sofern eine gameId eingetragen ist.
  *   3. Sonst kein Portal — Platzhalter, alles läuft weiter.
@@ -578,6 +758,33 @@ export class AutoPortal {
   }
 
   async init() {
+    /* DIE APP ZUERST, und zwar ohne die Web-SDKs auch nur anzufassen.
+     *
+     * In der Android-Hülle wäre CrazyGames' `getEnvironment()` schlicht
+     * 'local' — der Code liefe also weiter zu GameMonetize, lüde dort ein
+     * Web-Werbe-SDK, und genau das verbietet der Play Store. Deshalb steht
+     * diese Abfrage VOR allen anderen und steigt sofort aus.
+     *
+     * Erkannt wird es an Capacitor selbst (`isNativePlatform()`), nicht an
+     * der Adresse: die Hülle liefert das Spiel unter http://localhost aus,
+     * dieselbe Adresse wie der Entwicklungsserver. Wer daran unterscheiden
+     * wollte, läge im Browser prompt falsch. */
+    if (await istNativeApp()) {
+      const admob = new AdMobPortal(this.cfg);
+      if (await admob.init()) {
+        this.inner = admob;
+        this.name = 'admob';
+        console.info('[Portal] Android-App erkannt, AdMob aktiv.');
+        return true;
+      }
+      /* Native App, aber AdMob liess sich nicht einrichten: dann lieber GAR
+       * KEINE Werbung als ein Web-SDK, das hier nicht hingehört. */
+      this.inner = new KeinPortal('App ohne AdMob');
+      this.name = 'keins';
+      console.info('[Portal] Android-App, aber AdMob nicht verfügbar — ohne Werbung.');
+      return false;
+    }
+
     const cg = new CrazyGames(this.cfg);
     if (await cg.init()) {
       const umgebung = umgebungLesen(cg.sdk);

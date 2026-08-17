@@ -25,13 +25,19 @@
     "pruef:werbung": "node scripts/pruef-werbung.mjs",
     "titelbilder": "node scripts/titelbilder.mjs",
     "video:empfang": "node scripts/video-empfang.mjs",
-    "video:fassungen": "node scripts/video-fassungen.mjs"
+    "video:fassungen": "node scripts/video-fassungen.mjs",
+    "app:icon": "node scripts/app-icon.mjs",
+    "app:sync": "npx cap sync android"
   },
   "type": "module",
   "dependencies": {
+    "@capacitor-community/admob": "^8.1.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "@gltf-transform/core": "^4.4.2",
     "@gltf-transform/extensions": "^4.4.2",
     "@gltf-transform/functions": "^4.4.2",

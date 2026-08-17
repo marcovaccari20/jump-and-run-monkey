@@ -1911,18 +1911,29 @@ export const CONFIG = {
      * Meldet sich kein SDK (Werbeblocker, lokal, offline), fällt das Spiel auf
      * den Platzhalter zurück — das zweite Leben bleibt spielbar, es wird nur
      * nichts abgerechnet. Das Spiel darf nie an einem fremden Server hängen. */
-    /* 'auto' erkennt das Portal selbst — ausser beim Play-Store-Bau.
+    /* IMMER 'auto' — auch für den Play Store.
      *
-     * In einer Android-App gibt es kein Portal, und die Web-SDKs von
-     * CrazyGames und GameMonetize laden dort gar nicht erst. `KeinPortal`
-     * ist dann die richtige Antwort: das Spiel läuft, es kommt nur keine
-     * Werbung (bis AdMob in der Hülle sitzt, siehe scripts/app-huelle.md).
+     * HIER STAND EINE SONDERREGEL, UND SIE IST JETZT FALSCH.
      *
-     * Umgestellt wird das beim BAUEN, nicht von Hand:
-     *     VITE_ZIEL=playstore npm run build
-     * `npm run paket` setzt die Variable für das Play-Store-ZIP selbst. So
-     * kann niemand vergessen, sie vor dem Hochladen zurückzustellen. */
-    provider: import.meta.env?.VITE_ZIEL === 'playstore' ? 'none' : 'auto',
+     * Früher hiess es `VITE_ZIEL === 'playstore' ? 'none' : 'auto'`, mit der
+     * Begründung: "In einer Android-App gibt es kein Portal (bis AdMob in
+     * der Hülle sitzt)". Genau das ist inzwischen der Fall — die Hülle steht
+     * (android/, Capacitor) und AdMob ist eingebaut.
+     *
+     * Die Regel hätte ab jetzt aktiv geschadet: 'none' liefert `KeinPortal`,
+     * `hatWerbung()` ist dort fest false, und die App hätte NIE eine Anzeige
+     * gezeigt — kein zweites Leben, kein Zwischenspot, kein Erlös. Ein
+     * Fehler, den man erst Wochen später an der leeren Abrechnung merkt.
+     *
+     * 'auto' ist auch für die App richtig, weil AutoPortal ZUERST fragt, ob
+     * es in einer nativen Hülle läuft (Capacitor.isNativePlatform) und dann
+     * ausschliesslich AdMob nimmt. Die Web-SDKs von CrazyGames und
+     * GameMonetize werden dort nicht einmal angefasst — was der Play Store
+     * auch nicht dulden würde.
+     *
+     * VITE_ZIEL=playstore bleibt trotzdem sinnvoll: package-portal.mjs prüft
+     * damit, dass im App-Bündel keine fremden Web-SDK-Adressen stehen. */
+    provider: 'auto',
 
     /* Von GameMonetize beim Anlegen des Spiels vergeben.
      *
@@ -1932,6 +1943,44 @@ export const CONFIG = {
      * beim Einreichen aber, ob sein SDK eingebaut ist — genau daran ist der
      * erste Upload gescheitert. */
     gameMonetizeId: '8xm1lwmqdvr54tcjyi0t91qn87yzipz7',
+
+    /* ================================================================== *
+     *  ADMOB — die Werbung der ANDROID-APP
+     *
+     *  Gilt NUR in der Play-Store-Fassung. Im Browser wird dieser Block nie
+     *  angefasst: AutoPortal fragt zuerst, ob es in einer nativen Hülle
+     *  läuft, und steigt sonst hier gar nicht ein.
+     *
+     *  DIE WERTE UNTEN SIND GOOGLES OFFIZIELLE TESTKENNUNGEN. Sie sind
+     *  öffentlich dokumentiert, liefern immer eine Anzeige und rechnen
+     *  nichts ab — damit lässt sich der ganze Ablauf prüfen, bevor ein
+     *  eigenes Konto existiert.
+     *
+     *  VOR DER VERÖFFENTLICHUNG ERSETZEN, sonst verdient die App nichts:
+     *
+     *    1. admob.google.com -> App hinzufügen -> Android -> "noch nicht
+     *       veröffentlicht" ist zulässig.
+     *    2. Zwei Anzeigenblöcke anlegen:
+     *         "Belohnt"     -> hierher unter `belohnt`
+     *         "Interstitial"-> hierher unter `zwischen`
+     *    3. Die App-ID (ca-app-pub-…~…, mit TILDE) gehört NICHT hierher,
+     *       sondern in android/app/src/main/AndroidManifest.xml. Steht sie
+     *       dort nicht, stürzt die App beim Start ab — das ist Absicht von
+     *       Google und keine Fehlfunktion.
+     *    4. `test` auf false setzen.
+     *
+     *  ACHTUNG: Auf einem echten Gerät mit `test: false` und den eigenen IDs
+     *  darf man NIE selbst auf die eigenen Anzeigen tippen — Google wertet
+     *  das als Betrug und sperrt das Konto. Zum Ausprobieren immer `test`
+     *  anlassen. */
+    admob: {
+      /* Belohnter Spot fürs Weiterspielen nach dem Tod. */
+      belohnt: 'ca-app-pub-3940256099942544/5224354917',
+      /* Zwischenspot zwischen zwei Runden. */
+      zwischen: 'ca-app-pub-3940256099942544/1033173712',
+      /* true = Googles Testanzeigen, keine Abrechnung, kein Sperr-Risiko. */
+      test: true,
+    },
 
     // Wie lange auf ein fremdes SDK gewartet wird, bevor ohne es gestartet
     // wird. Lieber ohne Werbung spielen als vor einem schwarzen Bild warten.

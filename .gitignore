@@ -34,3 +34,20 @@ public/_tmp_*
 assets-src/art/_debug/
 assets-src/art/_probe/
 pakete/
+
+# ---------------------------------------------------------- Android-Hülle
+# `android/` selbst ist versioniert — das native Projekt (Manifest, Symbole,
+# Gradle-Dateien) gehört zum Quellstand, genau wie index.html es für das Web
+# tut. Ausgeschlossen ist nur, was jeder Rechner selbst neu erzeugt oder was
+# rein lokal ist:
+android/local.properties
+# ^ enthält sdk.dir, einen absoluten Pfad zum Android-SDK DIESES Rechners.
+#   Bei jedem anderen wäre er falsch; `npx cap sync` bzw. Android Studio
+#   legen die Datei beim ersten Öffnen automatisch neu an.
+android/**/build/
+android/.gradle/
+android/captures/
+android/app/release/
+# Debug- und unsignierte Test-APKs sind Baubestand, keine Quelle — genau wie
+# pakete/ für die Web-Portale, siehe oben.
+android/app/build/outputs/
