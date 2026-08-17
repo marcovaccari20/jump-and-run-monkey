@@ -88,15 +88,19 @@ const PORTALE = {
     // Portal-SDKs würden dort nicht einmal laden.
     ohneFremdSdk: true,
     hinweise: [
-      'Dieses ZIP ist NICHT die fertige App — es ist ihr Inhalt.',
-      'Es wurde mit VITE_ZIEL=playstore gebaut: provider steht fest auf "none",',
-      '  die Web-SDKs von CrazyGames/GameMonetize werden nie geladen. Von Hand',
-      '  ist dafür nichts umzustellen.',
-      'Werbung gibt es in dieser Fassung noch keine — dafür kommt AdMob in die',
-      '  Hülle, nicht ins Web-Bündel.',
-      'Weiter geht es mit Capacitor: siehe scripts/app-huelle.md.',
-      'Play Store verlangt zusätzlich: Datenschutzerklärung, Alterseinstufung,',
-      '  Symbol 512x512, Funktionsgrafik 1024x500, mindestens 2 Screenshots.',
+      'Dieses ZIP ist NICHT die fertige App — es ist ihr Inhalt. Die Hülle',
+      '  steht in android/ (Capacitor), siehe scripts/app-huelle.md.',
+      'FÜR DEN PLAY STORE BRAUCHT MAN DIESES ZIP GAR NICHT: dort lädt man ein',
+      '  AAB hoch, gebaut mit "cd android && ./gradlew bundleRelease". Das ZIP',
+      '  ist nur zum Nachsehen, was im Bündel steckt.',
+      'Werbung läuft in der App über ADMOB, nicht über die Web-SDKs — die',
+      '  würden dort nicht einmal laden. AutoPortal fragt zuerst',
+      '  Capacitor.isNativePlatform() und nimmt dann ausschliesslich AdMob.',
+      'Es laufen noch Googles TEST-Anzeigen. Vor der Veröffentlichung die',
+      '  eigenen IDs eintragen — welche wohin, steht in app-huelle.md.',
+      'Play Store verlangt zusätzlich: Datenschutzerklärung als öffentliche',
+      '  URL, Alterseinstufung, Data-Safety-Formular, Symbol 512x512,',
+      '  Funktionsgrafik 1024x500, mindestens 2 Screenshots.',
     ],
   },
 };
@@ -289,18 +293,18 @@ let dateienJetzt = dateien;
 for (const key of [...webZiele, ...appZiele]) {
   const p = PORTALE[key];
 
-  // Vergleich gegen die URSPRÜNGLICHE Liste: nur beim ersten App-Ziel neu bauen.
-  if (p.ohneFremdSdk && dateienJetzt === dateien) {
-    console.log('\nBaue die App-Fassung (VITE_ZIEL=playstore) …');
-    execFileSync('npx', ['vite', 'build'], {
-      cwd: ROOT,
-      stdio: 'inherit',
-      shell: true,
-      env: { ...process.env, VITE_ZIEL: 'playstore' },
-    });
-    totesModellEntfernen();
-    dateienJetzt = alleDateien(DIST);
-  }
+  /* KEIN ZWEITER BAU MEHR FÜR DIE APP.
+   *
+   * Hier wurde bis vor Kurzem mit VITE_ZIEL=playstore neu gebaut, weil das
+   * Bündel für die App ein anderes war: `provider` stand darin fest auf
+   * 'none'. Seit AdMob in der Hülle sitzt, ist `provider` immer 'auto' —
+   * dasselbe Bündel bedient Web UND App, und wer sie voneinander
+   * unterscheidet, ist zur LAUFZEIT die Abfrage
+   * `Capacitor.isNativePlatform()` in AutoPortal.
+   *
+   * VITE_ZIEL ändert damit gar nichts mehr am Ergebnis. Ein zweiter Bau
+   * kostete nur Zeit und stellte hinterher dist/ auf einen Stand, den
+   * niemand angefordert hatte. */
   const dateien_ = dateienJetzt;
 
   /* Für die App-Fassung gilt eine SCHÄRFERE Regel als fürs Web.
@@ -329,26 +333,42 @@ for (const key of [...webZiele, ...appZiele]) {
      *   und verschwinden auch dann nicht aus dem Bündel, wenn sie nie
      *   gerufen werden.
      *
-     * Entscheidend ist deshalb der SCHALTER: wird mit VITE_ZIEL=playstore
-     * gebaut, steht `provider` auf 'none', `erzeugePortal` liefert
-     * `KeinPortal`, und keines der beiden SDKs wird je angefordert. Genau das
-     * wird hier nachgewiesen. */
-    let schalterOk = false;
+     * WAS HIER FRÜHER STAND UND WARUM ES WEG MUSSTE.
+     *
+     * Geprüft wurde, ob `provider: 'none'` im Bündel steht — der Beweis, dass
+     * mit VITE_ZIEL=playstore gebaut wurde und kein Portal-SDK je angefordert
+     * wird. Seit AdMob in der Hülle sitzt, ist `provider` immer 'auto', und
+     * die Prüfung schlug zwangsläufig fehl: das Play-Store-Paket wurde
+     * kommentarlos ÜBERSPRUNGEN. Ein Wächter, der nach der Umstellung das
+     * Falsche bewacht, ist schlimmer als keiner.
+     *
+     * Nachgewiesen wird jetzt, was für die App wirklich zählt: dass die
+     * ADMOB-ANZEIGENBLÖCKE im Bündel stehen. Fehlen sie, wäre die App
+     * werbefrei — kein Absturz, keine Meldung, nur eine leere Abrechnung,
+     * die Wochen später auffällt. */
+    const admobIds = [];
     for (const datei of dateien_) {
       if (!/\.js$/i.test(datei)) continue;
       const text = readFileSync(datei, 'utf8');
-      /* Der Bundler ersetzt den Ausdruck durch den festen Wert — aber in
-       * welcher Anführung, entscheidet er selbst. Gemessen kam
-       * `provider:\`none\`` heraus, mit Backticks; eine Prüfung nur auf
-       * ' und " ging deshalb ins Leere und meldete die fertige App-Fassung
-       * als „keine App-Fassung". Alle drei zulassen. */
-      if (/provider\s*:\s*["'`]none["'`]/.test(text)) schalterOk = true;
+      for (const treffer of text.match(/ca-app-pub-\d+\/\d+/g) ?? []) admobIds.push(treffer);
     }
-    if (!schalterOk) {
-      console.log(`\n${p.label}: ÜBERSPRUNGEN — der Build ist keine App-Fassung.`);
-      console.log('  Erwartet: provider = "none" im Bündel.');
-      console.log('  So bauen:  VITE_ZIEL=playstore npm run build');
+    if (admobIds.length === 0) {
+      console.log(`\n${p.label}: ÜBERSPRUNGEN — keine AdMob-Anzeigenblöcke im Bündel.`);
+      console.log('  Erwartet: CONFIG.ad.admob.belohnt und .zwischen (ca-app-pub-…/…).');
+      console.log('  Ohne sie zeigt die App NIE eine Anzeige. Siehe scripts/app-huelle.md.');
       continue;
+    }
+    /* Googles Testkennung beginnt immer mit dieser Nummer. Sie ist zum
+     * Ausprobieren richtig und zum Veröffentlichen falsch — deshalb eine
+     * deutliche Erinnerung statt einer Ablehnung. */
+    const nurTest = admobIds.every((id) => id.startsWith('ca-app-pub-3940256099942544'));
+    console.log(
+      `\n${p.label}: AdMob verdrahtet — ${new Set(admobIds).size} Anzeigenblöcke` +
+        `${nurTest ? '  (Googles TESTanzeigen)' : ''}`,
+    );
+    if (nurTest) {
+      console.log('  Vor der Veröffentlichung die eigenen IDs eintragen, sonst');
+      console.log('  verdient die App nichts. Welche wohin: scripts/app-huelle.md.');
     }
 
     // Fremdadressen NENNEN, nicht ablehnen — sie gehören in die

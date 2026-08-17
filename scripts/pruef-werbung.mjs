@@ -14,7 +14,7 @@
  *
  * Run mit:  npm run pruef:werbung
  */
-import { CrazyGames, GameMonetize, umgebungLesen } from '../src/systems/Portal.js';
+import { AdMobPortal, CrazyGames, GameMonetize, umgebungLesen } from '../src/systems/Portal.js';
 
 /* Das Portal-Modul greift auf document/window zu. Ein Minimalersatz genügt —
  * geprüft wird die Zustandslogik, nicht das Laden eines Skripts. */
@@ -279,6 +279,150 @@ function sdkDoppel() {
   p.werbung('rewarded');
   pruefe('werbung("rewarded") ebenso', rufe.at(-1), 'requestAd:rewarded');
   p.abbrechen();
+}
+
+/* =====================================================================
+ *  ADMOB — die Werbung der Android-App
+ *
+ *  Derselbe Grund wie oben, nur noch schärfer: eine App bekommt man nicht
+ *  mal eben auf, um nachzusehen. Zwischen "Code geändert" und "im Play
+ *  Store sichtbar" liegen ein Gradle-Bau, ein Upload und eine Prüfung durch
+ *  Google. Ein Fehler, den man erst dort bemerkt, kostet Tage.
+ *
+ *  Die Aufrufnamen unten sind an der TypeScript-Schnittstelle des Plugins
+ *  nachgesehen (@capacitor-community/admob 8.1.0), nicht geraten:
+ *    prepareRewardVideoAd / showRewardVideoAd
+ *    prepareInterstitial  / showInterstitial
+ * ===================================================================== */
+
+console.log('\nAdMob-Anbindung (Android-App):\n');
+
+/** Ein AdMob-Doppel, das mitschreibt und sich steuern lässt. */
+function admobDoppel({ belohntLaeuft = true, zwischenLaeuft = true, lohn = { type: 'coins', amount: 1 } } = {}) {
+  const rufe = [];
+  return {
+    rufe,
+    admob: {
+      async initialize() { rufe.push('initialize'); },
+      async prepareRewardVideoAd() { rufe.push('prepareRewardVideoAd'); },
+      async prepareInterstitial() { rufe.push('prepareInterstitial'); },
+      async showRewardVideoAd() {
+        rufe.push('showRewardVideoAd');
+        // Bricht der Spieler ab, wirft das Plugin — genau das bildet das hier ab.
+        if (!belohntLaeuft) throw new Error('dismissed');
+        return lohn;
+      },
+      async showInterstitial() {
+        rufe.push('showInterstitial');
+        if (!zwischenLaeuft) throw new Error('no fill');
+      },
+    },
+  };
+}
+
+const ADCFG = {
+  admob: { belohnt: 'ca-app-pub-test/1', zwischen: 'ca-app-pub-test/2', test: true },
+};
+
+/** Ein AdMob-Portal, das bereit ist und beide Sorten vorrätig hat. */
+function admobBereit(optionen) {
+  const { rufe, admob } = admobDoppel(optionen);
+  const p = new AdMobPortal(ADCFG);
+  p.admob = admob;
+  p.bereit = true;
+  p._belohntBereit = true;
+  p._zwischenBereit = true;
+  p._letzterSpot = 0; // Sperre lange vorbei
+  return { p, rufe };
+}
+
+/* --- 1. Belohnter Spot zu Ende gesehen --------------------------------- *
+ * DER ENTSCHEIDENDE UNTERSCHIED ZU GAMEMONETIZE: showRewardVideoAd() löst
+ * nur auf, wenn die Belohnung wirklich verdient ist. Kein Erschliessen aus
+ * Ereignissen, keine Mindestdauer. */
+{
+  const { p } = admobBereit();
+  pruefe('belohnter Spot zu Ende gesehen', await p.werbung('rewarded'), 'belohnt');
+}
+
+/* --- 2. Spieler bricht ab -> KEINE Belohnung --------------------------- */
+{
+  const { p } = admobBereit({ belohntLaeuft: false });
+  pruefe('belohnter Spot abgebrochen', await p.werbung('rewarded'), 'abgebrochen');
+}
+
+/* --- 3. Gar kein Spot vorraetig ---------------------------------------- */
+{
+  const { p } = admobBereit();
+  p._belohntBereit = false;
+  pruefe('kein belohnter Spot vorraetig', await p.werbung('rewarded'), 'fehler');
+}
+
+/* --- 4. Zwischenspot ---------------------------------------------------- */
+{
+  const { p, rufe } = admobBereit();
+  pruefe('Zwischenspot gelaufen', await p.werbung('midgame'), 'belohnt');
+  pruefe('  und zwar ueber showInterstitial', rufe.includes('showInterstitial'), true);
+  pruefe('  NICHT ueber den belohnten Aufruf', rufe.includes('showRewardVideoAd'), false);
+}
+
+/* --- 5. Die Werbeart trennt die beiden Wege --------------------------- *
+ * Ein Zwischenspot darf nicht den belohnten Block verbrauchen — der ist
+ * wertvoller und wird anders abgerechnet. */
+{
+  const { p, rufe } = admobBereit();
+  await p.werbung('rewarded');
+  pruefe('belohnt nimmt showRewardVideoAd', rufe.includes('showRewardVideoAd'), true);
+  pruefe('  und NICHT showInterstitial', rufe.includes('showInterstitial'), false);
+}
+
+/* --- 6. Nach jedem Spot wird nachgeladen ------------------------------- *
+ * Ohne Vorladen steht der Spieler nach dem Klick sekundenlang vor einem
+ * leeren Bildschirm. */
+{
+  const { p, rufe } = admobBereit();
+  await p.werbung('rewarded');
+  pruefe('belohnter Spot laedt nach', rufe.includes('prepareRewardVideoAd'), true);
+}
+{
+  const { p, rufe } = admobBereit();
+  await p.werbung('midgame');
+  pruefe('Zwischenspot laedt nach', rufe.includes('prepareInterstitial'), true);
+}
+
+/* --- 7. Die Sperre ------------------------------------------------------ */
+{
+  const { p } = admobBereit();
+  pruefe('vor dem ersten Spot verfuegbar', p.hatWerbung(), true);
+  await p.werbung('rewarded');
+  pruefe('direkt danach gesperrt', p.hatWerbung(), false);
+}
+
+/* --- 8. Ohne vorraetigen Spot kein Angebot ----------------------------- *
+ * `hatWerbung()` steuert, ob der Knopf ueberhaupt erscheint. Ein Angebot,
+ * das nicht eingeloest werden kann, ist schlimmer als keines. */
+{
+  const { p } = admobBereit();
+  p._belohntBereit = false;
+  pruefe('kein Vorrat -> kein Angebot', p.hatWerbung(), false);
+}
+
+/* --- 9. Nicht eingerichtet --------------------------------------------- */
+{
+  const p = new AdMobPortal({ admob: null });
+  pruefe('ohne Einrichtung: keine Werbung', p.hatWerbung(), false);
+  pruefe('ohne Einrichtung: Anfrage scheitert', await p.werbung('rewarded'), 'fehler');
+  pruefe('init ohne IDs meldet false', await p.init(), false);
+}
+
+/* --- 10. AdMob legt keine eigenen Spots -------------------------------- *
+ * Anders als die Portale will AdMob nicht wissen, wann gespielt wird. Diese
+ * Methoden muessen still bleiben — und duerfen vor allem nicht werfen. */
+{
+  const { p, rufe } = admobBereit();
+  p.ladenStart(); p.ladenFertig(); p.spielStart(); p.spielStop(); p.abbrechen();
+  pruefe('Spielmeldungen bleiben still', rufe.length, 0);
+  pruefe('kein Portalspeicher', p.datenSpeicher(), null);
 }
 
 console.log(fehler === 0 ? '\nAlle Fälle bestanden.\n' : `\n${fehler} FEHLER.\n`);

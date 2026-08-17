@@ -1931,8 +1931,11 @@ export const CONFIG = {
      * GameMonetize werden dort nicht einmal angefasst — was der Play Store
      * auch nicht dulden würde.
      *
-     * VITE_ZIEL=playstore bleibt trotzdem sinnvoll: package-portal.mjs prüft
-     * damit, dass im App-Bündel keine fremden Web-SDK-Adressen stehen. */
+     * VITE_ZIEL WIRD DAMIT NIRGENDS MEHR GELESEN. Es gibt kein eigenes
+     * App-Bündel mehr — dasselbe bedient Browser und App, unterschieden
+     * wird zur Laufzeit. package-portal.mjs baut deshalb auch nicht mehr
+     * ein zweites Mal; es weist beim Play-Store-Ziel stattdessen nach, dass
+     * die AdMob-Anzeigenblöcke im Bündel stehen. */
     provider: 'auto',
 
     /* Von GameMonetize beim Anlegen des Spiels vergeben.
