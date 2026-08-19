@@ -60,3 +60,7 @@ android/app/build/outputs/
 android/keystore.properties
 android/*.jks
 android/app/*.jks
+
+# Erzeugte Store-Grafiken. Entstehen aus pakete/titelbilder per
+# `npm run playstore:grafiken` — Ergebnis, keine Quelle.
+pakete/playstore/
