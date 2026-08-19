@@ -27,7 +27,8 @@
     "video:empfang": "node scripts/video-empfang.mjs",
     "video:fassungen": "node scripts/video-fassungen.mjs",
     "app:icon": "node scripts/app-icon.mjs",
-    "app:sync": "npx cap sync android"
+    "app:sync": "npx cap sync android",
+    "pruef:konto": "node scripts/pruef-konto.mjs"
   },
   "type": "module",
   "dependencies": {

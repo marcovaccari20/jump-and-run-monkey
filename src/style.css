@@ -1134,6 +1134,94 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
   border-color: var(--banana);
 }
 
+/* ------------------------------------------------------------------- Konto */
+
+/* Das breite Feld für E-Mail-Adresse und Passwort.
+ *
+ * Es MUSS drei Eigenschaften von `.name-input` zurücknehmen. Die sind für den
+ * dreibuchstabigen Arcade-Namen gemacht und hier durchweg schädlich:
+ *   - `text-transform: uppercase` verändert zwar nur die Anzeige, nicht den
+ *     Wert — aber wer "Max@web.de" eintippt und "MAX@WEB.DE" liest, sucht den
+ *     Fehler bei sich. Beim Passwort ist es schlimmer: die Punkte bleiben
+ *     zwar Punkte, doch die Grossschreibung suggeriert, sie sei Teil der
+ *     Eingabe.
+ *   - `letter-spacing` sperrt Adressen unleserlich auseinander.
+ *   - `text-align: center` lässt beim Tippen den Cursor springen.
+ * Ausserdem 16px Schriftgrösse: darunter zoomt iOS Safari beim Antippen
+ * ungefragt hinein, und der Bildschirm sitzt danach schief. */
+.name-input--breit {
+  width: min(300px, 82cqw);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+}
+
+.account {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(320px, 86cqw);
+  pointer-events: auto;
+}
+
+.account__label {
+  align-self: flex-start;
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Im Modus "Passwort vergessen" gibt es kein Passwort einzugeben — dort wird
+ * nur die Adresse gebraucht, an die der Link geht. Umgekehrt braucht das
+ * Setzen eines neuen Passworts keine Adresse mehr: wer über den Link aus der
+ * Mail kommt, bringt eine gültige Sitzung mit. */
+.account[data-modus='vergessen'] .account__nur-passwort,
+.account[data-modus='neuesPasswort'] .account__nur-adresse {
+  display: none;
+}
+
+.account__meldung {
+  min-height: 1.2em;
+  margin: 4px 0 2px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.account__meldung--fehler {
+  color: #ff9a7a;
+}
+
+.account__meldung--gut {
+  color: var(--leaf);
+}
+
+.account__wechsel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* Der Wechsel-Block steht direkt unter dem Formular — die 12px Vorlauf der
+ * leisen Links würden ihn davon abtrennen. */
+.account__wechsel .link-leise {
+  margin-top: 4px;
+}
+
+/* Während eine Anfrage läuft: Knopf gesperrt, damit ein zweiter Klick nicht
+ * ein zweites Konto anlegt oder eine zweite Mail auslöst. */
+.account button[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ------------------------------------------------------------------ Loader */
 
 .loader {

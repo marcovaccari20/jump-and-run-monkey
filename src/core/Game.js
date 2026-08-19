@@ -41,6 +41,7 @@ import {
   codeAufloesen,
   codeVorschlag,
 } from '../systems/Fortschritt.js';
+import { Konto, KontoSpeicher } from '../systems/Konto.js';
 import { Klang } from '../systems/Klang.js';
 import { erzeugeBestenliste } from '../systems/Bestenliste.js';
 import { createAdService } from '../systems/AdService.js';
@@ -92,6 +93,13 @@ export class Game {
     this.klang = new Klang(CONFIG.klang);
 
     this.fortschritt = new Fortschritt(CONFIG.fortschritt);
+
+    /* Konto (E-Mail + Passwort). Freiwillig: wer sich nicht anmeldet, spielt
+     * genau wie bisher weiter, nur eben gerätegebunden. Wird HIER erzeugt und
+     * nicht erst in `_fortschrittSpeicherWaehlen`, weil schon der
+     * Ladebildschirm wissen muss, ob eine Sitzung im Browser liegt — sonst
+     * blitzte im Menü kurz "Sign in" auf, obwohl der Spieler angemeldet ist. */
+    this.konto = new Konto(CONFIG.bestenliste);
     /* MUSS vor dem ersten loadId() stehen: die Stores merken sich ihr
      * Ergebnis, ein zu spät gesetzter Prüfer käme nie zum Zug. */
     this.characters.istFrei = (id) => this.fortschritt.istFrei(id);
@@ -315,13 +323,126 @@ export class Game {
 
     const b = this.cfg.bestenliste;
     if (b?.url && b?.schluessel) {
+      /* Die Kennung wird IMMER geholt, auch bei angemeldeten Spielern. Sie
+       * ist der anonyme Stand dieses Geräts und wird beim Anmelden ins Konto
+       * übernommen; ausserdem hängt der Übertragungscode an ihr. */
       this.spielerId = spielerKennung(this.cfg.fortschritt.spielerKey);
-      this.fortschritt.fernSetzen(new SupabaseSpeicher(b, this.spielerId));
-      console.info('[Fortschritt] Supabase aktiv.');
+      if (this.konto.angemeldet) {
+        this.fortschritt.fernSetzen(new KontoSpeicher(b, this.konto));
+        console.info('[Fortschritt] Supabase aktiv — am Konto.');
+      } else {
+        this.fortschritt.fernSetzen(new SupabaseSpeicher(b, this.spielerId));
+        console.info('[Fortschritt] Supabase aktiv — anonym.');
+      }
       return;
     }
 
     console.info('[Fortschritt] Nur Browserspeicher — kein Portal, keine Datenbank.');
+  }
+
+  /**
+   * Anmelden, registrieren, Passwort zuruecksetzen oder neu setzen.
+   *
+   * Alle vier Wege durch EINE Methode, weil sie dieselben drei Schritte
+   * teilen: sperren, Serveraufruf, Meldung. Getrennt geschrieben waere die
+   * Sperre dreimal zu pflegen — und genau eine davon vergisst man.
+   *
+   * @param {{modus:string, email:string, passwort:string}} d
+   */
+  async _kontoSenden({ modus, email, passwort }) {
+    /* Vor dem Netz pruefen, was das Netz nicht besser weiss. Supabase
+     * antwortet auf ein kurzes Passwort erst nach einem Rundlauf; hier steht
+     * die Meldung sofort. Die Grenze MUSS zu Supabase passen (dort 6). */
+    if (modus !== 'vergessen' && passwort.length < 6) {
+      this.ui.kontoMeldung('Password too short - use at least 6 characters.', 'fehler');
+      return;
+    }
+
+    this.ui.kontoBeschaeftigt(true);
+    this.ui.kontoMeldung('One moment…');
+    try {
+      if (modus === 'registrieren') {
+        const { sofortAngemeldet } = await this.konto.registrieren(email, passwort);
+        if (sofortAngemeldet) {
+          await this._kontoUebernehmen();
+          this.ui.kontoMeldung('Account created. Your progress is saved.', 'gut');
+        } else {
+          /* Supabase verlangt eine Bestaetigung der Adresse. Das Konto
+           * besteht, aber es gibt noch keine Sitzung — das MUSS gesagt
+           * werden, sonst wartet der Spieler vergeblich auf etwas. */
+          this.ui.kontoMeldung(
+            'Almost there - open the link we just e-mailed you, then sign in.',
+            'gut',
+          );
+        }
+      } else if (modus === 'anmelden') {
+        await this.konto.anmelden(email, passwort);
+        await this._kontoUebernehmen();
+        this.ui.kontoMeldung('Signed in.', 'gut');
+      } else if (modus === 'vergessen') {
+        await this.konto.passwortVergessen(email);
+        /* Bewusst OHNE zu verraten, ob es die Adresse gibt. Sonst waere das
+         * Formular eine Auskunftsstelle darueber, wer hier ein Konto hat. */
+        this.ui.kontoMeldung(
+          'If that address has an account, a reset link is on its way.',
+          'gut',
+        );
+      } else if (modus === 'neuesPasswort') {
+        await this.konto.passwortSetzen(passwort);
+        await this._kontoUebernehmen();
+        this.ui.kontoMeldung('Password changed. You are signed in.', 'gut');
+      }
+    } catch (e) {
+      this.ui.kontoMeldung(e.message, 'fehler');
+    } finally {
+      this.ui.kontoBeschaeftigt(false);
+      /* Nach ERFOLG das Passwortfeld leeren: sonst bleibt der Bildschirm mit
+       * einem Geheimnis im Speicher stehen, wenn jemand anders das Geraet in
+       * die Hand nimmt. Nach einem FEHLSCHLAG bleibt es absichtlich stehen —
+       * wer sich vertippt hat, will die eine Stelle verbessern und nicht
+       * alles neu tippen. */
+      if (this.konto.angemeldet) this.ui.el.kontoPass.value = '';
+    }
+  }
+
+  /**
+   * Nach erfolgreicher Anmeldung: Stand zusammenfuehren und umschalten.
+   *
+   * Die REIHENFOLGE ist entscheidend. Erst `verknuepfen` — das haengt den
+   * bisherigen anonymen Stand dieses Geraets ans Konto und fuehrt beide
+   * Seiten zusammen. Erst DANACH auf den Kontospeicher umschalten und laden.
+   * Andersherum laese das Spiel ein leeres Konto, ueberschriebe damit die
+   * Anzeige und der Spieler saehe seine Muenzen verschwinden.
+   */
+  async _kontoUebernehmen() {
+    const b = this.cfg.bestenliste;
+    if (!b?.url || !b?.schluessel) return;
+
+    const speicher = new KontoSpeicher(b, this.konto);
+    await speicher.verknuepfen(this.spielerId);
+    await this.fortschritt.fernSetzen(speicher);
+
+    this.ui.kontoZustand({ email: this.konto.email });
+    /* Muenzstand und Kacheln neu zeichnen: durchs Zusammenfuehren koennen
+     * Affen und Felle dazugekommen sein, die eben noch gesperrt aussahen. */
+    this._zeichneAuswahl();
+  }
+
+  async _kontoAbmelden() {
+    this.ui.kontoBeschaeftigt(true);
+    try {
+      await this.konto.abmelden();
+    } finally {
+      this.ui.kontoBeschaeftigt(false);
+    }
+    /* Zurueck auf den anonymen Speicher dieses Geraets. Der lokale Stand
+     * bleibt unberuehrt — abmelden ist kein Loeschen. */
+    const b = this.cfg.bestenliste;
+    if (b?.url && b?.schluessel && this.spielerId) {
+      this.fortschritt.fernSetzen(new SupabaseSpeicher(b, this.spielerId));
+    }
+    this.ui.kontoZustand(null);
+    this.ui.kontoMeldung('Signed out. Your progress stays on this device.', 'gut');
   }
 
   /**
@@ -626,6 +747,25 @@ export class Game {
     this.klang.atmo('gruen');
     this.ui.showMenu(this.score.loadHighscores());
     this.ui.setStats(this.cfg.debug.showStats ? '' : null);
+
+    /* Ueber einen "Passwort vergessen"-Link hereingekommen? Dann jetzt direkt
+     * auf den Kontobildschirm.
+     *
+     * GENAU HIER und nicht im onEnter von MENU: das erste Menue erreicht kein
+     * Uebergang, es wird eine Zeile weiter oben von Hand gezeigt (siehe den
+     * Kommentar zu `klang.atmo`). Ein Rueckruf am Zustandsautomaten haette
+     * beim Start also nie gefeuert — und der Start ist der einzige Zeitpunkt,
+     * zu dem ein solcher Link ankommt. Gemessen: der Bildschirm blieb aus,
+     * obwohl die Sitzung aus dem Fragment bereits angelegt war. */
+    if (this._passwortNeuSetzen) {
+      this._passwortNeuSetzen = false;
+      /* `kontoZustand(null)` zeigt das FORMULAR statt der Angemeldet-Tafel.
+       * Angemeldet ist er durch den Link zwar bereits — aber eingeben soll er
+       * ja gerade etwas, und die Tafel hat kein Feld. */
+      this.ui.kontoZustand(null);
+      this.ui.kontoModus('neuesPasswort');
+      this.ui.showScreen('account');
+    }
 
     return {
       mode: this.cfg.player.mode,
@@ -1565,6 +1705,38 @@ export class Game {
      * deshalb nichts anderes anfassen. */
     this.ui.callbacks.onPrivacy = () => this.ui.showScreen('privacy');
     this.ui.callbacks.onPrivacyBack = () => this.ui.showMenu(this.score.loadHighscores());
+
+    /* Konto. Genau wie der Datenschutz an keinen Spielzustand gebunden:
+     * hinein aus dem Menue, hinaus zurueck ins Menue. */
+    this.ui.callbacks.onKonto = () => {
+      this.ui.kontoZustand(this.konto.angemeldet ? { email: this.konto.email } : null);
+      this.ui.showScreen('account');
+    };
+    this.ui.callbacks.onKontoBack = () => this.ui.showMenu(this.score.loadHighscores());
+    this.ui.callbacks.onKontoModus = () => {
+      const jetzt = this.ui.el.kontoForm.dataset.modus;
+      // Aus "vergessen" fuehrt der Link zurueck zum Anmelden, sonst wechselt
+      // er zwischen Anmelden und Registrieren hin und her.
+      this.ui.kontoModus(jetzt === 'anmelden' ? 'registrieren' : 'anmelden');
+    };
+    this.ui.callbacks.onKontoVergessen = () => this.ui.kontoModus('vergessen');
+    this.ui.callbacks.onKontoSenden = (d) => this._kontoSenden(d);
+    this.ui.callbacks.onKontoAbmelden = () => this._kontoAbmelden();
+
+    /* Wurde das Spiel ueber den Link aus einer "Passwort vergessen"-Mail
+     * geoeffnet? Dann steht im Adressfragment eine gueltige Sitzung.
+     *
+     * HIER NUR MERKEN, NICHT ANZEIGEN. Zwei Dinge kaemen sonst dazwischen:
+     * der Zustandsautomat zeigt beim Eintritt in MENU seinerseits das Menue
+     * und schoebe den Kontobildschirm wieder zu; und `ruecksetzungAusUrl`
+     * legt eine gueltige Sitzung an, weshalb die Zeile darunter den
+     * Bildschirm auf "angemeldet" stellte — mit ausgeblendetem Formular,
+     * also ohne die Moeglichkeit, ein Passwort einzugeben. Gezeigt wird
+     * deshalb erst, wenn das Menue steht (siehe GameState.MENU). */
+    this._passwortNeuSetzen = this.konto.ruecksetzungAusUrl();
+    if (!this._passwortNeuSetzen) {
+      this.ui.kontoZustand(this.konto.angemeldet ? { email: this.konto.email } : null);
+    }
     this.ui.callbacks.onCharactersBack = () => this._closeCharacters();
     this.ui.callbacks.onPickCharacter = (id) => this._pickCharacter(id);
     this.ui.callbacks.onPickSkin = (id) => this._pickSkin(id);

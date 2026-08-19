@@ -112,6 +112,15 @@
             <p class="controls-hint--touch">Tap anywhere and drag left or right</p>
           </div>
 
+          <!-- Einstieg ins Konto.
+               Der Text WIRBT, statt zu verlangen, und nennt den Nutzen
+               ("save your progress") statt der Handlung. Wer nicht will,
+               spielt ohne Konto weiter — die Zeile ist ein leiser Link, kein
+               Tor. Sobald jemand angemeldet ist, steht hier seine Adresse. -->
+          <button id="btn-konto" class="link-leise" type="button">
+            Sign in to save your progress
+          </button>
+
           <!-- Datenschutzhinweis.
                PFLICHT, SOBALD DAS SPIEL DATEN AN EINEN EIGENEN SERVER SCHICKT.
                Genau das tut die weltweite Bestenliste (Name und Höhe gehen an
@@ -130,8 +139,9 @@
 
           <div class="panel panel--text">
             <p>
-              Jungle Climber has no accounts, no sign-up and no e-mail. You can
-              play it without giving away anything about yourself.
+              You can play Jungle Climber without an account and without
+              giving away anything about yourself. An account is optional —
+              it exists only so your progress survives a new phone.
             </p>
 
             <h3 class="panel__title panel__title--spaced">What is stored</h3>
@@ -139,6 +149,13 @@
               Your coins and unlocked monkeys are kept under a random number
               that this game makes up on your device. That number is not tied
               to your name, your e-mail or your account anywhere else.
+            </p>
+            <p>
+              If you do create an account, we store your e-mail address and a
+              scrambled form of your password — never the password itself, not
+              even we can read it. The e-mail address is used for two things
+              only: signing you in, and sending you a reset link if you forget
+              your password. No newsletters, ever.
             </p>
             <p>
               If you enter a name for the worldwide leaderboard, that name and
@@ -149,9 +166,9 @@
 
             <h3 class="panel__title panel__title--spaced">What is not</h3>
             <p>
-              No e-mail address, no password, no location, no contacts, no
+              No location, no contacts, no photos, no address book, no
               tracking across other websites. We do not sell anything to
-              anyone.
+              anyone. Without an account we hold no e-mail address at all.
             </p>
 
             <h3 class="panel__title panel__title--spaced">Advertising</h3>
@@ -163,9 +180,11 @@
             <h3 class="panel__title panel__title--spaced">Removing your data</h3>
             <p>
               Clearing your browser data removes the number on your device. To
-              have a leaderboard entry taken down, write to
-              <span class="mail">info@mycallmanager.ch</span>
-              with the name and the score.
+              have a leaderboard entry taken down, or to have your account and
+              e-mail address deleted for good, write to
+              <span class="mail">info@mycallmanager.ch</span>.
+              For a leaderboard entry, tell us the name and the score; for an
+              account, write from the address you signed up with.
             </p>
           </div>
 
@@ -173,6 +192,85 @@
             <button id="btn-privacy-back" class="btn btn--primary" type="button">
               Back
             </button>
+          </div>
+        </section>
+
+        <!-- ---------------------------------------------------------- Konto -->
+        <!-- EIN Bildschirm für drei Aufgaben (anmelden, registrieren,
+             Passwort vergessen) statt drei Bildschirme. Grund: die Felder
+             sind dieselben, und wer sich vertippt hat, soll zwischen
+             "anmelden" und "registrieren" wechseln können, ohne das schon
+             Eingetippte zu verlieren. Umgeschaltet wird über
+             `data-modus` am Formular; das CSS blendet aus, was der jeweilige
+             Modus nicht braucht. -->
+        <section id="screen-account" class="screen screen--center screen--dim">
+          <h2 class="headline" id="account-headline">Sign in</h2>
+
+          <!-- Zustand A: nicht angemeldet — das Formular. -->
+          <form id="account-form" class="account" data-modus="anmelden" autocomplete="on">
+            <p class="tagline" id="account-intro">
+              Your coins and monkeys follow you to any device.
+            </p>
+
+            <label class="account__label account__nur-adresse" for="account-email">E-mail</label>
+            <input
+              id="account-email"
+              class="name-input name-input--breit account__nur-adresse"
+              type="email"
+              name="email"
+              autocomplete="email"
+              inputmode="email"
+              placeholder="you@example.com"
+              spellcheck="false"
+              required
+            />
+
+            <label class="account__label account__nur-passwort" for="account-pass">
+              Password
+            </label>
+            <input
+              id="account-pass"
+              class="name-input name-input--breit account__nur-passwort"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+              placeholder="At least 6 characters"
+              minlength="6"
+            />
+
+            <!-- Meldungen erscheinen hier, NICHT als alert(). Ein alert()
+                 blockiert den Spielablauf und sieht auf dem Handy aus wie ein
+                 Systemfehler. -->
+            <p class="account__meldung" id="account-meldung" role="status" aria-live="polite"></p>
+
+            <button id="account-senden" class="btn btn--primary" type="submit">Sign in</button>
+          </form>
+
+          <div class="account__wechsel" id="account-wechsel">
+            <button id="btn-account-modus" class="link-leise" type="button">
+              No account yet? Create one
+            </button>
+            <button id="btn-account-vergessen" class="link-leise" type="button">
+              Forgot your password?
+            </button>
+          </div>
+
+          <!-- Zustand B: angemeldet. -->
+          <div class="panel panel--text" id="account-angemeldet" hidden>
+            <p>
+              Signed in as <b id="account-adresse">—</b>.
+            </p>
+            <p>
+              Your progress is saved to this account. Sign in on another
+              device with the same e-mail to pick it up there.
+            </p>
+            <div class="button-row">
+              <button id="btn-account-abmelden" class="btn" type="button">Sign out</button>
+            </div>
+          </div>
+
+          <div class="button-row">
+            <button id="btn-account-back" class="btn" type="button">Back</button>
           </div>
         </section>
 

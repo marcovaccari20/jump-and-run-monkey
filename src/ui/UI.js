@@ -15,6 +15,7 @@ const SCREEN_SETS = {
   menu: ['screen-menu'],
   characters: ['screen-characters'],
   privacy: ['screen-privacy'],
+  account: ['screen-account'],
   playing: ['screen-hud'],
   paused: ['screen-hud', 'screen-paused'],
   // Zwischenschritt vor dem Game Over, solange ein zweites Leben übrig ist.
@@ -44,6 +45,22 @@ export class UI {
       btnCharactersBack: $('btn-characters-back'),
       btnPrivacy: $('btn-privacy'),
       btnPrivacyBack: $('btn-privacy-back'),
+
+      btnKonto: $('btn-konto'),
+      kontoForm: $('account-form'),
+      kontoHeadline: $('account-headline'),
+      kontoIntro: $('account-intro'),
+      kontoEmail: $('account-email'),
+      kontoPass: $('account-pass'),
+      kontoMeldung: $('account-meldung'),
+      kontoSenden: $('account-senden'),
+      kontoWechsel: $('account-wechsel'),
+      btnKontoModus: $('btn-account-modus'),
+      btnKontoVergessen: $('btn-account-vergessen'),
+      kontoAngemeldet: $('account-angemeldet'),
+      kontoAdresse: $('account-adresse'),
+      btnKontoAbmelden: $('btn-account-abmelden'),
+      btnKontoBack: $('btn-account-back'),
 
       hudScore: $('hud-score'),
       hudRevive: $('hud-revive'),
@@ -108,6 +125,13 @@ export class UI {
       onCharacters: () => {},
       onPrivacy: () => {},
       onPrivacyBack: () => {},
+      /** ({modus, email, passwort}) => void — Formular abgeschickt. */
+      onKontoSenden: () => {},
+      onKonto: () => {},
+      onKontoBack: () => {},
+      onKontoModus: () => {},
+      onKontoVergessen: () => {},
+      onKontoAbmelden: () => {},
       onCharactersBack: () => {},
       onPickCharacter: () => {},
       onPickSkin: () => {},
@@ -196,6 +220,24 @@ export class UI {
     this.el.btnCharactersBack.addEventListener('click', () => this.callbacks.onCharactersBack());
     this.el.btnPrivacy.addEventListener('click', () => this.callbacks.onPrivacy());
     this.el.btnPrivacyBack.addEventListener('click', () => this.callbacks.onPrivacyBack());
+
+    this.el.btnKonto.addEventListener('click', () => this.callbacks.onKonto());
+    this.el.btnKontoBack.addEventListener('click', () => this.callbacks.onKontoBack());
+    this.el.btnKontoModus.addEventListener('click', () => this.callbacks.onKontoModus());
+    this.el.btnKontoVergessen.addEventListener('click', () => this.callbacks.onKontoVergessen());
+    this.el.btnKontoAbmelden.addEventListener('click', () => this.callbacks.onKontoAbmelden());
+    /* Am FORMULAR, nicht am Knopf. Sonst käme man mit der Eingabetaste nicht
+     * durch — und genau so füllt jeder eine Anmeldemaske aus. `preventDefault`
+     * ist dabei Pflicht: ohne ihn lädt der Browser die Seite neu und das
+     * ganze Spiel startet von vorn. */
+    this.el.kontoForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.callbacks.onKontoSenden({
+        modus: this.el.kontoForm.dataset.modus,
+        email: this.el.kontoEmail.value,
+        passwort: this.el.kontoPass.value,
+      });
+    });
     this.el.btnCharactersGo.addEventListener('click', () => this.callbacks.onCharactersGo());
 
     // EIN Listener auf dem Container statt einer pro Kachel: die Kacheln
@@ -566,6 +608,126 @@ export class UI {
   /** Welcher Screen ist gerade oben? (Game sperrt darüber die Enter-Taste.) */
   get currentScreen() {
     return this._current;
+  }
+
+  /* ------------------------------------------------------------------ Konto */
+
+  /**
+   * Schaltet den Anmeldebildschirm zwischen seinen drei Aufgaben um.
+   *
+   * Alles, was sich unterscheidet, steht in EINER Tabelle beieinander:
+   * Überschrift, Einleitung, Knopfbeschriftung und die beiden leisen Links.
+   * Verteilt auf if-Zweige wäre beim nächsten Textwechsel garantiert eine
+   * Stelle vergessen worden.
+   *
+   * @param {'anmelden'|'registrieren'|'vergessen'} modus
+   */
+  kontoModus(modus) {
+    const texte = {
+      anmelden: {
+        titel: 'Sign in',
+        intro: 'Your coins and monkeys follow you to any device.',
+        knopf: 'Sign in',
+        wechsel: 'No account yet? Create one',
+        vergessen: 'Forgot your password?',
+      },
+      registrieren: {
+        titel: 'Create account',
+        intro: 'Pick any e-mail and password. Nothing else is asked of you.',
+        knopf: 'Create account',
+        wechsel: 'Already have an account? Sign in',
+        vergessen: '',
+      },
+      vergessen: {
+        titel: 'Reset password',
+        intro: 'We send a link to your e-mail. Open it to pick a new password.',
+        knopf: 'Send reset link',
+        wechsel: 'Back to sign in',
+        vergessen: '',
+      },
+      /* Erreichbar NUR ueber den Link aus der Mail — dort bringt die Adresse
+       * schon eine gueltige Sitzung mit, das E-Mail-Feld waere sinnlos. */
+      neuesPasswort: {
+        titel: 'New password',
+        intro: 'Pick a new password. You stay signed in afterwards.',
+        knopf: 'Save password',
+        wechsel: 'Cancel',
+        vergessen: '',
+      },
+    };
+    const t = texte[modus] ?? texte.anmelden;
+
+    this.el.kontoForm.dataset.modus = modus;
+    this.el.kontoHeadline.textContent = t.titel;
+    this.el.kontoIntro.textContent = t.intro;
+    this.el.kontoSenden.textContent = t.knopf;
+    this.el.btnKontoModus.textContent = t.wechsel;
+
+    /* Passwortverwaltungen im Browser richten sich nach `autocomplete`. Steht
+     * beim Registrieren `current-password`, bietet der Browser das ALTE
+     * Passwort an, statt ein neues vorzuschlagen — und speichert das neue
+     * hinterher nicht. */
+    const neuesGeheimnis = modus === 'registrieren' || modus === 'neuesPasswort';
+    this.el.kontoPass.autocomplete = neuesGeheimnis ? 'new-password' : 'current-password';
+    this.el.kontoPass.placeholder = neuesGeheimnis ? 'At least 6 characters' : 'Your password';
+
+    /* Beim Setzen eines neuen Passworts ist die Adresse schon bekannt; das
+     * Feld blendet das CSS aus (.account__nur-adresse). `required` muss aber
+     * hier weg: ein unsichtbares Pflichtfeld lässt der Browser nicht
+     * abschicken und zeigt dazu einen Fehler, den niemand sehen kann. */
+    this.el.kontoEmail.required = modus !== 'neuesPasswort';
+
+    // "Passwort vergessen?" ergibt nur beim Anmelden Sinn.
+    this.el.btnKontoVergessen.hidden = !t.vergessen;
+    if (t.vergessen) this.el.btnKontoVergessen.textContent = t.vergessen;
+
+    this.kontoMeldung('');
+  }
+
+  /**
+   * @param {string} text
+   * @param {'fehler'|'gut'|null} [art] färbt die Zeile; null = neutral
+   */
+  kontoMeldung(text, art = null) {
+    const e = this.el.kontoMeldung;
+    e.textContent = text;
+    e.classList.toggle('account__meldung--fehler', art === 'fehler');
+    e.classList.toggle('account__meldung--gut', art === 'gut');
+  }
+
+  /**
+   * Zeigt an, ob jemand angemeldet ist — auf dem Kontobildschirm UND im Menü.
+   *
+   * Beides an einer Stelle, weil es dieselbe Tatsache ist. Getrennt gepflegt
+   * driftete es auseinander: Menü sagt "sign in", Bildschirm sagt "signed in".
+   *
+   * @param {{email:string}|null} konto
+   */
+  kontoZustand(konto) {
+    const an = !!konto;
+    this.el.kontoForm.hidden = an;
+    this.el.kontoWechsel.hidden = an;
+    this.el.kontoAngemeldet.hidden = !an;
+
+    if (an) {
+      this.el.kontoHeadline.textContent = 'Your account';
+      this.el.kontoAdresse.textContent = konto.email;
+      /* Im Menü die Adresse zeigen, aber gekürzt: eine lange Adresse sprengt
+       * sonst die Zeile und drückt den Datenschutzlink aus dem Bild. */
+      const a = konto.email;
+      this.el.btnKonto.textContent = a.length > 26 ? `${a.slice(0, 23)}…` : a;
+    } else {
+      this.el.btnKonto.textContent = 'Sign in to save your progress';
+      this.kontoModus('anmelden');
+    }
+  }
+
+  /** Sperrt die Knöpfe, solange eine Anfrage läuft. */
+  kontoBeschaeftigt(busy) {
+    this.el.kontoSenden.disabled = busy;
+    this.el.btnKontoModus.disabled = busy;
+    this.el.btnKontoVergessen.disabled = busy;
+    this.el.btnKontoAbmelden.disabled = busy;
   }
 
   /* -------------------------------------------------------------------- HUD */

@@ -2397,6 +2397,28 @@ export const CONFIG = {
     standLadenFn: 'stand_laden',
     standSichernFn: 'stand_sichern',
 
+    /* Dieselben zwei Aufgaben für ANGEMELDETE Spieler.
+     *
+     * Warum eigene Funktionen und nicht einfach dieselben mit anderer
+     * Kennung: `stand_laden`/`stand_sichern` nehmen die Spielerkennung als
+     * PARAMETER entgegen. Für anonymes Spiel ist das in Ordnung — die
+     * Kennung ist eine Zufallszahl, die nur dieses Gerät kennt, und zu holen
+     * gibt es nichts als Münzen und Affen. Bei einem Konto wäre es
+     * fahrlässig: wer eine fremde Kennung erriete, schriebe in ein fremdes
+     * Konto. Diese beiden nehmen deshalb GAR KEINE Kennung entgegen, sondern
+     * lesen sie aus dem Anmeldemerkmal (`auth.uid()`). Lügen ist damit
+     * ausgeschlossen. */
+    standLadenKontoFn: 'stand_laden_konto',
+    standSichernKontoFn: 'stand_sichern_konto',
+    /* Hängt den bisherigen anonymen Stand dieses Geräts ans Konto. Läuft
+     * einmal beim Anmelden und führt zusammen, statt zu ersetzen. */
+    kontoVerknuepfenFn: 'konto_verknuepfen',
+    /* Wohin der Link aus der "Passwort vergessen"-Mail führt. Leer lassen =
+     * Supabase nimmt die Site-URL aus seinen Einstellungen. Was hier steht,
+     * MUSS dort unter "URL Configuration -> Redirect URLs" freigegeben sein,
+     * sonst wird es stillschweigend ignoriert. */
+    passwortZielUrl: '',
+
     /* Übertragung auf ein anderes Gerät per VIERSTELLIGEM CODE.
      *
      * Die Kennung bleibt intern der Schlüssel; der Code ist nur ein Zeiger
