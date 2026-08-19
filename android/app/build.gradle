@@ -1,5 +1,27 @@
 apply plugin: 'com.android.application'
 
+/* SIGNIERUNG
+ *
+ * Google Play nimmt nur unterschriebene Bundles an. Der Schluessel dafuer
+ * steht NICHT in dieser Datei und liegt NICHT im Repository — er gehoert in
+ * android/keystore.properties, die .gitignore ausschliesst. Wer den Quelltext
+ * klont, baut damit weiterhin ein unsigniertes Bundle (praktisch zum
+ * Ausprobieren), aber niemand kann mit einem geklonten Schluessel eine
+ * gefaelschte Aktualisierung veroeffentlichen.
+ *
+ * WARUM DER SCHLUESSEL NIE VERLOREN GEHEN DARF: Play erkennt eine App an
+ * ihrer Unterschrift. Ohne den urspruenglichen Schluessel laesst sich eine
+ * veroeffentlichte App NIE MEHR aktualisieren — auch nicht vom Entwickler
+ * selbst. Ein Backup der .jks-Datei samt Passwort ist Pflicht.
+ * (Play App Signing entschaerft das: dort ist dieser Schluessel nur der
+ * UPLOAD-Schluessel, und Google kann ihn auf Antrag zuruecksetzen.)
+ */
+def schluesselDatei = rootProject.file("keystore.properties")
+def schluessel = new Properties()
+if (schluesselDatei.exists()) {
+    schluesselDatei.withInputStream { schluessel.load(it) }
+}
+
 android {
     namespace = "com.jungleclimber.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +38,29 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            /* Nur belegen, wenn die Datei wirklich da ist. Ein
+             * signingConfig mit leerem storeFile laesst Gradle sonst schon
+             * beim Einlesen abstuerzen — auch bei `assembleDebug`, das mit
+             * Signieren gar nichts zu tun hat. */
+            if (schluessel.containsKey("storeFile")) {
+                storeFile file(schluessel["storeFile"])
+                storePassword schluessel["storePassword"]
+                keyAlias schluessel["keyAlias"]
+                keyPassword schluessel["keyPassword"]
+            }
+        }
+    }
     buildTypes {
         release {
+            /* Ohne keystore.properties bleibt das Bundle unsigniert. Das ist
+             * ABSICHT und keine stille Panne: der Bau laeuft durch, und
+             * Play weist die Datei dann mit einer klaren Meldung ab —
+             * besser als ein Bau, der auf einem fremden Rechner scheitert. */
+            if (schluessel.containsKey("storeFile")) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

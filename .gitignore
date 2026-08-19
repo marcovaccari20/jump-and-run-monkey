@@ -51,3 +51,12 @@ android/app/release/
 # Debug- und unsignierte Test-APKs sind Baubestand, keine Quelle — genau wie
 # pakete/ für die Web-Portale, siehe oben.
 android/app/build/outputs/
+
+# Signierschlüssel der Play-Store-App. NIEMALS ins Repository.
+# Wer diese Datei hat, kann eine gefälschte Aktualisierung veröffentlichen.
+# Sie entsteht beim Nutzer selbst (siehe android/SIGNIEREN.md) und gehört
+# zusammen mit der .jks-Datei ins Backup — geht sie verloren, lässt sich die
+# App nie mehr aktualisieren.
+android/keystore.properties
+android/*.jks
+android/app/*.jks
