@@ -36,8 +36,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     'Ingen plats, inga kontakter, inga foton, ingen adressbok, ingen spårning över andra webbplatser. Vi säljer ingenting till någon. Utan konto har vi ingen e-postadress till dig alls.',
   Advertising: 'Annonser',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    'Annonserna kommer från spelportalen du spelar på, inte från oss. Vad de samlar in styrs av deras egen integritetspolicy.',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    'I appen kommer annonserna från Google AdMob, i webbläsaren från spelportalen du spelar på. Vad de samlar in styrs av deras egen integritetspolicy.',
   'Removing your data': 'Radera dina uppgifter',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     'Rensar du webbläsardata försvinner talet i din enhet. Vill du ta bort en post ur listan, eller radera ditt konto och din e-postadress för gott, skriv till',

@@ -37,12 +37,11 @@
               dort      ANZEIGENBLOCK mit SCHRÄGSTRICH  ca-app-pub-…/…
             Beide fangen gleich an und werden gern verwechselt.
 
-            Unten steht Googles offizielle TEST-App-ID. Vor der
-            Veröffentlichung durch die eigene aus admob.google.com ersetzen.
+            Eigene App-ID aus admob.google.com, eingetragen am 19.08.2026.
         -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
+            android:value="ca-app-pub-5384053224404265~3055250155"/>
 
         <provider
             android:name="androidx.core.content.FileProvider"

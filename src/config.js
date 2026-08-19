@@ -1977,12 +1977,19 @@ export const CONFIG = {
      *  das als Betrug und sperrt das Konto. Zum Ausprobieren immer `test`
      *  anlassen. */
     admob: {
-      /* Belohnter Spot fürs Weiterspielen nach dem Tod. */
-      belohnt: 'ca-app-pub-3940256099942544/5224354917',
-      /* Zwischenspot zwischen zwei Runden. */
-      zwischen: 'ca-app-pub-3940256099942544/1033173712',
-      /* true = Googles Testanzeigen, keine Abrechnung, kein Sperr-Risiko. */
-      test: true,
+      /* Belohnter Spot fürs Weiterspielen nach dem Tod.
+       * AdMob-Anzeigenblock „Belohnung Weiterleben". */
+      belohnt: 'ca-app-pub-5384053224404265/6611351789',
+      /* Zwischenspot zwischen zwei Runden — NICHT im laufenden Spiel.
+       * AdMob-Anzeigenblock „Zwischen Gebieten". */
+      zwischen: 'ca-app-pub-5384053224404265/8169488809',
+      /* false = echte Anzeigen, echte Abrechnung.
+       *
+       * AB HIER NIE MEHR SELBST AUF EINE ANZEIGE TIPPEN. Google wertet
+       * eigene Klicks als Betrug und sperrt das Konto — dauerhaft, ohne
+       * Auszahlung. Zum Ausprobieren auf einem Gerät wieder auf `true`
+       * stellen, dann kommen Googles Testanzeigen. */
+      test: false,
     },
 
     // Wie lange auf ein fremdes SDK gewartet wird, bevor ohne es gestartet

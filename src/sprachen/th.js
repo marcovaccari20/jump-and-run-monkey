@@ -36,8 +36,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     'ไม่มีตำแหน่ง ไม่มีรายชื่อผู้ติดต่อ ไม่มีรูปภาพ ไม่มีสมุดที่อยู่ ไม่มีการติดตามข้ามเว็บไซต์อื่น เราไม่ขายอะไรให้ใครทั้งสิ้น หากไม่มีบัญชี เราก็ไม่มีอีเมลของคุณเลย',
   Advertising: 'โฆษณา',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    'โฆษณามาจากพอร์ทัลเกมที่คุณกำลังเล่นอยู่ ไม่ได้มาจากเรา สิ่งที่พวกเขาเก็บอยู่ภายใต้นโยบายความเป็นส่วนตัวของพวกเขาเอง',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    'ในแอป โฆษณามาจาก Google AdMob ส่วนในเบราว์เซอร์มาจากพอร์ทัลเกมที่คุณกำลังเล่นอยู่ สิ่งที่พวกเขาเก็บอยู่ภายใต้นโยบายความเป็นส่วนตัวของพวกเขาเอง',
   'Removing your data': 'การลบข้อมูลของคุณ',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     'การล้างข้อมูลเบราว์เซอร์จะลบตัวเลขบนเครื่องของคุณ หากต้องการให้ลบรายการออกจากตารางอันดับ หรือลบบัญชีและอีเมลของคุณอย่างถาวร โปรดเขียนถึง',

@@ -36,8 +36,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     'Tidak ada lokasi, kontak, foto, buku alamat, tidak ada pelacakan di situs lain. Kami tidak menjual apa pun kepada siapa pun. Tanpa akun, kami sama sekali tidak punya alamat e-mailmu.',
   Advertising: 'Iklan',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    'Iklan datang dari portal permainan tempat kamu bermain, bukan dari kami. Apa yang mereka kumpulkan tunduk pada kebijakan privasi mereka sendiri.',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    'Di aplikasi, iklan datang dari Google AdMob; di peramban, dari portal permainan tempat kamu bermain. Apa yang mereka kumpulkan tunduk pada kebijakan privasi mereka sendiri.',
   'Removing your data': 'Menghapus datamu',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     'Menghapus data peramban akan menghilangkan angka di perangkatmu. Untuk menghapus entri dari papan peringkat, atau menghapus akun dan alamat e-mailmu selamanya, tulis ke',

@@ -36,8 +36,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     'न स्थान, न संपर्क, न तस्वीरें, न पता-पुस्तिका, न दूसरी वेबसाइटों पर कोई ट्रैकिंग। हम किसी को कुछ नहीं बेचते। खाते के बिना हमारे पास आपका कोई ईमेल पता है ही नहीं।',
   Advertising: 'विज्ञापन',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    'विज्ञापन उस गेम पोर्टल से आते हैं जिस पर आप खेल रहे हैं, हमसे नहीं। वे जो एकत्र करते हैं वह उनकी अपनी निजता नीति के अधीन है।',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    'ऐप में विज्ञापन Google AdMob से आते हैं, और ब्राउज़र में उस गेम पोर्टल से जिस पर आप खेल रहे हैं। वे जो एकत्र करते हैं वह उनकी अपनी निजता नीति के अधीन है।',
   'Removing your data': 'अपना डेटा हटवाना',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     'ब्राउज़र डेटा साफ़ करने पर आपके उपकरण की संख्या मिट जाती है। सूची से कोई प्रविष्टि हटवाने के लिए, या अपना खाता और ईमेल पता हमेशा के लिए मिटवाने के लिए, लिखें',

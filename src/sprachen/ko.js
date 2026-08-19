@@ -35,8 +35,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     '위치도, 연락처도, 사진도, 주소록도, 다른 사이트에서의 추적도 없습니다. 누구에게도 아무것도 팔지 않습니다. 계정이 없으면 이메일 주소 자체가 저희에게 없습니다.',
   Advertising: '광고',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    '광고는 저희가 아니라 플레이 중인 게임 포털에서 나옵니다. 무엇을 수집하는지는 해당 포털의 개인정보 처리방침에 따릅니다.',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    '앱에서는 광고가 Google AdMob에서, 브라우저에서는 플레이 중인 게임 포털에서 나옵니다. 무엇을 수집하는지는 각자의 개인정보 처리방침에 따릅니다.',
   'Removing your data': '데이터 삭제',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     '브라우저 데이터를 지우면 기기의 번호가 사라집니다. 순위표에서 기록을 내리거나 계정과 이메일 주소를 완전히 삭제하려면 다음 주소로 연락해 주세요:',

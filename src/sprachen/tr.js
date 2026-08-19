@@ -37,8 +37,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     'Konum yok, kişiler yok, fotoğraf yok, adres defteri yok, başka sitelerde izleme yok. Kimseye hiçbir şey satmıyoruz. Hesap olmadan senin hiçbir e-posta adresin bizde değil.',
   Advertising: 'Reklamlar',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    'Reklamlar oynadığın oyun portalından gelir, bizden değil. Neyi topladıkları onların kendi gizlilik politikasına tabidir.',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    'Uygulamada reklamlar Google AdMob’dan, tarayıcıda ise oynadığın oyun portalından gelir. Neyi topladıkları onların kendi gizlilik politikasına tabidir.',
   'Removing your data': 'Verilerini sildirmek',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     'Tarayıcı verilerini temizlersen cihazındaki sayı kaybolur. Sıralamadaki bir kaydın kaldırılması ya da hesabının ve e-posta adresinin kalıcı olarak silinmesi için şu adrese yaz:',

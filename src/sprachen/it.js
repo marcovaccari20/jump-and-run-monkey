@@ -36,8 +36,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     'Nessuna posizione, nessun contatto, nessuna foto, nessuna rubrica, nessun tracciamento su altri siti. Non vendiamo niente a nessuno. Senza account non abbiamo alcun tuo indirizzo e-mail.',
   Advertising: 'Pubblicità',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    'Gli annunci arrivano dal portale di giochi su cui stai giocando, non da noi. Quello che raccolgono è regolato dalla loro informativa privacy.',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    'Nell’app gli annunci arrivano da Google AdMob, nel browser dal portale di giochi su cui stai giocando. Quello che raccolgono è regolato dalla loro informativa privacy.',
   'Removing your data': 'Cancellare i tuoi dati',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     'Cancellando i dati del browser sparisce il numero sul tuo dispositivo. Per rimuovere una voce dalla classifica, o per cancellare definitivamente account e indirizzo e-mail, scrivi a',

@@ -36,8 +36,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     'لا موقع، ولا جهات اتصال، ولا صور، ولا دفتر عناوين، ولا تتبّع عبر مواقع أخرى. ولا نبيع شيئًا لأحد. وبدون حساب لا يوجد لدينا أي عنوان بريد لك.',
   Advertising: 'الإعلانات',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    'تأتي الإعلانات من بوّابة الألعاب التي تلعب عليها، لا منّا. وما تجمعه يخضع لسياسة الخصوصية الخاصة بها.',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    'في التطبيق تأتي الإعلانات من Google AdMob، وفي المتصفّح من بوّابة الألعاب التي تلعب عليها. وما تجمعه يخضع لسياسة الخصوصية الخاصة بها.',
   'Removing your data': 'حذف بياناتك',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     'مسح بيانات المتصفّح يزيل الرقم من جهازك. ولإزالة مدخل من قائمة المتصدّرين، أو لحذف حسابك وعنوان بريدك نهائيًا، راسلنا على',

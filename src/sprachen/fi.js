@@ -37,8 +37,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     'Ei sijaintia, ei yhteystietoja, ei kuvia, ei osoitekirjaa, ei seurantaa muilla sivustoilla. Emme myy mitään kenellekään. Ilman tiliä meillä ei ole sähköpostiosoitettasi lainkaan.',
   Advertising: 'Mainokset',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    'Mainokset tulevat pelisivustolta, jolla pelaat, eivät meiltä. Se, mitä ne keräävät, kuuluu niiden omaan tietosuojakäytäntöön.',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    'Sovelluksessa mainokset tulevat Google AdMobilta, selaimessa pelisivustolta, jolla pelaat. Se, mitä ne keräävät, kuuluu niiden omaan tietosuojakäytäntöön.',
   'Removing your data': 'Tietojen poistaminen',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     'Selaintietojen tyhjentäminen poistaa luvun laitteeltasi. Jos haluat poistaa merkinnän listalta tai poistaa tilisi ja sähköpostiosoitteesi lopullisesti, kirjoita osoitteeseen',

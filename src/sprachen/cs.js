@@ -36,8 +36,8 @@ export default {
   'No location, no contacts, no photos, no address book, no tracking across other websites. We do not sell anything to anyone. Without an account we hold no e-mail address at all.':
     'Žádná poloha, žádné kontakty, žádné fotky, žádný adresář, žádné sledování napříč weby. Nikomu nic neprodáváme. Bez účtu o tobě nemáme žádnou e-mailovou adresu.',
   Advertising: 'Reklama',
-  'Ads come from the games portal you are playing on, not from us. What they collect is covered by their own privacy policy.':
-    'Reklamy pocházejí z herního portálu, na kterém hraješ, ne od nás. Co sbírají, řeší jejich vlastní zásady ochrany soukromí.',
+  'Ads come from Google AdMob in the app, and from the games portal you are playing on in the browser. What they collect is covered by their own privacy policy.':
+    'V aplikaci pocházejí reklamy z Google AdMob, v prohlížeči z herního portálu, na kterém hraješ. Co sbírají, řeší jejich vlastní zásady ochrany soukromí.',
   'Removing your data': 'Smazání tvých dat',
   'Clearing your browser data removes the number on your device. To have a leaderboard entry taken down, or to have your account and e-mail address deleted for good, write to':
     'Vymazáním dat prohlížeče zmizí číslo ve tvém zařízení. Pokud chceš odstranit záznam ze žebříčku nebo natrvalo smazat účet i e-mailovou adresu, napiš na',
