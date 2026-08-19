@@ -85,11 +85,19 @@ Schritt 1 das Schlüsselpasswort mit Enter übersprungen hast, sind
 
 ## 3. Bundle bauen
 
+Auf diesem Rechner ist `JAVA_HOME` nicht gesetzt und `java` steht nicht im
+Pfad — Gradle bricht dann sofort ab. Java liegt bei Android Studio mit dabei,
+also in PowerShell:
+
 ```bash
-cd android && ./gradlew bundleRelease
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"; cd android; .\gradlew.bat bundleRelease
 ```
 
+(Die Zeile gilt nur für dieses Fenster. Dauerhaft geht es über
+*Systemeigenschaften → Umgebungsvariablen*, nötig ist das aber nicht.)
+
 Ergebnis: `android/app/build/outputs/bundle/release/app-release.aab`
+— rund 41 MB.
 
 Ohne `keystore.properties` läuft der Bau ebenfalls durch, liefert aber ein
 **unsigniertes** Bundle — Play weist das ab. Das ist Absicht: so baut auch
