@@ -80,6 +80,24 @@
           <span id="ton-symbol" aria-hidden="true">🔊</span>
         </button>
 
+        <!-- Einstellungen. Liegt wie der Ton-Schalter AUSSERHALB der Screens
+             und sitzt links daneben — dieselbe Reihe, dasselbe Aussehen.
+
+             ANDERS ALS DER TON-SCHALTER NUR AUSSERHALB DES SPIELS: mitten im
+             Lauf ist ein Zahnrad eine Falle. Wer im Fallen danebentippt, hat
+             ein Menü offen und ist tot. Der Ton muss dagegen jederzeit
+             erreichbar bleiben — deshalb bleibt der eine und der andere
+             verschwindet (UI.showScreen). -->
+        <button
+          id="btn-einstellungen"
+          class="einstell-schalter"
+          type="button"
+          aria-label="Settings"
+          hidden
+        >
+          <span aria-hidden="true">⚙</span>
+        </button>
+
         <!-- ------------------------------------------------ Ladebildschirm -->
         <section id="screen-loading" class="screen screen--center is-visible">
           <h1 class="logo">JUNGLE<span>CLIMBER</span></h1>
@@ -129,6 +147,51 @@
                blockiert — CrazyGames verlangt ausdrücklich, keine
                aufdringlichen Einblendungen zu bauen. -->
           <button id="btn-privacy" class="link-leise" type="button">
+            Privacy &amp; data
+          </button>
+        </section>
+
+        <!-- -------------------------------------------------- Einstellungen -->
+        <!-- Drei Dinge, die sonst nirgends hingehören: Sprache, Ton, Konto.
+             Der Ton steht hier NOCHMAL, obwohl es den Schalter oben rechts
+             gibt — wer Einstellungen öffnet, sucht ihn hier, und ein Zahnrad
+             ohne Tonschalter wirkt kaputt. Beide zeigen denselben Zustand. -->
+        <section id="screen-settings" class="screen screen--center screen--dim">
+          <h2 class="headline">Settings</h2>
+
+          <div class="panel panel--text einstellungen">
+            <div class="einstellung">
+              <span class="einstellung__name">Language</span>
+              <!-- Knopfreihe statt <select>: ein Auswahlfeld sieht auf jedem
+                   Gerät anders aus und öffnet am Handy ein Systemrad über dem
+                   halben Bild. Bei zwei bis fünf Sprachen sind Knöpfe
+                   schneller und passen zum Rest des Spiels. -->
+              <div class="einstellung__wahl" id="sprach-wahl"></div>
+            </div>
+
+            <div class="einstellung">
+              <span class="einstellung__name">Sound</span>
+              <div class="einstellung__wahl">
+                <button id="btn-ton-an" class="wahl-knopf" type="button">On</button>
+                <button id="btn-ton-aus" class="wahl-knopf" type="button">Off</button>
+              </div>
+            </div>
+
+            <div class="einstellung">
+              <span class="einstellung__name">Account</span>
+              <button id="btn-settings-konto" class="wahl-knopf wahl-knopf--breit" type="button">
+                Sign in
+              </button>
+            </div>
+          </div>
+
+          <div class="button-row">
+            <button id="btn-settings-back" class="btn btn--primary" type="button">
+              Back
+            </button>
+          </div>
+
+          <button id="btn-settings-privacy" class="link-leise" type="button">
             Privacy &amp; data
           </button>
         </section>
@@ -335,7 +398,7 @@
               <!-- Holt UND belegt in einem Zug. Ein blosser Vorschlag wäre
                    nicht verbindlich — siehe code_vorschlag in der SQL. -->
               <button id="btn-code-vorschlag" class="btn btn--klein" type="button">
-                Freien holen
+                Get a free one
               </button>
             </form>
 

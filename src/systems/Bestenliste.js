@@ -216,7 +216,7 @@ export class SupabaseListe {
    */
   async eintragen(lauf, name, score, mitWerbung = false) {
     if (!lauf) {
-      return { ok: false, grund: 'Lauf war nicht angemeldet — nur lokal gewertet' };
+      return { ok: false, grund: 'Run was not signed in — counted locally only' };
     }
     try {
       const rang = await this._ruf(`/rest/v1/rpc/${this.cfg.eintragenFn}`, {

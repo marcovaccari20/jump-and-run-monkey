@@ -42,6 +42,7 @@ import {
   codeVorschlag,
 } from '../systems/Fortschritt.js';
 import { Konto, KontoSpeicher } from '../systems/Konto.js';
+import { Sprache, SPRACHEN } from '../systems/Sprache.js';
 import { Klang } from '../systems/Klang.js';
 import { erzeugeBestenliste } from '../systems/Bestenliste.js';
 import { createAdService } from '../systems/AdService.js';
@@ -100,6 +101,14 @@ export class Game {
      * Ladebildschirm wissen muss, ob eine Sitzung im Browser liegt — sonst
      * blitzte im Menü kurz "Sign in" auf, obwohl der Spieler angemeldet ist. */
     this.konto = new Konto(CONFIG.bestenliste);
+
+    /* Sprache. Die Wurzel ist das ganze Overlay — dort und nur dort steht
+     * Text für Menschen. Der Beobachter übersetzt auch, was erst später
+     * entsteht: Kacheln, Bestenlisten, Meldungen, Einblendungen. */
+    this.sprache = new Sprache(document.getElementById('ui'));
+    document.documentElement.lang = this.sprache.code;
+    this.sprache.beobachten();
+    this.sprache.anwenden();
     /* MUSS vor dem ersten loadId() stehen: die Stores merken sich ihr
      * Ergebnis, ein zu spät gesetzter Prüfer käme nie zum Zug. */
     this.characters.istFrei = (id) => this.fortschritt.istFrei(id);
@@ -426,6 +435,35 @@ export class Game {
     /* Muenzstand und Kacheln neu zeichnen: durchs Zusammenfuehren koennen
      * Affen und Felle dazugekommen sein, die eben noch gesperrt aussahen. */
     this._zeichneAuswahl();
+  }
+
+  /**
+   * Zeigt die Einstellungen mit dem aktuellen Stand.
+   *
+   * Die Werte werden bei jedem Oeffnen frisch gesetzt, nicht einmal beim
+   * Start: Ton und Konto lassen sich auch anderswo aendern (Schalter oben
+   * rechts, Kontobildschirm), und eine Tafel, die einen ueberholten Zustand
+   * behauptet, ist schlimmer als gar keine.
+   */
+  _einstellungenZeigen() {
+    this.ui.zeigeSprachen(SPRACHEN, this.sprache.code);
+    this.ui.setTon(this.klang.stumm);
+    this.ui.setKontoZeile(this.konto.email);
+    this.ui.showScreen('settings');
+  }
+
+  /**
+   * Zurueck dorthin, wo man hergekommen ist.
+   *
+   * Datenschutz und Konto sind aus zwei Richtungen erreichbar — aus dem
+   * Menue und aus den Einstellungen. Ein festes "zurueck ins Menue" wirft
+   * jeden hinaus, der aus den Einstellungen kam.
+   *
+   * @param {string} herkunft Bildschirmname von vorher
+   */
+  _zurueckVon(herkunft) {
+    if (herkunft === 'settings') this._einstellungenZeigen();
+    else this.ui.showMenu(this.score.loadHighscores());
   }
 
   async _kontoAbmelden() {
@@ -1703,16 +1741,23 @@ export class Game {
     /* Datenschutz. Erreichbar aus dem Menue, und von dort geht es zurueck
      * ins Menue — der Bildschirm haengt an keinem Spielzustand und darf
      * deshalb nichts anderes anfassen. */
-    this.ui.callbacks.onPrivacy = () => this.ui.showScreen('privacy');
-    this.ui.callbacks.onPrivacyBack = () => this.ui.showMenu(this.score.loadHighscores());
+    this.ui.callbacks.onPrivacy = () => {
+      this._datenschutzHerkunft = this.ui.currentScreen;
+      this.ui.showScreen('privacy');
+    };
+    this.ui.callbacks.onPrivacyBack = () => this._zurueckVon(this._datenschutzHerkunft);
 
     /* Konto. Genau wie der Datenschutz an keinen Spielzustand gebunden:
      * hinein aus dem Menue, hinaus zurueck ins Menue. */
     this.ui.callbacks.onKonto = () => {
+      /* Woher kam der Aufruf? Wer aus den Einstellungen kommt, will mit
+       * "Zurueck" auch wieder dorthin — nicht ins Hauptmenue geworfen werden
+       * und den Weg nochmal suchen muessen. */
+      this._kontoHerkunft = this.ui.currentScreen;
       this.ui.kontoZustand(this.konto.angemeldet ? { email: this.konto.email } : null);
       this.ui.showScreen('account');
     };
-    this.ui.callbacks.onKontoBack = () => this.ui.showMenu(this.score.loadHighscores());
+    this.ui.callbacks.onKontoBack = () => this._zurueckVon(this._kontoHerkunft);
     this.ui.callbacks.onKontoModus = () => {
       const jetzt = this.ui.el.kontoForm.dataset.modus;
       // Aus "vergessen" fuehrt der Link zurueck zum Anmelden, sonst wechselt
@@ -1722,6 +1767,24 @@ export class Game {
     this.ui.callbacks.onKontoVergessen = () => this.ui.kontoModus('vergessen');
     this.ui.callbacks.onKontoSenden = (d) => this._kontoSenden(d);
     this.ui.callbacks.onKontoAbmelden = () => this._kontoAbmelden();
+
+    /* Einstellungen: Sprache, Ton, Konto — die drei Dinge, die sonst
+     * nirgends hingehoeren. */
+    this.ui.callbacks.onEinstellungen = () => this._einstellungenZeigen();
+    this.ui.callbacks.onEinstellungenBack = () => this.ui.showMenu(this.score.loadHighscores());
+    this.ui.callbacks.onSprache = (code) => {
+      this.sprache.setzen(code);
+      // Knoepfe neu zeichnen, damit die Markierung mitwandert.
+      this.ui.zeigeSprachen(SPRACHEN, this.sprache.code);
+    };
+    this.ui.callbacks.onTonSetzen = (an) => {
+      /* Ein Klick hier ist eine echte Nutzereingabe — also zugleich der
+       * Moment, in dem der Browser Ton erlaubt. Ohne das Aufwecken bliebe
+       * "On" wirkungslos, wenn vorher noch nie geklickt wurde. */
+      this.klang.aufwecken();
+      if (this.klang.stumm === !an) return; // steht schon so
+      this.ui.setTon(this.klang.stummSchalten());
+    };
 
     /* Wurde das Spiel ueber den Link aus einer "Passwort vergessen"-Mail
      * geoeffnet? Dann steht im Adressfragment eine gueltige Sitzung.
@@ -2330,7 +2393,10 @@ export class Game {
     this.klang.aufwecken();
     const stumm = this.klang.stummSchalten();
     this.ui.setTon(stumm);
-    this.ui.toast(stumm ? 'Ton aus' : 'Ton an', 'revive');
+    /* Übersetzt, und die englischen Originale stehen im Wörterbuch. Hier
+     * stand fest verdrahtetes Deutsch — in einem Spiel, das sonst
+     * durchgehend englisch ist. */
+    this.ui.toast(this.sprache.t(stumm ? 'Sound off' : 'Sound on'), 'revive');
   }
 
   _handleGlobalKeys() {

@@ -426,7 +426,7 @@ function codeFehler(err) {
 export async function codeBelegen(cfg, spielerId, code) {
   const sauber = String(code ?? '').trim();
   if (!CODE_FORM.test(sauber)) {
-    return { ok: false, meldung: 'Bitte genau vier Ziffern eingeben.' };
+    return { ok: false, meldung: 'Please enter exactly four digits.' };
   }
   try {
     const zurueck = await rpc(cfg, cfg.codeBelegenFn, {
@@ -479,7 +479,7 @@ export async function codeVorschlag(cfg, spielerId) {
 export async function codeAufloesen(cfg, code) {
   const sauber = String(code ?? '').trim();
   if (!CODE_FORM.test(sauber)) {
-    return { ok: false, meldung: 'Bitte genau vier Ziffern eingeben.' };
+    return { ok: false, meldung: 'Please enter exactly four digits.' };
   }
   try {
     const d = await rpc(cfg, cfg.codeAufloesenFn, { p_code: sauber });
@@ -489,11 +489,11 @@ export async function codeAufloesen(cfg, code) {
     }
 
     const meldungen = {
-      form: 'Bitte genau vier Ziffern eingeben.',
-      gebremst: 'Zu viele Fehlversuche. Bitte eine Minute warten.',
-      unbekannt: 'Zu diesem Code ist nichts gespeichert.',
+      form: 'Please enter exactly four digits.',
+      gebremst: 'Too many attempts. Please wait a minute.',
+      unbekannt: 'Nothing is stored for that code.',
     };
-    return { ok: false, meldung: meldungen[d?.grund] ?? 'Zu diesem Code ist nichts gespeichert.' };
+    return { ok: false, meldung: meldungen[d?.grund] ?? 'Nothing is stored for that code.' };
   } catch (err) {
     return { ok: false, meldung: codeFehler(err) };
   }

@@ -164,10 +164,10 @@ body {
  * Anzeige, oben mittig der Punktestand. Rechts oben ist die einzige Ecke, die
  * in keinem Zustand belegt ist.
  */
-.ton-schalter {
+.ton-schalter,
+.einstell-schalter {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
   z-index: 40;
   pointer-events: auto;
 
@@ -190,15 +190,30 @@ body {
   touch-action: manipulation;
 }
 
-.ton-schalter:hover {
+.ton-schalter {
+  right: max(10px, env(safe-area-inset-right));
+}
+
+/* Das Zahnrad sitzt LINKS neben dem Lautsprecher: 44 px Knopf + 8 px Luft.
+ * Nicht darunter — dort beginnt im Spiel die Punktzahl, und im Menü der
+ * Titel. Nebeneinander bleibt die Reihe eine Reihe, egal welcher Bildschirm
+ * gerade oben ist. */
+.einstell-schalter {
+  right: calc(max(10px, env(safe-area-inset-right)) + 52px);
+}
+
+.ton-schalter:hover,
+.einstell-schalter:hover {
   background: rgba(8, 20, 12, 0.8);
 }
 
-.ton-schalter:active {
+.ton-schalter:active,
+.einstell-schalter:active {
   transform: scale(0.92);
 }
 
-.ton-schalter:focus-visible {
+.ton-schalter:focus-visible,
+.einstell-schalter:focus-visible {
   outline: 2px solid var(--accent, #7bd66f);
   outline-offset: 2px;
 }
@@ -210,7 +225,8 @@ body {
 }
 
 /* `hidden` allein verliert gegen `display: grid` oben. */
-.ton-schalter[hidden] {
+.ton-schalter[hidden],
+.einstell-schalter[hidden] {
   display: none;
 }
 
@@ -1132,6 +1148,77 @@ body.is-coarse .controls-hint p:not(.controls-hint--touch) {
 .name-input:focus {
   outline: none;
   border-color: var(--banana);
+}
+
+/* ----------------------------------------------------------- Einstellungen */
+
+.einstellungen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(340px, 88cqw);
+}
+
+/* Name links, Auswahl rechts — und umbrechend, sobald es eng wird. Auf einem
+ * schmalen Handy im Hochformat steht die Auswahl sonst halb ausserhalb. */
+.einstellung {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.einstellung__name {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.einstellung__wahl {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wahl-knopf {
+  pointer-events: auto;
+  padding: 9px 15px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(143, 206, 92, 0.35);
+  background: rgba(8, 24, 12, 0.7);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  /* Doppeltipp-Zoom auf iOS unterbinden. */
+  touch-action: manipulation;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.wahl-knopf:hover {
+  border-color: var(--leaf);
+}
+
+/* Die getroffene Wahl. NICHT nur über die Farbe: wer rot-grün-blind ist,
+ * saehe sonst zwei gleich aussehende Knöpfe. Der ausgewählte ist deshalb
+ * zusätzlich gefüllt und dunkel beschriftet — ein Unterschied in der
+ * Helligkeit, den jedes Auge sieht. */
+.wahl-knopf[aria-pressed='true'] {
+  background: var(--leaf);
+  border-color: var(--leaf);
+  color: #07160b;
+}
+
+.wahl-knopf--breit {
+  min-width: 150px;
+  max-width: 100%;
+  /* Eine lange E-Mail-Adresse darf die Tafel nicht sprengen. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------------- Konto */

@@ -16,6 +16,7 @@ const SCREEN_SETS = {
   characters: ['screen-characters'],
   privacy: ['screen-privacy'],
   account: ['screen-account'],
+  settings: ['screen-settings'],
   playing: ['screen-hud'],
   paused: ['screen-hud', 'screen-paused'],
   // Zwischenschritt vor dem Game Over, solange ein zweites Leben übrig ist.
@@ -45,6 +46,14 @@ export class UI {
       btnCharactersBack: $('btn-characters-back'),
       btnPrivacy: $('btn-privacy'),
       btnPrivacyBack: $('btn-privacy-back'),
+
+      btnEinstellungen: $('btn-einstellungen'),
+      sprachWahl: $('sprach-wahl'),
+      btnTonAn: $('btn-ton-an'),
+      btnTonAus: $('btn-ton-aus'),
+      btnSettingsKonto: $('btn-settings-konto'),
+      btnSettingsBack: $('btn-settings-back'),
+      btnSettingsPrivacy: $('btn-settings-privacy'),
 
       btnKonto: $('btn-konto'),
       kontoForm: $('account-form'),
@@ -132,6 +141,12 @@ export class UI {
       onKontoModus: () => {},
       onKontoVergessen: () => {},
       onKontoAbmelden: () => {},
+      onEinstellungen: () => {},
+      onEinstellungenBack: () => {},
+      /** (code) => void — Sprache gewaehlt. */
+      onSprache: () => {},
+      /** (an) => void — Ton ein- oder ausgeschaltet. */
+      onTonSetzen: () => {},
       onCharactersBack: () => {},
       onPickCharacter: () => {},
       onPickSkin: () => {},
@@ -220,6 +235,19 @@ export class UI {
     this.el.btnCharactersBack.addEventListener('click', () => this.callbacks.onCharactersBack());
     this.el.btnPrivacy.addEventListener('click', () => this.callbacks.onPrivacy());
     this.el.btnPrivacyBack.addEventListener('click', () => this.callbacks.onPrivacyBack());
+
+    this.el.btnEinstellungen.addEventListener('click', () => this.callbacks.onEinstellungen());
+    this.el.btnSettingsBack.addEventListener('click', () => this.callbacks.onEinstellungenBack());
+    this.el.btnSettingsPrivacy.addEventListener('click', () => this.callbacks.onPrivacy());
+    this.el.btnSettingsKonto.addEventListener('click', () => this.callbacks.onKonto());
+    this.el.btnTonAn.addEventListener('click', () => this.callbacks.onTonSetzen(true));
+    this.el.btnTonAus.addEventListener('click', () => this.callbacks.onTonSetzen(false));
+    /* EIN Listener auf der Reihe statt einer je Sprache: die Knoepfe
+     * entstehen erst zur Laufzeit aus der Sprachliste. */
+    this.el.sprachWahl.addEventListener('click', (e) => {
+      const code = e.target.closest('[data-sprache]')?.dataset.sprache;
+      if (code) this.callbacks.onSprache(code);
+    });
 
     this.el.btnKonto.addEventListener('click', () => this.callbacks.onKonto());
     this.el.btnKontoBack.addEventListener('click', () => this.callbacks.onKontoBack());
@@ -364,6 +392,15 @@ export class UI {
      * und nicht während eines Werbespots — dort wäre er entweder sinnlos
      * oder schädlich. */
     this.el.btnPause.hidden = name !== 'playing';
+
+    /* Das Zahnrad verschwindet im laufenden Spiel und waehrend eines
+     * Werbespots. Wer im Fallen danebentippt, haette sonst ein Menue offen
+     * und waere tot. Der Ton-Schalter bleibt dagegen ueberall — ihn braucht
+     * man gerade dann, wenn es laut wird. Im Ladebildschirm ist er ebenfalls
+     * aus: dort gibt es noch nichts einzustellen. */
+    this.el.btnEinstellungen.hidden =
+      name === 'playing' || name === 'ad' || name === 'loading';
+
     this._current = name;
   }
 
@@ -720,6 +757,42 @@ export class UI {
       this.el.btnKonto.textContent = 'Sign in to save your progress';
       this.kontoModus('anmelden');
     }
+    // Die Einstellungen zeigen dieselbe Tatsache — an einer Stelle gepflegt,
+    // sonst steht dort "Sign in", während das Menü die Adresse anzeigt.
+    this.setKontoZeile(konto?.email ?? null);
+  }
+
+  /* ---------------------------------------------------------- Einstellungen */
+
+  /**
+   * Zeichnet die Sprachknöpfe.
+   *
+   * Aus der Liste erzeugt, nicht im HTML festgeschrieben: eine weitere
+   * Sprache ist dann ein Eintrag in Sprache.js und sonst nichts.
+   *
+   * @param {{code:string,name:string}[]} sprachen
+   * @param {string} aktiv
+   */
+  zeigeSprachen(sprachen, aktiv) {
+    this.el.sprachWahl.replaceChildren(
+      ...sprachen.map((s) => {
+        const k = document.createElement('button');
+        k.type = 'button';
+        k.className = 'wahl-knopf';
+        k.dataset.sprache = s.code;
+        /* Der EIGENNAME der Sprache, nie übersetzt: wer im deutschen Spiel
+         * landet und kein Deutsch kann, muss "English" trotzdem finden.
+         * Deshalb steht der Name auch nicht im Wörterbuch. */
+        k.textContent = s.name;
+        k.setAttribute('aria-pressed', s.code === aktiv ? 'true' : 'false');
+        return k;
+      }),
+    );
+  }
+
+  /** Die Kontozeile in den Einstellungen: Adresse oder Aufforderung. */
+  setKontoZeile(email) {
+    this.el.btnSettingsKonto.textContent = email || 'Sign in';
   }
 
   /** Sperrt die Knöpfe, solange eine Anfrage läuft. */
@@ -896,6 +969,11 @@ export class UI {
     this.el.btnTon.dataset.stumm = stumm ? 'ja' : 'nein';
     this.el.btnTon.setAttribute('aria-label', stumm ? 'Unmute' : 'Mute');
     this.el.tonSymbol.textContent = stumm ? '🔇' : '🔊';
+
+    /* Der Einstellungsbildschirm zeigt DENSELBEN Zustand. Getrennt gepflegt
+     * driftet er auseinander: oben rechts stumm, in den Einstellungen "An". */
+    this.el.btnTonAn.setAttribute('aria-pressed', stumm ? 'false' : 'true');
+    this.el.btnTonAus.setAttribute('aria-pressed', stumm ? 'true' : 'false');
   }
 
   /* ------------------------------------------------ Fortschritt mitnehmen */
