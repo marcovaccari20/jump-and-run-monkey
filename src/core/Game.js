@@ -106,9 +106,11 @@ export class Game {
      * Text für Menschen. Der Beobachter übersetzt auch, was erst später
      * entsteht: Kacheln, Bestenlisten, Meldungen, Einblendungen. */
     this.sprache = new Sprache(document.getElementById('ui'));
-    document.documentElement.lang = this.sprache.code;
     this.sprache.beobachten();
-    this.sprache.anwenden();
+    /* Nicht abgewartet: das Wörterbuch kommt als eigenes Stück über das Netz,
+     * und darauf soll der Spielaufbau nicht warten. Bis es da ist, steht
+     * Englisch im Bild — hinter dem Ladebildschirm. */
+    this.sprache.starten();
     /* MUSS vor dem ersten loadId() stehen: die Stores merken sich ihr
      * Ergebnis, ein zu spät gesetzter Prüfer käme nie zum Zug. */
     this.characters.istFrei = (id) => this.fortschritt.istFrei(id);
@@ -1772,9 +1774,19 @@ export class Game {
      * nirgends hingehoeren. */
     this.ui.callbacks.onEinstellungen = () => this._einstellungenZeigen();
     this.ui.callbacks.onEinstellungenBack = () => this.ui.showMenu(this.score.loadHighscores());
-    this.ui.callbacks.onSprache = (code) => {
-      this.sprache.setzen(code);
-      // Knoepfe neu zeichnen, damit die Markierung mitwandert.
+    this.ui.callbacks.onSprachenOeffnen = () => {
+      this.ui.zeigeSprachen(SPRACHEN, this.sprache.code);
+      this.ui.showScreen('language');
+    };
+    this.ui.callbacks.onSprachenBack = () => this._einstellungenZeigen();
+    this.ui.callbacks.onSprache = async (code) => {
+      /* Die Markierung SOFORT umsetzen, das Woerterbuch kommt gleich nach.
+       * Auf das Netz zu warten, bevor der Knopf reagiert, fuehlt sich wie
+       * ein verschluckter Klick an — und beim zweiten Antippen aus Unmut
+       * liefen zwei Ladevorgaenge. */
+      this.ui.zeigeSprachen(SPRACHEN, code);
+      await this.sprache.setzen(code);
+      // Nochmal: bei einem Fehlschlag steht die Markierung sonst falsch.
       this.ui.zeigeSprachen(SPRACHEN, this.sprache.code);
     };
     this.ui.callbacks.onTonSetzen = (an) => {

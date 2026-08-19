@@ -17,6 +17,7 @@ const SCREEN_SETS = {
   privacy: ['screen-privacy'],
   account: ['screen-account'],
   settings: ['screen-settings'],
+  language: ['screen-language'],
   playing: ['screen-hud'],
   paused: ['screen-hud', 'screen-paused'],
   // Zwischenschritt vor dem Game Over, solange ein zweites Leben übrig ist.
@@ -49,6 +50,8 @@ export class UI {
 
       btnEinstellungen: $('btn-einstellungen'),
       sprachWahl: $('sprach-wahl'),
+      btnSprache: $('btn-sprache'),
+      btnLanguageBack: $('btn-language-back'),
       btnTonAn: $('btn-ton-an'),
       btnTonAus: $('btn-ton-aus'),
       btnSettingsKonto: $('btn-settings-konto'),
@@ -145,6 +148,8 @@ export class UI {
       onEinstellungenBack: () => {},
       /** (code) => void — Sprache gewaehlt. */
       onSprache: () => {},
+      onSprachenOeffnen: () => {},
+      onSprachenBack: () => {},
       /** (an) => void — Ton ein- oder ausgeschaltet. */
       onTonSetzen: () => {},
       onCharactersBack: () => {},
@@ -240,6 +245,8 @@ export class UI {
     this.el.btnSettingsBack.addEventListener('click', () => this.callbacks.onEinstellungenBack());
     this.el.btnSettingsPrivacy.addEventListener('click', () => this.callbacks.onPrivacy());
     this.el.btnSettingsKonto.addEventListener('click', () => this.callbacks.onKonto());
+    this.el.btnSprache.addEventListener('click', () => this.callbacks.onSprachenOeffnen());
+    this.el.btnLanguageBack.addEventListener('click', () => this.callbacks.onSprachenBack());
     this.el.btnTonAn.addEventListener('click', () => this.callbacks.onTonSetzen(true));
     this.el.btnTonAus.addEventListener('click', () => this.callbacks.onTonSetzen(false));
     /* EIN Listener auf der Reihe statt einer je Sprache: die Knoepfe
@@ -774,6 +781,10 @@ export class UI {
    * @param {string} aktiv
    */
   zeigeSprachen(sprachen, aktiv) {
+    // Der Einstieg in den Einstellungen zeigt, was gerade gilt.
+    this.el.btnSprache.textContent =
+      sprachen.find((s) => s.code === aktiv)?.name ?? aktiv;
+
     this.el.sprachWahl.replaceChildren(
       ...sprachen.map((s) => {
         const k = document.createElement('button');

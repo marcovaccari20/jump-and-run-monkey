@@ -53,9 +53,17 @@ const glatt = (s) => entschluesseln(s).replace(/\s+/g, ' ').trim();
 
 /* ------------------------------------------------- Wörterbuch einlesen */
 
-const quelle = fs.readFileSync('src/systems/Sprache.js', 'utf8');
 const { SPRACHEN } = await import('../src/systems/Sprache.js');
-const sprachen = SPRACHEN.filter((s) => s.woerter);
+
+/* Jede Sprache liegt in einer eigenen Datei und wird im Spiel erst bei
+ * Bedarf geholt. Hier werden ALLE eingelesen — geprueft wird ja gerade,
+ * ob sie zueinander passen. */
+const sprachen = [];
+for (const e of SPRACHEN) {
+  if (!e.laden) continue;
+  const modul = await e.laden();
+  sprachen.push({ ...e, woerter: modul.default, datei: `src/sprachen/${e.code}.js` });
+}
 
 /* --------------------------------------------- Texte des Spiels sammeln */
 
@@ -134,10 +142,7 @@ for (const sprache of sprachen) {
  * JavaScript nimmt stillschweigend den letzten — die erste Übersetzung wäre
  * wirkungslos, ohne dass irgendetwas meckert. */
 for (const sprache of sprachen) {
-  const roh = quelle.match(
-    new RegExp(`const ${sprache.code.toUpperCase()} = \\{([\\s\\S]*?)\\n\\};`),
-  )?.[1];
-  if (!roh) continue;
+  const roh = fs.readFileSync(sprache.datei, 'utf8');
   const zaehler = new Map();
   for (const m of roh.matchAll(/^\s*(?:'((?:[^'\\]|\\.)*)'|([A-Za-z]\w*)):/gm)) {
     const k = m[1] ?? m[2];
@@ -151,5 +156,35 @@ for (const sprache of sprachen) {
   }
 }
 
-console.log(fehler ? `\n${fehler} Fehler.` : '\nWörterbuch stimmt mit dem Spiel überein.');
+/* ---------------------------------------------- Vollständigkeitsvergleich
+ *
+ * Bei einer Handvoll Sprachen genügt die Prüfung oben. Bei zwanzig nicht:
+ * dort ist der häufigste Fehler nicht ein falscher Schlüssel, sondern ein
+ * FEHLENDER — eine Zeile, die beim Abschreiben untergegangen ist. Das fällt
+ * sonst niemandem auf, denn die Stelle zeigt einfach Englisch.
+ *
+ * Deutsch ist die Messlatte: es war die erste vollständige Sprache und wird
+ * von den Prüfungen oben gegen das Spiel selbst geprüft.
+ */
+const messlatte = sprachen.find((s) => s.code === 'de');
+if (messlatte) {
+  const sollen = Object.keys(messlatte.woerter);
+  console.log(`\n=== Vollständigkeit (Messlatte: Deutsch, ${sollen.length} Einträge) ===`);
+  for (const s of sprachen) {
+    if (s.code === 'de') continue;
+    const fehlend = sollen.filter((k) => !(k in s.woerter));
+    const zuviel = Object.keys(s.woerter).filter((k) => !sollen.includes(k));
+    if (!fehlend.length && !zuviel.length) {
+      console.log(`  ok      ${s.code}  ${Object.keys(s.woerter).length}`);
+      continue;
+    }
+    fehler += fehlend.length + zuviel.length;
+    console.log(`  FEHLER  ${s.code}  ${fehlend.length} fehlen, ${zuviel.length} zu viel`);
+    for (const k of fehlend.slice(0, 6)) console.log(`            fehlt: ${JSON.stringify(k.slice(0, 60))}`);
+    if (fehlend.length > 6) console.log(`            … und ${fehlend.length - 6} weitere`);
+    for (const k of zuviel.slice(0, 6)) console.log(`            unbekannt: ${JSON.stringify(k.slice(0, 60))}`);
+  }
+}
+
+console.log(fehler ? `\n${fehler} Fehler.` : '\nAlle Wörterbücher stimmen mit dem Spiel überein.');
 process.exit(fehler ? 1 : 0);

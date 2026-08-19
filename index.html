@@ -162,11 +162,16 @@
           <div class="panel panel--text einstellungen">
             <div class="einstellung">
               <span class="einstellung__name">Language</span>
-              <!-- Knopfreihe statt <select>: ein Auswahlfeld sieht auf jedem
-                   Gerät anders aus und öffnet am Handy ein Systemrad über dem
-                   halben Bild. Bei zwei bis fünf Sprachen sind Knöpfe
-                   schneller und passen zum Rest des Spiels. -->
-              <div class="einstellung__wahl" id="sprach-wahl"></div>
+              <!-- NUR DER EINSTIEG, nicht die Liste selbst.
+                   Bei zwei Sprachen standen die Knöpfe direkt hier. Mit 23
+                   ging das nicht mehr: auf einem Handy im Querformat
+                   (740x360 gemessen) lagen 17 der 23 Knöpfe ausserhalb des
+                   Bildes — erreichbar nur durch Scrollen in einem 167 px
+                   hohen Fenster. Die Liste hat deshalb einen eigenen
+                   Bildschirm bekommen. -->
+              <button id="btn-sprache" class="wahl-knopf wahl-knopf--breit" type="button">
+                English
+              </button>
             </div>
 
             <div class="einstellung">
@@ -194,6 +199,22 @@
           <button id="btn-settings-privacy" class="link-leise" type="button">
             Privacy &amp; data
           </button>
+        </section>
+
+        <!-- ------------------------------------------------------- Sprachen -->
+        <!-- Eigener Bildschirm, weil 23 Einträge in keine Einstellungszeile
+             passen. Als GITTER, nicht als Liste: drei schmale Spalten machen
+             aus 23 Zeilen acht, und der Eigenname jeder Sprache bleibt
+             lesbar. Die Namen stehen NIE übersetzt da — wer im falschen
+             Sprachraum landet, muss "English" trotzdem wiederfinden. -->
+        <section id="screen-language" class="screen screen--center screen--dim">
+          <h2 class="headline">Language</h2>
+          <div class="sprach-gitter" id="sprach-wahl"></div>
+          <div class="button-row">
+            <button id="btn-language-back" class="btn btn--primary" type="button">
+              Back
+            </button>
+          </div>
         </section>
 
         <!-- ---------------------------------------------------- Datenschutz -->
