@@ -425,5 +425,85 @@ function admobBereit(optionen) {
   pruefe('kein Portalspeicher', p.datenSpeicher(), null);
 }
 
+/* --- 11. AdMob antwortet NIE ------------------------------------------- *
+ *
+ * DER FALL, DER BISHER DURCH ALLE TESTS GEFALLEN IST.
+ *
+ * Geprüft wurden bisher: belohnt, abgebrochen, kein Vorrat, Nachladen — nicht
+ * aber der schlimmste Fall: das Overlay meldet sich überhaupt nicht mehr.
+ * Genau dort fehlte in AdMobPortal die Notbremse, die CrazyGames und
+ * GameMonetize längst hatten, und `abbrechen()` war ein leerer Rumpf. Folge
+ * in der ausgelieferten App: Werbebildschirm steht still, "Cancel" tut
+ * nichts, Rettung nur durch Neustart — Lauf und gesammelte Münzen weg.
+ *
+ * Die Frist wird auf wenige Millisekunden gesetzt, damit der Test nicht die
+ * echten 45 Sekunden braucht. */
+{
+  /** Ein Spot, der niemals auflöst. */
+  const nieAntwort = () => new Promise(() => {});
+  const stummesAdmob = () => ({
+    showRewardVideoAd: nieAntwort,
+    showInterstitial: nieAntwort,
+    prepareRewardVideoAd: async () => {},
+    prepareInterstitial: async () => {},
+  });
+  const portalMit = (cfg, admob = stummesAdmob()) => {
+    const p = new AdMobPortal(cfg);
+    p.admob = admob;
+    p.bereit = true;
+    p._belohntBereit = true;
+    p._zwischenBereit = true;
+    p._letzterSpot = 0;
+    return p;
+  };
+
+  {
+    const p = portalMit({ ...ADCFG, werbungTimeout: 40 });
+    const start = Date.now();
+    pruefe('stummer belohnter Spot endet von selbst', await p.werbung('rewarded'), 'fehler');
+    pruefe('und zwar innerhalb der Frist', Date.now() - start < 1000, true);
+  }
+
+  {
+    const p = portalMit({ ...ADCFG, werbungTimeout: 40 });
+    pruefe('stummer Zwischenspot endet von selbst', await p.werbung('midgame'), 'fehler');
+  }
+
+  /* Der Abbrechen-Knopf MUSS wirken, BEVOR die Frist abläuft — das ist der
+   * Unterschied zwischen "der Spieler kommt raus" und "der Spieler wartet". */
+  {
+    const p = portalMit({ ...ADCFG, werbungTimeout: 5000 });
+    const laeuft = p.werbung('rewarded');
+    await new Promise((r) => setTimeout(r, 10)); // Notbremse einhängen lassen
+    const start = Date.now();
+    p.abbrechen();
+    pruefe('Abbrechen-Knopf beendet den Spot', await laeuft, 'abgebrochen');
+    pruefe('sofort, nicht erst nach der Frist', Date.now() - start < 500, true);
+  }
+
+  /* Fehlt `werbungTimeout` in der Konfiguration, darf NICHT sofort
+   * abgebrochen werden: `setTimeout(fn, undefined)` läse sonst 0 und jeder
+   * Spot schlüge lautlos fehl. */
+  {
+    let aufloesen;
+    const p = portalMit(
+      { admob: ADCFG.admob }, // kein werbungTimeout
+      {
+        showRewardVideoAd: () =>
+          new Promise((r) => {
+            aufloesen = () => r({ type: 'coins', amount: 1 });
+          }),
+        showInterstitial: nieAntwort,
+        prepareRewardVideoAd: async () => {},
+        prepareInterstitial: async () => {},
+      },
+    );
+    const laeuft = p.werbung('rewarded');
+    await new Promise((r) => setTimeout(r, 30));
+    aufloesen();
+    pruefe('ohne Fristangabe wird nicht vorschnell abgebrochen', await laeuft, 'belohnt');
+  }
+}
+
 console.log(fehler === 0 ? '\nAlle Fälle bestanden.\n' : `\n${fehler} FEHLER.\n`);
 process.exit(fehler === 0 ? 0 : 1);

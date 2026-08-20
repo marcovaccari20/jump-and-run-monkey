@@ -606,6 +606,58 @@ export class AdMobPortal {
     /** Liegt ein Zwischenspot abrufbereit? */
     this._zwischenBereit = false;
     this._letzterSpot = 0;
+    /** Beendet einen laufenden Spot von aussen (Notbremse, Abbrechen-Knopf). */
+    this._abbruch = null;
+  }
+
+  /**
+   * Lässt einen Spot höchstens `werbungTimeout` lang laufen und macht ihn
+   * von aussen abbrechbar.
+   *
+   * DAS FEHLTE, UND ES WAR DAS ERNSTESTE LOCH DER APP.
+   *
+   * CrazyGames und GameMonetize haben beide eine solche Notbremse — dort
+   * steht sogar im Kommentar, dass ein eingefrorener Spot einmal über
+   * 75 Sekunden gemessen wurde. Ausgerechnet AdMob, der EINZIGE Anbieter,
+   * der im Play Store überhaupt läuft, hatte keine. Settelte
+   * `showRewardVideoAd()` nie, stand der Werbebildschirm still, und
+   * `abbrechen()` war ein leerer Rumpf — der Knopf tat nichts. Der Spieler
+   * kam nur durch einen Neustart der App heraus und verlor dabei Lauf und
+   * gesammelte Münzen.
+   *
+   * @param {Promise<string>} spot löst mit 'belohnt' | 'abgebrochen' auf
+   * @returns {Promise<'belohnt'|'abgebrochen'|'fehler'>}
+   */
+  _mitNotbremse(spot) {
+    return new Promise((fertig) => {
+      let erledigt = false;
+      const einmal = (wert) => {
+        // Wer zuerst kommt, gewinnt: Spot, Notbremse oder Abbrechen-Knopf.
+        if (erledigt) return;
+        erledigt = true;
+        clearTimeout(uhr);
+        this._abbruch = null;
+        fertig(wert);
+      };
+
+      /* Der Rückfallwert ist nicht Zierde: `setTimeout(fn, undefined)` wird
+       * als 0 gelesen und feuerte sofort — jeder Spot würde augenblicklich
+       * als fehlgeschlagen gelten, und zwar lautlos. Fehlt die Einstellung,
+       * ist eine grosszügige Frist die sichere Richtung. */
+      const frist = this.cfg?.werbungTimeout ?? 45000;
+      const uhr = setTimeout(() => {
+        console.info('[Portal] AdMob-Spot antwortet nicht — abgebrochen.');
+        einmal('fehler');
+      }, frist);
+
+      // Von aussen abbrechbar machen (Knopf "Abbrechen", Rückkehr ins Menü).
+      this._abbruch = () => einmal('abgebrochen');
+
+      spot.then(einmal, (err) => {
+        console.info('[Portal] AdMob-Spot:', err?.message ?? err);
+        einmal('abgebrochen');
+      });
+    });
   }
 
   async init() {
@@ -693,11 +745,11 @@ export class AdMobPortal {
       this._letzterSpot = Date.now();
       this._zwischenBereit = false;
       try {
-        await this.admob.showInterstitial();
-        return 'belohnt'; // gelaufen; für den Zwischenspot zählt nur das
-      } catch (err) {
-        console.info('[Portal] AdMob Zwischenspot:', err?.message ?? err);
-        return 'fehler';
+        // Für den Zwischenspot zählt nur, DASS er lief — deshalb 'belohnt'.
+        const ende = await this._mitNotbremse(
+          this.admob.showInterstitial().then(() => 'belohnt'),
+        );
+        return ende === 'belohnt' ? 'belohnt' : 'fehler';
       } finally {
         this._vorladen('zwischen');
       }
@@ -713,19 +765,31 @@ export class AdMobPortal {
        * Ende gesehen hat — AdMob liefert dann den verdienten Lohn. Wer
        * abbricht, landet im catch. Es gibt hier also nichts zu erschliessen
        * und keine Mindestdauer zu messen. */
-      const lohn = await this.admob.showRewardVideoAd();
-      return lohn ? 'belohnt' : 'abgebrochen';
-    } catch (err) {
-      console.info('[Portal] AdMob belohnter Spot:', err?.message ?? err);
-      return 'abgebrochen';
+      return await this._mitNotbremse(
+        this.admob.showRewardVideoAd().then((lohn) => (lohn ? 'belohnt' : 'abgebrochen')),
+      );
     } finally {
       this._vorladen('belohnt');
     }
   }
 
-  /* Ein laufender AdMob-Spot gehört dem Anbieter — er lässt sich von aussen
-   * nicht abbrechen, und das ist bei einem belohnten Spot auch richtig so. */
-  abbrechen() {}
+  /**
+   * Bricht das WARTEN auf einen Spot ab.
+   *
+   * Der alte Kommentar hier lautete: "Ein laufender AdMob-Spot gehört dem
+   * Anbieter — er lässt sich von aussen nicht abbrechen." Das stimmt für das
+   * native Overlay, war als Begründung für einen leeren Rumpf aber falsch.
+   * Denn abzubrechen ist nicht der Spot, sondern unser Warten darauf: hängt
+   * das Overlay oder kommt es nie, sass der Spieler ohne diesen Aufruf für
+   * immer im Werbebildschirm fest.
+   *
+   * Der Lauf gilt dann als abgebrochen — also ohne Belohnung. Das ist die
+   * sichere Richtung: lieber kein Extraleben als ein verschenktes für einen
+   * Spot, den niemand gesehen hat.
+   */
+  abbrechen() {
+    this._abbruch?.();
+  }
 }
 
 /**

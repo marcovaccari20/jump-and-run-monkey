@@ -604,6 +604,19 @@ export class Game {
 
     this.ui.setUebertragBesetzt(true);
     this.ui.setUebertragStatus('fetching…');
+
+    /* ZUERST SICHERN, DANN DEN CODE HOLEN — die Reihenfolge war umgekehrt.
+     *
+     * Zwei Gründe, und der zweite ist der wichtige:
+     *  1. Hinter dem Code muss etwas stehen, sonst meldet das zweite Gerät
+     *     "nichts gespeichert". Das stand schon vorher hier, nur eben
+     *     NACHHER und ohne abzuwarten.
+     *  2. Der Server gibt einen Code seit der Härtung nur noch an eine
+     *     Kennung heraus, die er bereits kennt. Ohne vorheriges Sichern
+     *     bekäme ein Spieler, der noch nie etwas gespeichert hat, eine
+     *     Absage — obwohl er alles richtig gemacht hat. */
+    await this.fortschritt.fernSichernJetzt();
+
     const erg = await codeVorschlag(b, this.spielerId);
     this.ui.setUebertragBesetzt(false);
 
@@ -612,21 +625,60 @@ export class Game {
       return;
     }
 
-    // Gleich sichern, damit hinter dem Code auch etwas steht — sonst meldet
-    // das zweite Gerät "nichts gespeichert" (siehe _codeBelegen).
-    this.fortschritt._sichern();
-
     this.ui.setUebertragCode(erg.code);
     this.ui.setUebertragStatus(`Code ${erg.code} is yours now.`);
   }
 
   /* ================================================================== Laden */
 
+  /**
+   * Wartet auf ein Versprechen — aber höchstens so lange.
+   *
+   * Fremder Code (Werbe-SDKs, native Plugins) darf das Spiel nie dauerhaft
+   * anhalten. Läuft die Frist ab, geht es ohne ihn weiter; ein Fehlschlag
+   * wird geschluckt, weil der Aufrufer ohnehin nur "weiter" kennt.
+   *
+   * @param {Promise<any>} versprechen
+   * @param {number} ms
+   * @param {string} name nur für die Konsolenmeldung
+   */
+  async _mitFrist(versprechen, ms, name) {
+    let uhr;
+    try {
+      await Promise.race([
+        Promise.resolve(versprechen).catch((err) => {
+          console.info(`[Game] ${name} fehlgeschlagen:`, err?.message ?? err);
+        }),
+        new Promise((fertig) => {
+          uhr = setTimeout(() => {
+            console.warn(`[Game] ${name} antwortet nicht — ohne weiter.`);
+            fertig();
+          }, ms);
+        }),
+      ]);
+    } finally {
+      clearTimeout(uhr);
+    }
+  }
+
   async load() {
     /* Portal ZUERST: es will wissen, dass geladen wird, und der Spot-Anbieter
      * muss stehen, bevor der erste Game-Over-Screen kommen kann. Schlägt es
-     * fehl, läuft alles Weitere unverändert weiter — siehe Portal.js. */
-    await this.portal.init();
+     * fehl, läuft alles Weitere unverändert weiter — siehe Portal.js.
+     *
+     * MIT ZEITBREMSE, UND DAS IST KEINE VORSICHTSMASSNAHME AUF VERDACHT.
+     * Hier stand ein blankes `await this.portal.init()`. In der Android-App
+     * ruft das `admob.initialize()` — fremden nativen Code. Antwortet der
+     * nicht (kein Netz beim allerersten Start, hängende Google-Dienste,
+     * Plugin-Fehler), löst das Versprechen NIE auf. Weil dies die allererste
+     * Zeile des Ladens ist, bliebe der Balken bei 0 % stehen, für immer.
+     *
+     * Portal.js deckelt zwar das Laden des SDK-SKRIPTS mit `sdkTimeout`,
+     * aber nicht den init-Aufruf selbst — und in der App gibt es gar kein
+     * Skript zu laden. Genau diese Lücke wird hier geschlossen.
+     *
+     * Ohne Werbung starten ist immer besser als gar nicht starten. */
+    await this._mitFrist(this.portal.init(), this.cfg.ad.sdkTimeout, 'portal.init');
     this.portal.ladenStart();
     this.ads = createAdService(this.cfg.ad, this.portal);
     this._fortschrittSpeicherWaehlen();

@@ -299,6 +299,28 @@ export class Fortschritt {
     return true;
   }
 
+  /**
+   * Sichert auf dem Server und WARTET darauf.
+   *
+   * `_sichern()` weiter unten feuert absichtlich und vergisst — ein langsamer
+   * Server darf das Menü nicht anhalten. Für den Übertragungscode ist genau
+   * das aber falsch: der Server vergibt einen Code nur noch an eine Kennung,
+   * die er bereits kennt. Sonst könnte jemand mit frei erfundenen Kennungen
+   * den ganzen Vorrat von 10 000 Codes belegen (gemessen: 500 Stück in
+   * 46 Millisekunden) und damit jedem Spieler den Gerätewechsel verbauen.
+   * Also muss die Zeile VORHER wirklich angekommen sein, nicht irgendwann.
+   *
+   * @returns {Promise<boolean>} true = angekommen
+   */
+  async fernSichernJetzt() {
+    if (!this.fern) return false;
+    try {
+      return !!(await this.fern.sichern({ muenzen: this.muenzen, frei: [...this.frei] }));
+    } catch {
+      return false;
+    }
+  }
+
   /* ------------------------------------------------------------- Intern */
 
   _sichern() {
