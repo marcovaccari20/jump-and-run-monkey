@@ -274,130 +274,6 @@ body {
   display: none;
 }
 
-/* ------------------------------------------------------- Fortschritt mitnehmen
- *
- * Bewusst zugeklappt und ganz unten: die allermeisten Spieler brauchen das
- * nie. Wer es braucht, braucht es dringend.
- */
-.uebertrag {
-  margin-top: 18px;
-  width: min(420px, 100%);
-  font-size: 13px;
-  text-align: left;
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.uebertrag > summary {
-  cursor: pointer;
-  /* War 6px und ergab ein 27 px hohes Tippziel — deutlich unter den 44 px,
-     die man blind zuverlässig trifft. */
-  padding: 13px 0;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.uebertrag > summary:hover {
-  color: #fff;
-}
-
-.uebertrag__hinweis {
-  margin: 8px 0 4px;
-  line-height: 1.45;
-}
-
-/* Vier Ziffern statt einer UUID: der Code darf jetzt gross und stolz
-   dastehen, statt sich über drei Zeilen zu brechen. */
-.uebertrag__code {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.35);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.28em;
-  /* Sperrsatz schiebt auch hinter das letzte Zeichen — sonst sitzt die Zahl
-     sichtbar links im Kästchen. */
-  text-indent: 0.28em;
-  color: var(--banana);
-  user-select: all; /* ein Klick markiert alles */
-}
-
-.uebertrag__hinweis--code {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.uebertrag__hinweis--code[hidden] {
-  display: none;
-}
-
-.uebertrag__form {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.uebertrag__eingabe {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 7px 10px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.3);
-  color: #fff;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-
-/* Das Codefeld ist bewusst schmal und gross: vier Ziffern, gut lesbar, und
-   es lädt nicht dazu ein, etwas anderes hineinzuschreiben. */
-.uebertrag__eingabe--code {
-  flex: 0 0 6.5em;
-  text-align: center;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  text-indent: 0.22em;
-}
-
-/* Zwei Klassennamen statt einem — und das ist kein Stil, sondern nötig.
- *
- * Diese Regel steht in der Datei VOR `.btn`. Bei gleicher Spezifität gewinnt
- * die spätere. Die kleinen Knöpfe waren also nie klein: sie bekamen 16 px
- * Schrift und 13px/30px Innenabstand wie jeder andere Knopf. Ironischerweise
- * war das für den Finger besser (49 px hoch), machte die Übertrag-Zeile aber
- * viel klobiger als geplant — und trug dazu bei, dass das Dschungel-Camp
- * über die Bildkante hinauswuchs.
- *
- * Jetzt spezifischer, und bewusst grosszügiger bemessen als ursprünglich:
- * 44 px Mindesthöhe ist das kleinste Ziel, das man blind trifft. */
-.btn.btn--klein {
-  padding: 10px 14px;
-  font-size: 13px;
-  min-height: 44px;
-  flex: 0 0 auto;
-}
-
-.btn.btn--klein:disabled,
-.uebertrag__eingabe:disabled {
-  opacity: 0.5;
-  cursor: progress;
-}
-
-.uebertrag__status {
-  margin-top: 6px;
-  min-height: 1.2em;
-}
-
-.uebertrag[hidden] {
-  display: none;
-}
-
 /* ------------------------------------------------------------------ Screens */
 
 .screen {
@@ -453,6 +329,53 @@ body {
     rgba(4, 12, 6, 0.94) 100%
   );
   backdrop-filter: blur(3px);
+}
+
+/* COUNTDOWN NACH DER PAUSE — bewusst OHNE Abdunklung.
+ *
+ * Der Sinn der drei Sekunden ist, dass man sieht, wo die Objekte stehen,
+ * bevor die Steuerung wieder greift. Ein `screen--dim` davor nähme genau
+ * das weg. `pointer-events: none` ist Pflicht: das Element deckt das ganze
+ * Feld ab, und ein Tipp darauf darf nicht am Overlay hängen bleiben. */
+.screen--countdown {
+  pointer-events: none;
+}
+
+.countdown__zahl {
+  margin: 0;
+  font-size: clamp(5rem, 26vmin, 12rem);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--gelb, #ffe14d);
+  /* Doppelter Schatten: die Ziffer steht vor stark wechselnden Wänden —
+   * mal helles Eis, mal dunkle Lava. Ein reiner Farbwert wäre auf einer der
+   * beiden Seiten unlesbar. */
+  text-shadow:
+    0 0 18px rgba(0, 0, 0, 0.85),
+    0 4px 12px rgba(0, 0, 0, 0.7);
+}
+
+.countdown__zahl.is-puls {
+  animation: countdown-puls 0.42s ease-out;
+}
+
+@keyframes countdown-puls {
+  from {
+    transform: scale(1.55);
+    opacity: 0.15;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Wer Bewegung reduziert haben will, bekommt die Ziffer ohne Sprung —
+ * gezählt wird trotzdem. */
+@media (prefers-reduced-motion: reduce) {
+  .countdown__zahl.is-puls {
+    animation: none;
+  }
 }
 
 /* Das HUD liegt über dem laufenden Spiel und darf nichts abfangen. */

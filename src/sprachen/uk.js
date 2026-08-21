@@ -108,26 +108,6 @@ export default {
   'Fur colour': 'Колір хутра',
   'Go!': 'Вперед!',
   Back: 'Назад',
-  'Move your progress to another device': 'Перенести поступ на інший пристрій',
-  Pick: 'Обери',
-  'four digits': 'чотири цифри',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'які ще вільні. З ними ти перенесеш монети й мавп на будь-який інший пристрій.',
-  Save: 'Зберегти',
-  'Get a free one': 'Знайти вільний',
-  'Your code:': 'Твій код:',
-  Copy: 'Копіювати',
-  'Choose a four-digit code': 'Обери чотирицифровий код',
-  'Enter a four-digit code': 'Введи чотирицифровий код',
-  'Enter a code from another device:': 'Введи код з іншого пристрою:',
-  Load: 'Завантажити',
-  'Code copied.': 'Код скопійовано.',
-  'Copying is blocked — select the code by hand.':
-    'Копіювання заблоковано — виділи код вручну.',
-  'Please enter exactly four digits.': 'Введи рівно чотири цифри.',
-  'Nothing is stored for that code.': 'За цим кодом нічого не збережено.',
-  'Nothing to transfer without a server.': 'Без сервера переносити нічого.',
-  'No profile yet — play one round first.': 'Профілю ще немає — зіграй спершу один раунд.',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'Додаткове життя',

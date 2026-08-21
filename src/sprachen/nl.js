@@ -110,26 +110,6 @@ export default {
   'Fur colour': 'Vachtkleur',
   'Go!': 'Gaan!',
   Back: 'Terug',
-  'Move your progress to another device': 'Je voortgang naar een ander apparaat halen',
-  Pick: 'Kies',
-  'four digits': 'vier cijfers',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'die nog vrij zijn. Daarmee haal je je munten en apen naar elk ander apparaat.',
-  Save: 'Opslaan',
-  'Get a free one': 'Een vrije zoeken',
-  'Your code:': 'Jouw code:',
-  Copy: 'Kopiëren',
-  'Choose a four-digit code': 'Kies een viercijferige code',
-  'Enter a four-digit code': 'Voer een viercijferige code in',
-  'Enter a code from another device:': 'Voer een code van een ander apparaat in:',
-  Load: 'Laden',
-  'Code copied.': 'Code gekopieerd.',
-  'Copying is blocked — select the code by hand.':
-    'Kopiëren is geblokkeerd — selecteer de code met de hand.',
-  'Please enter exactly four digits.': 'Voer precies vier cijfers in.',
-  'Nothing is stored for that code.': 'Bij die code is niets opgeslagen.',
-  'Nothing to transfer without a server.': 'Zonder server valt er niets over te zetten.',
-  'No profile yet — play one round first.': 'Nog geen profiel — speel eerst een ronde.',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'Extra leven',

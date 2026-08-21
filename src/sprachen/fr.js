@@ -111,26 +111,6 @@ export default {
   'Fur colour': 'Couleur du pelage',
   'Go!': 'C’est parti !',
   Back: 'Retour',
-  'Move your progress to another device': 'Transférer ta progression sur un autre appareil',
-  Pick: 'Choisis',
-  'four digits': 'quatre chiffres',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'encore libres. Ils amènent tes pièces et tes singes sur n’importe quel autre appareil.',
-  Save: 'Enregistrer',
-  'Get a free one': 'En trouver un libre',
-  'Your code:': 'Ton code :',
-  Copy: 'Copier',
-  'Choose a four-digit code': 'Choisir un code à quatre chiffres',
-  'Enter a four-digit code': 'Saisir un code à quatre chiffres',
-  'Enter a code from another device:': 'Saisis un code venant d’un autre appareil :',
-  Load: 'Charger',
-  'Code copied.': 'Code copié.',
-  'Copying is blocked — select the code by hand.':
-    'La copie est bloquée : sélectionne le code à la main.',
-  'Please enter exactly four digits.': 'Saisis exactement quatre chiffres.',
-  'Nothing is stored for that code.': 'Rien n’est enregistré sous ce code.',
-  'Nothing to transfer without a server.': 'Rien à transférer sans serveur.',
-  'No profile yet — play one round first.': 'Pas encore de profil : joue d’abord une partie.',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'Vie supplémentaire',

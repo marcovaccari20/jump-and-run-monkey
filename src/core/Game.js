@@ -36,10 +36,6 @@ import {
   LokalerSpeicher,
   SupabaseSpeicher,
   spielerKennung,
-  kennungSetzen,
-  codeBelegen,
-  codeAufloesen,
-  codeVorschlag,
 } from '../systems/Fortschritt.js';
 import { Konto, KontoSpeicher } from '../systems/Konto.js';
 import { Sprache, SPRACHEN } from '../systems/Sprache.js';
@@ -141,6 +137,9 @@ export class Game {
 
     /** Restsekunden Goldmodus (0 = aus). */
     this._goldRest = 0;
+
+    /** Restsekunden des Fortsetzen-Countdowns (0 = keiner läuft). */
+    this._countdown = 0;
     /** @type {import('three').Texture[]|null} goldenes Fell, erst bei Bedarf geladen */
     this._goldFrames = null;
 
@@ -448,6 +447,13 @@ export class Game {
    * behauptet, ist schlimmer als gar keine.
    */
   _einstellungenZeigen() {
+    /* ZWEITES NETZ GEGEN DEN COUNTDOWN.
+     *
+     * Das Zahnrad ist im Countdown ausgeblendet (UI.showScreen). Diese Zeile
+     * fängt jeden anderen Weg hierher ab: liefe die Uhr weiter, stünde man
+     * nach drei Sekunden mitten im Einstellungsmenü in einem laufenden
+     * Spiel. Der Bildschirm gewinnt, der Countdown verfällt. */
+    this._countdown = 0;
     this.ui.zeigeSprachen(SPRACHEN, this.sprache.code);
     this.ui.setTon(this.klang.stumm);
     this.ui.setKontoZeile(this.konto.email);
@@ -485,149 +491,15 @@ export class Game {
     this.ui.kontoMeldung('Signed out. Your progress stays on this device.', 'gut');
   }
 
-  /**
-   * Fortschritt von einem anderen Gerät holen.
+  /* HIER STANDEN _codeLaden, _codeBelegen und _codeVorschlag.
    *
-   * BEWUSST OHNE ZUSAMMENFÜHREN: hier wird der Stand des eingegebenen Codes
-   * geladen und der bisherige ersetzt. Würde ich wie beim normalen Start
-   * zusammenführen ("mehr Münzen gewinnt"), bekäme man beim Übertragen die
-   * Summe aus zwei Ständen — und das ist ein Weg, sich Münzen zu verdoppeln,
-   * ohne zu spielen.
-   */
-  async _codeLaden(code) {
-    const b = this.cfg.bestenliste;
-    if (!b?.url || !b?.schluessel) {
-      this.ui.setUebertragStatus('Nothing to transfer without a server.');
-      return;
-    }
-
-    this.ui.setUebertragBesetzt(true);
-    this.ui.setUebertragStatus('loading…');
-
-    /* ERST AUFLÖSEN, DANN DIE EIGENE KENNUNG ÜBERSCHREIBEN.
-     *
-     * Die vorige Fassung rief `kennungSetzen(code)` als ERSTES und lud
-     * danach. Wer einen gültig geformten, aber unbekannten Code eintippte,
-     * hatte damit schon seine eigene Kennung überschrieben — die Meldung
-     * "Zu diesem Code ist nichts gespeichert" kam zu spät, der Zugang zum
-     * eigenen Serverstand war weg. Jetzt wird nichts angefasst, bevor der
-     * Server die Kennung wirklich herausgegeben hat. */
-    const auf = await codeAufloesen(b, code);
-    if (!auf.ok) {
-      this.ui.setUebertragBesetzt(false);
-      this.ui.setUebertragStatus(auf.meldung);
-      return;
-    }
-
-    const speicher = new SupabaseSpeicher(b, auf.kennung);
-    const stand = await speicher.laden();
-    if (!stand) {
-      this.ui.setUebertragBesetzt(false);
-      this.ui.setUebertragStatus('Nothing is stored for that code.');
-      return;
-    }
-
-    // Jetzt erst umschalten — ab hier ist der Wechsel vollzogen.
-    kennungSetzen(this.cfg.fortschritt.spielerKey, auf.kennung);
-    this.spielerId = auf.kennung;
-    this.fortschritt.fern = speicher;
-    this.fortschritt.muenzen = stand.muenzen;
-    this.fortschritt.frei = new Set([...stand.frei, ...this.cfg.fortschritt.immerFrei]);
-    this.fortschritt._sichern();
-
-    this.ui.setUebertragBesetzt(false);
-    this.ui.setUebertragCode(String(code).trim());
-    this.ui.setUebertragStatus(`Restored: ${stand.muenzen} coins.`);
-    // Die Kacheln zeigen sonst weiter die alten Schlösser.
-    this._openCharacters();
-  }
-
-  /**
-   * Vier Ziffern für dieses Gerät belegen.
+   * Die Vier-Ziffern-Übertragung ist entfernt — der Spielstand folgt jetzt
+   * ausschliesslich dem E-Mail-Konto (siehe _kontoUebernehmen weiter oben).
+   * Ein zweiter Weg zum selben Ziel war einer zu viel, und er war der
+   * schwächere: vier Ziffern sind 1 aus 10 000, ein Passwort ist es nicht.
    *
-   * Ein Code wird ERST HIER vergeben, nicht schon beim ersten Spielstart.
-   * Es gibt nur zehntausend davon; wer nie das Gerät wechselt, soll keinen
-   * verbrauchen.
-   */
-  async _codeBelegen(code) {
-    const b = this.cfg.bestenliste;
-    if (!b?.url || !b?.schluessel) {
-      this.ui.setUebertragStatus('Nothing to transfer without a server.');
-      return;
-    }
-    if (!this.spielerId) {
-      this.ui.setUebertragStatus('No profile yet — play one round first.');
-      return;
-    }
-
-    this.ui.setUebertragBesetzt(true);
-    this.ui.setUebertragStatus('saving…');
-
-    const erg = await codeBelegen(b, this.spielerId, code);
-    this.ui.setUebertragBesetzt(false);
-
-    if (!erg.ok) {
-      this.ui.setUebertragStatus(erg.meldung);
-      return;
-    }
-
-    /* Gleich einmal sichern, damit hinter dem Code auch etwas steht.
-     *
-     * Der Serverstand entsteht sonst erst beim ersten Münzgewinn. Wer sich
-     * einen Code aussucht, bevor er je eine Münze eingesammelt hat, und ihn
-     * sofort auf dem zweiten Gerät eingibt, bekäme "Zu diesem Code ist
-     * nichts gespeichert" — und würde völlig zu Recht denken, das Belegen
-     * habe nicht funktioniert. */
-    this.fortschritt._sichern();
-
-    this.ui.setUebertragCode(erg.code);
-    this.ui.setUebertragStatus(`Code ${erg.code} is yours now.`);
-  }
-
-  /**
-   * Einen freien Code holen — und zwar verbindlich.
-   *
-   * Der Server sucht und belegt in einem Zug. Ein blosser Vorschlag hätte
-   * dem Spieler "ist frei" gesagt und beim anschliessenden Bestätigen
-   * "schon vergeben" — bei zehntausend Plätzen kein Randfall.
-   */
-  async _codeVorschlag() {
-    const b = this.cfg.bestenliste;
-    if (!b?.url || !b?.schluessel) {
-      this.ui.setUebertragStatus('Nothing to transfer without a server.');
-      return;
-    }
-    if (!this.spielerId) {
-      this.ui.setUebertragStatus('No profile yet — play one round first.');
-      return;
-    }
-
-    this.ui.setUebertragBesetzt(true);
-    this.ui.setUebertragStatus('fetching…');
-
-    /* ZUERST SICHERN, DANN DEN CODE HOLEN — die Reihenfolge war umgekehrt.
-     *
-     * Zwei Gründe, und der zweite ist der wichtige:
-     *  1. Hinter dem Code muss etwas stehen, sonst meldet das zweite Gerät
-     *     "nichts gespeichert". Das stand schon vorher hier, nur eben
-     *     NACHHER und ohne abzuwarten.
-     *  2. Der Server gibt einen Code seit der Härtung nur noch an eine
-     *     Kennung heraus, die er bereits kennt. Ohne vorheriges Sichern
-     *     bekäme ein Spieler, der noch nie etwas gespeichert hat, eine
-     *     Absage — obwohl er alles richtig gemacht hat. */
-    await this.fortschritt.fernSichernJetzt();
-
-    const erg = await codeVorschlag(b, this.spielerId);
-    this.ui.setUebertragBesetzt(false);
-
-    if (!erg.ok) {
-      this.ui.setUebertragStatus(erg.meldung);
-      return;
-    }
-
-    this.ui.setUebertragCode(erg.code);
-    this.ui.setUebertragStatus(`Code ${erg.code} is yours now.`);
-  }
+   * Unterschied, der dabei wegfällt: der Code ERSETZTE den lokalen Stand,
+   * das Konto FÜHRT ZUSAMMEN. Anmelden kann also nur gewinnen. */
 
   /* ================================================================== Laden */
 
@@ -815,6 +687,10 @@ export class Game {
         // Im Hintergrund automatisch pausieren — sonst läuft man beim
         // Zurückkommen in einen riesigen dt und stirbt sofort.
         if (this.states.is(GameState.PLAYING)) this._pause();
+        /* Und einen laufenden Countdown abbrechen. Sonst zählt er im
+         * versteckten Tab zu Ende und man kommt in ein bereits laufendes
+         * Spiel zurück — genau der Tod, den die Zeile darüber verhindert. */
+        this._countdownAbbrechen();
         /* Ton IMMER stilllegen, nicht nur im laufenden Spiel. Vorher dudelte
          * die Atmosphäre im Menü und auf dem Game-Over-Bildschirm in einem
          * versteckten Tab munter weiter — auf einer Portalseite mit mehreren
@@ -1565,7 +1441,14 @@ export class Game {
       bananas: char.bananas,
       ignoreRockRadius: char.ignoreRockRadius,
     };
-    const reviveCfg = { ...this.cfg.revive, maxStored: char.maxStored };
+    const reviveCfg = {
+      ...this.cfg.revive,
+      maxStored: char.maxStored,
+      // Gebunkerte Extraleben beim Laufstart. Ohne diese Durchreichung setzt
+      // SpritePlayer.reset() bei JEDEM Lauf wieder auf 0 zurück, und ein
+      // Startleben in der Konfiguration bliebe wirkungslos.
+      startRevives: char.startRevives ?? 0,
+    };
 
     const ol = this.cfg.sprite.outline;
     const spriteCfg = {
@@ -1612,7 +1495,9 @@ export class Game {
     this._updateWorldBounds();
     this.tempolinien?.groesseSetzen(this.worldView.bounds);
 
-    // Der weisse Affe bekommt gar keine Bananen: weder Spawn noch Anzeige.
+    // Der weisse Affe bekommt gar keine Bananen — der Spawn wird hier
+    // abgeschaltet. Die ANZEIGE hängt seit den zwei Startleben nicht mehr
+    // daran, siehe setReviveVisible unten.
     if (this.spawner) {
       this.spawner.bananasEnabled = char.bananas;
       // Die Lücken-Garantie hängt an den Massen des Affen: sein Trefferradius
@@ -1622,7 +1507,14 @@ export class Game {
       // nicht hinterher.
       this.spawner.setSpieler(this.player.cfg);
     }
-    this.ui.setReviveVisible(char.bananas && char.maxStored > 0);
+    /* ANZEIGE HÄNGT AM LAGER, NICHT AN DEN BANANEN.
+     *
+     * Hier stand `char.bananas && char.maxStored > 0`. Das war richtig,
+     * solange ein Extraleben NUR aus einer Banane kommen konnte. Der weisse
+     * Affe hat jetzt eins von Anfang an, sammelt aber keine — mit der alten
+     * Bedingung wäre sein Symbol dauerhaft ausgeblendet gewesen, und er
+     * hätte ein Leben besessen, von dem das Bild nichts verrät. */
+    this.ui.setReviveVisible(char.maxStored > 0);
   }
 
   /** Kletter-Frames eines Charakters holen — beim ersten Mal nachladen. */
@@ -1872,17 +1764,6 @@ export class Game {
     this.ui.callbacks.onTonUmschalten = () => this._tonUmschalten();
     // Pause per Knopf. Am Handy der einzige Weg: dort gibt es kein Escape.
     this.ui.callbacks.onPause = () => this._pause();
-    this.ui.callbacks.onCodeLaden = (code) => this._codeLaden(code);
-    this.ui.callbacks.onCodeBelegen = (code) => this._codeBelegen(code);
-    this.ui.callbacks.onCodeVorschlag = () => this._codeVorschlag();
-
-    /* Der Bereich ist nur sinnvoll, wenn es einen Server gibt. Angezeigt wird
-     * ANFANGS KEIN CODE: einen zu vergeben kostet einen von zehntausend
-     * Plätzen, und das soll nur passieren, wenn jemand wirklich übertragen
-     * will. Wer schon einen hat, holt ihn sich über "Code merken" zurück —
-     * dieselbe Kennung bekommt denselben Code wieder. */
-    const hatServer = Boolean(this.cfg.bestenliste?.url && this.cfg.bestenliste?.schluessel);
-    this.ui.setUebertragVerfuegbar(hatServer && Boolean(this.spielerId));
     // Der Schalter muss zeigen, was gespeichert ist — sonst steht dort nach
     // einem Neuladen "Ton an", obwohl er ausgeschaltet bleibt.
     this.ui.setTon(this.klang.stumm);
@@ -1982,6 +1863,22 @@ export class Game {
      * Lauf. Die Bestenliste prüft die Marke aus genau diesem Grund. */
     this._laufNummer++;
     this._rundenGespielt++;
+    // Ein Countdown aus einer früheren Pause hat mit dem neuen Lauf nichts
+    // zu tun — er würde sonst gleich zu Beginn eine Ziffer einblenden.
+    this._countdown = 0;
+    /* WISCHUHR ABRÄUMEN — sonst erbt der neue Lauf einen alten Wisch.
+     *
+     * `_wischUhrLaufen` läuft nur in `_updatePlaying`. Stirbt der orange
+     * Affe mit noch laufender Wartezeit, friert sie ein; im nächsten Lauf
+     * zählt sie weiter und schiebt ihn ohne jede Eingabe auf `_wischZiel` —
+     * eine Bahn aus dem VORHERIGEN Lauf. Fenster: bis zu 0.383 s je Start. */
+    this._wischUhr = 0;
+    this._wischZiel = null;
+    /* Und die Flankenerkennung des Bahnwechsels. Sie merkt sich die zuletzt
+     * gehaltene Richtung; blieb sie stehen, wird der erste Wisch des neuen
+     * Laufs als "schon gedrückt" gewertet und verschluckt. */
+    this._letzterWischRichtung = 0;
+    this._letzterWischZeit = -Infinity;
     this.score.reset();
     this.difficulty.reset();
     this.player.reset(this.worldView.bahnX);
@@ -2062,7 +1959,10 @@ export class Game {
     }
 
     this.ui.updateScore(0);
-    this.ui.setRevive(false);
+    // Hier stand fest `false`. Seit der weisse Affe mit einem gebunkerten
+    // Extraleben startet, muss die Anzeige den echten Stand zeigen — sonst
+    // hat er ein Leben, von dem er nichts weiss.
+    this.ui.setRevive(this.player.revives > 0);
     this.ui.clearToast();
 
     this.states.transitionTo(GameState.PLAYING);
@@ -2243,17 +2143,86 @@ export class Game {
   }
 
   _pause() {
-    if (!this.states.is(GameState.PLAYING)) return;
+    if (!this.states.is(GameState.PLAYING)) {
+      /* Schon pausiert, aber der Countdown läuft? Dann ist "Pause" der
+       * Abbruch: zurück auf den Pausenbildschirm. Ohne diesen Zweig liefe
+       * das Zählen im Hintergrund weiter und startete das Spiel, während
+       * der Spieler glaubt, er stehe still. */
+      if (this.states.is(GameState.PAUSED) && this._countdown > 0) this._countdownAbbrechen();
+      return;
+    }
     this.states.transitionTo(GameState.PAUSED);
   }
 
+  /**
+   * Fortsetzen — aber erst nach 3, 2, 1, 0.
+   *
+   * WARUM DER ZUSTAND DABEI `PAUSED` BLEIBT.
+   * Der Countdown soll über dem SICHTBAREN Spielfeld laufen, ohne dass sich
+   * darin schon etwas bewegt. Genau das leistet PAUSED bereits: `_tick`
+   * überspringt `_updatePlaying` (die Welt steht still), und die Steuerung
+   * hängt an `onChange -> setTouchCapture(to === PLAYING)`, ist also aus.
+   * Ein eigener Zustand hätte beide Eigenschaften nachbauen und in die
+   * Übergangstabelle eingetragen werden müssen — für nichts.
+   *
+   * Gewechselt wird deshalb nur die ANZEIGE, und der Zustandswechsel kommt
+   * erst, wenn die Uhr abgelaufen ist.
+   */
   _resume() {
     if (!this.states.is(GameState.PAUSED)) return;
+    if (this._countdown > 0) return; // läuft schon
+    const f = this.cfg.flow;
+    this._countdown = (f.resumeCountdown ?? 3) + (f.resumeCountdownNull ?? 0.35);
+    this.ui.showCountdown(f.resumeCountdown ?? 3);
+  }
+
+  /** Countdown abräumen und zurück auf den Pausenbildschirm. */
+  _countdownAbbrechen() {
+    if (this._countdown <= 0) return;
+    this._countdown = 0;
+    if (this.states.is(GameState.PAUSED)) this.ui.showScreen('paused');
+  }
+
+  /**
+   * Lässt den Countdown ablaufen. Wird in JEDEM Zustand aus `_tick` gerufen —
+   * `_updatePlaying` läuft während PAUSED ja gerade nicht.
+   */
+  _countdownSchritt(dt) {
+    if (this._countdown <= 0) return;
+
+    /* Nicht mehr pausiert? Dann hat etwas anderes den Zustand verstellt
+     * (Hauptmenü, Tabwechsel). Der Countdown gehört zu dieser Pause und
+     * verfällt mit ihr — sonst schaltete er später ein Spiel scharf, das
+     * gar nicht mehr läuft. */
+    if (!this.states.is(GameState.PAUSED)) {
+      this._countdown = 0;
+      return;
+    }
+
+    this._countdown -= dt;
+    const null_ = this.cfg.flow.resumeCountdownNull ?? 0.35;
+
+    if (this._countdown > null_) {
+      // 3, 2, 1 — je eine Sekunde.
+      this.ui.setCountdown(Math.ceil(this._countdown - null_));
+      return;
+    }
+    if (this._countdown > 0) {
+      this.ui.setCountdown(0);
+      return;
+    }
+    this._countdown = 0;
     this.states.transitionTo(GameState.PLAYING);
   }
 
   _toMenu() {
     if (this.states.is(GameState.MENU)) return;
+    // Ein laufender Countdown gehört zur verlassenen Pause. Bliebe er stehen,
+    // schaltete er Sekunden später ein Spiel scharf, das es nicht mehr gibt.
+    this._countdown = 0;
+    // Dasselbe für die Wischuhr des orangen Affen — siehe _startRun.
+    this._wischUhr = 0;
+    this._wischZiel = null;
     // Ein laufender Spot hält sonst eine Promise offen, die nach der Rückkehr
     // ins Menü noch "belohnt" liefern und den alten Lauf wiederbeleben würde.
     this.ads.cancel();
@@ -2376,6 +2345,11 @@ export class Game {
         // Bewusst nichts aktualisieren — Standbild, aber weiter rendern.
         break;
     }
+
+    /* Der Fortsetzen-Countdown läuft AUSSERHALB des switch, aus demselben
+     * Grund wie die Musik weiter unten: er tickt im Zustand PAUSED, und
+     * dort wird sonst nichts aktualisiert. */
+    this._countdownSchritt(dt);
 
     /* DIE MUSIK BRAUCHT JEDEN FRAME, NICHT NUR IM SPIEL.
      *

@@ -322,7 +322,14 @@ export class SpritePlayer {
     this.vx = 0;
     this.vy = 0;
     this.speed = 0;
-    this.revives = 0;
+    /* STARTLEBEN AUS DER FIGUR, NICHT FEST 0.
+     *
+     * Hier stand `this.revives = 0`. Der weisse Affe startet mit zwei Leben
+     * (dem laufenden plus einem gebunkerten), und `reset()` läuft bei JEDEM
+     * Laufstart — ein Startwert, der nur im Konstruktor gesetzt würde, wäre
+     * ab dem zweiten Lauf verschwunden. Gedeckelt auf `maxStored`, damit die
+     * beiden Werte nicht auseinanderlaufen können. */
+    this.revives = Math.min(this.reviveCfg?.maxStored ?? 0, this.reviveCfg?.startRevives ?? 0);
     this.invulnerableTimer = 0;
     this.alive = true;
     this._inputX = 0;

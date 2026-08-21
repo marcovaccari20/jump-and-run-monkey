@@ -102,17 +102,38 @@ const jsQuelle = ['src/ui/UI.js', 'src/core/Game.js', 'src/systems/Konto.js',
 
 /* ------------------------------------------------------------- Prüfung */
 
+/**
+ * Kommt der Schlüssel im JavaScript als VOLLSTÄNDIGE Zeichenkette vor?
+ *
+ * Gesucht wird `'…'`, `"…"` oder `` `…` `` mit genau diesem Inhalt — nicht
+ * als Silbe in einem längeren Text. Siehe die Begründung unten bei `verwaist`.
+ */
+function alsZeichenkette(k) {
+  const esc = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(['"\`])${esc}\\1`).test(jsQuelle);
+}
+
 let fehler = 0;
 
 for (const sprache of sprachen) {
   const schluessel = Object.keys(sprache.woerter);
   const verwaist = [];
   for (const k of schluessel) {
-    /* Im HTML als vollständiger Textknoten, ODER irgendwo im JavaScript als
-     * Zeichenkette. Beides zählt — ein Eintrag darf aus jeder Ecke bedient
-     * werden. */
+    /* Im HTML als vollständiger Textknoten, ODER im JavaScript als
+     * VOLLSTÄNDIGE Zeichenkette. Beides zählt — ein Eintrag darf aus jeder
+     * Ecke bedient werden.
+     *
+     * FRÜHER STAND HIER `jsQuelle.includes(k)`, ein roher Teilstring-Test.
+     * Der rettete jeden kurzen Schlüssel, der zufällig irgendwo als Silbe
+     * vorkam: `Save` steckt in `'Save password'`, `Load` in `AssetLoader`.
+     * Beide Einträge waren längst verwaist, und die Prüfung meldete grün —
+     * sie bewies also genau dort nichts, wo man sie braucht.
+     *
+     * Jetzt muss der Schlüssel als ganze Zeichenkette in Anführungszeichen
+     * stehen (einfach, doppelt oder als Template). Das ist die Form, in der
+     * ihn `uebersetze()` tatsächlich nachschlägt. */
     if (ausHtml.has(k)) continue;
-    if (jsQuelle.includes(k)) continue;
+    if (alsZeichenkette(k)) continue;
     verwaist.push(k);
   }
 

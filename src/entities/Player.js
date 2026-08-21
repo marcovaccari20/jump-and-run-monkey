@@ -174,7 +174,18 @@ export class Player {
     this.vx = 0;
     this.vy = 0;
     this.speed = 0;
-    this.revives = 0;
+    /* Startleben aus der Figur — gleiche FORMEL wie in SpritePlayer.reset().
+     *
+     * Sie greift hier allerdings nie: Game baut diesen 3D-Spieler mit dem
+     * GLOBALEN `cfg.revive`/`cfg.player`, nicht mit den Charakter-Werten aus
+     * `_buildPlayer`. Im 3D-Zweig gibt es also weder `startRevives` noch
+     * `wischVerzoegerung` noch die Bahnen — er bewegt sich frei.
+     *
+     * Der Zweig ist mit CONFIG.render.mode 'sprite' abgeschaltet. Die Zeile
+     * steht trotzdem hier, damit die Formel nicht an einer Stelle fehlt,
+     * falls jemand den Schalter je umlegt — aber wer das tut, muss zuerst
+     * die Charakter-Werte durchreichen. */
+    this.revives = Math.min(this.reviveCfg?.maxStored ?? 0, this.reviveCfg?.startRevives ?? 0);
     this.invulnerableTimer = 0;
     this.alive = true;
     this._lean = 0;

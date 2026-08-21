@@ -50,9 +50,12 @@ export const CONFIG = {
      * statt die Sicht enger.
      *
      * 0.5625 ist 9:16 und keine neue Zahl: genau dieses Format ist die
-     * Grundlage, aus der world.bahnDeckel hergeleitet wurde. Damit füllt der
-     * braune Affe die Säule zu 100 % aus, der weisse (halber Trefferradius,
-     * also engerer Deckel) zu 86 %.
+     * Grundlage, aus der world.bahnDeckel hergeleitet wurde. Damit füllen
+     * ALLE DREI Affen die Säule zu 100 % aus.
+     *
+     * Hier stand einmal "der weisse (halber Trefferradius) zu 86 %". Das galt,
+     * solange sein Trefferradius 0.21 war. Er hat jetzt dieselben 0.42 wie
+     * die anderen — siehe die Begründung bei characters.list.weiss.
      *
      * Grösser heisst mehr Bild und mehr Leerlauf: 0.60 -> 98 %, 0.65 -> 87 %,
      * 0.75 -> 79 %. Die Zahl geht als CSS-Variable an #buehne. */
@@ -186,8 +189,11 @@ export const CONFIG = {
      *
      *  und der Trefferradius des Affen ist JE CHARAKTER verschieden:
      *
-     *      braun / orange   hitRadius 0.42  ->  hoechstens 2.113
-     *      weiss            hitRadius 0.21  ->  hoechstens 1.693
+     *      alle drei        hitRadius 0.42  ->  hoechstens 2.113
+     *
+     *  (Der weisse Affe hatte hier einmal 0.21 und damit 1.693. Seit seine
+     *  Fähigkeit "zwei Startleben" statt "halbe Hitbox" ist, sind alle drei
+     *  gleich — der Deckel je Charakter ist damit derselbe.)
      *
      *  Mit festen 2.2 war der Deckel für alle drei zu weit — und für den
      *  weissen Affen so deutlich, dass der ursprüngliche Fehler bei ihm
@@ -483,10 +489,10 @@ export const CONFIG = {
 
       weiss: {
         id: 'weiss',
-        // Der Flinke. Halb so grosse Hitbox, aber keine Wiederbelebung.
+        // Der Flinke. Zwei Leben von Anfang an, dafür keine Bananen.
         kosten: 1000,
         label: 'White Monkey',
-        blurb: 'Half the size and quicker. No bananas, no second chance.',
+        blurb: 'Starts with two lives. Quick — but no bananas to top up.',
         preview: '/characters/white.webp',
         framePath: '/textures/weiss/move_{n}.webp',
         /* ZWÖLF BILDER, NICHT ZEHN — es ist jetzt der eingefärbte BRAUNE.
@@ -516,18 +522,45 @@ export const CONFIG = {
          * es mit dem Daumen schafft. */
         doppelwischFenster: 0.35,
 
+        /* ZWEI LEBEN STATT KLEINERER HITBOX.
+         *
+         * Bis hierher war seine Fähigkeit ein halber Trefferradius (0.21).
+         * Die war im Drei-Bahnen-System praktisch wirkungslos: gefährlich ist
+         * `spieler.hitRadius + objekt.hitRadius`, und weil der Bahnabstand
+         * daraus abgeleitet wird (Game.js:3034-3041), schrumpften mit seinem
+         * Radius auch seine Bahnen mit. Netto blieb fast nichts übrig —
+         * ausser einem schmalen Schlupfloch mitten im Bahnwechsel.
+         *
+         * Jetzt ist seine Fähigkeit zählbar: er startet jeden Lauf mit ZWEI
+         * Leben. Dafür spawnen für ihn keine Bananen — im LAUF kann er also
+         * nichts nachfüllen, während die anderen mit einem Leben starten und
+         * per Banane nachlegen.
+         *
+         * EINE AUSNAHME, die hier stehen muss: das Weiterspielen per Werbung
+         * (`_continueRun` -> `reviveInPlace`) läuft an `revives` VORBEI und
+         * gilt für jede Figur gleich. Wer den Spot ansieht, übersteht also
+         * auch mit dem weissen Affen drei Treffer statt zwei. Das ist kein
+         * Nachschub im Sinne dieser Fähigkeit, aber es ist der Grund, warum
+         * hier nicht "zwei und keins mehr" steht. */
         bananas: false,
-        maxStored: 0, // zweiter Riegel gegen die Wiederbelebung
+        // Braucht Platz für genau ein gebunkertes Extraleben — sonst deckelt
+        // das `Math.min` in SpritePlayer.collectBanana bzw. reset().
+        maxStored: 1,
+        // Gebunkerte Extraleben BEIM START. 1 Extraleben + das laufende
+        // Leben = zwei Treffer, die er übersteht. Gelesen in
+        // SpritePlayer.reset() über reviveCfg.
+        startRevives: 1,
         ignoreRockRadius: 0,
         player: {
-          spriteHeight: 1.25, // x0.50  halb so gross
+          spriteHeight: 1.25, // x0.50  halb so gross (reine Optik)
           modelHeight: 0.75, // x0.50
           moveSpeed: 13.97, // x1.30  flinker
           acceleration: 47.4, // x1.23  spitzeres Anfahren
           damping: 25.0, // x1.25
           climbAssist: 0.0, // war 1.3 — gab ihm einen Punktevorteil
           minScrollFactor: 1.0,
-          hitRadius: 0.21, // x0.50  halbe Hitbox
+          // 1.00 — gleich wie braun. War 0.21; siehe Begründung oben.
+          hitRadius: 0.42,
           hitOffsetY: 0.0,
         },
       },
@@ -551,7 +584,7 @@ export const CONFIG = {
         // Beim Median 0.46 wäre er gegen die HÄLFTE aller Steine immun —
         // das wäre kein Vorteil mehr, sondern ein anderes Spiel.
         ignoreRockRadius: 0.38,
-        /* EINE HALBE SEKUNDE VERZÖGERUNG.
+        /* GENAU DOPPELT SO LANGE WIE DER BRAUNE — der Wert ist gerechnet.
          *
          * Sein Nachteil. Er prallt an kleinen Steinen ab — das ist die
          * stärkste Fähigkeit im Spiel, und sie braucht ein Gegengewicht,
@@ -559,9 +592,38 @@ export const CONFIG = {
          * kaum, weil der Bahnwechsel ohnehin kurz ist.
          *
          * Deshalb setzt sein Bahnwechsel erst nach dieser Zeit ein. Man
-         * wischt, und er geht los, wenn die halbe Sekunde um ist. Wer mit
-         * ihm spielt, muss früher entscheiden — genau das ist der Handel. */
-        wischVerzoegerung: 0.5,
+         * wischt, und er geht los, wenn die Wartezeit um ist. Wer mit ihm
+         * spielt, muss früher entscheiden — genau das ist der Handel.
+         *
+         * WARUM 0.383 UND NICHT 0.5. Der Faktor, der zählt, ist die GESAMTE
+         * Zeit vom Wisch bis zur Zielbahn. Mit 0.5 lag sie bei 2.2 bis 2.3x —
+         * er war spürbar träger als "halbes Tempo". Die Trägheit kam dabei
+         * FAST NUR aus dieser Wartezeit, nicht aus `moveSpeed`: die reine
+         * Fahrt unterscheidet sich nur um 1.07x.
+         *
+         * ES GIBT KEINEN WERT, DER ÜBERALL EXAKT 2.00 ERGIBT.
+         * Die Wartezeit ist konstant, die Fahrtzeit hängt am Bahnabstand —
+         * und der ist geräteabhängig (`halbFeld = min(bounds.maxX, deckel)`,
+         * Game.js in `_updateWorldBounds`). Auf einem schmalen Handy sind die
+         * Bahnen enger, die Fahrt kürzer, und die feste Wartezeit wiegt
+         * schwerer. Gemessen mit der echten Bewegungsschleife bei 60 Hz:
+         *
+         *     Format     Bahnabstand   braun    orange   Verhältnis
+         *     9:16+         2.113      0.450    0.867      1.93
+         *     18:9          1.594      0.400    0.817      2.04
+         *     19.5:9        1.459      0.400    0.800      2.00
+         *     20:9 / 21:9   1.398      0.383    0.783      2.04
+         *
+         * 0.383 ist der Wert, der diese Spanne am engsten um 2.0 zentriert:
+         * 1.93 bis 2.04, grösste Abweichung 3.7 %. Mit 0.4167 waren es bis
+         * 2.17 — auf jedem heute üblichen Handy ausserhalb von ±5 %.
+         *
+         * NICHT AUF EINE FRAMEGRENZE LEGEN. `_wischUhrLaufen` zieht pro Bild
+         * `dt` ab, die Wartezeit rundet also immer auf das nächste Bild AUF.
+         * 0.4167 lag um 0.00003 s über 25/60 und kostete deshalb ein 26.
+         * Bild — effektiv 0.433 statt 0.417. 0.383 liegt sauber unter 23/60
+         * und ergibt genau 23 Bilder (0.3833 s). */
+        wischVerzoegerung: 0.383,
 
         player: {
           spriteHeight: 2.5, // 1.00  (Breite folgt dem Seitenverhältnis)
@@ -1733,12 +1795,16 @@ export const CONFIG = {
     /* Pendeln um die Abwurfstelle — fällt im Bild auf, ohne davonzudriften.
      *
      * 0.28 STATT 0.55. Die Münze wird jetzt auf einer Bahn abgeworfen, und
-     * dort muss sie auch bleiben. Nachgerechnet für den weissen Affen, der
-     * die kleinste Hitbox hat: sein Radius 0.21 plus der Münzradius
-     * 0.34·1.35 = 0.46 ergibt 0.67 Einsammelreichweite. Bei ±0.55 Ausschlag
-     * blieben davon 0.12 übrig — man musste die Münze im richtigen Moment
-     * des Pendelns erwischen. Mit 0.28 ist sie über den ganzen Ausschlag
-     * erreichbar, und man sieht das Schwingen immer noch. */
+     * dort muss sie auch bleiben. Nachgerechnet damals für den weissen Affen
+     * mit seiner halben Hitbox: Radius 0.21 plus Münzradius 0.34·1.35 = 0.46
+     * ergab 0.67 Einsammelreichweite. Bei ±0.55 Ausschlag blieben davon 0.12
+     * übrig — man musste die Münze im richtigen Moment des Pendelns
+     * erwischen.
+     *
+     * Seit alle drei Affen 0.42 haben, ist die Reichweite überall 0.88, und
+     * 0.28 ist entsprechend grosszügig. Der Wert bleibt: das Pendeln ist
+     * sichtbar genug, und weiter auszuschlagen bringt nichts als eine
+     * Münze, die nach aussen aus ihrer Bahn wandert. */
     pendelWeite: 0.28,
     pendelTempo: 2.2,
 
@@ -2355,6 +2421,19 @@ export const CONFIG = {
     // Scrollgeschwindigkeit der Wand in Menü und Game-Over-Screen (Units/s),
     // damit das Bild nicht komplett still steht.
     ambientScrollSpeed: 0.55,
+
+    /* COUNTDOWN NACH DEM FORTSETZEN.
+     *
+     * Wer aus der Pause zurückkommt, hat das Bild Sekunden bis Minuten nicht
+     * gesehen und weiss nicht mehr, wo die Steine stehen. Sofort weiterlaufen
+     * zu lassen kostet einen Lauf, für den man nichts kann.
+     *
+     * `resumeCountdown` sind die Sekunden für 3, 2, 1 — je eine.
+     * `resumeCountdownNull` ist die kurze Zeit, in der die 0 noch steht,
+     * bevor die Steuerung greift. Ohne sie wäre die 0 genau ein Bild lang zu
+     * sehen, also gar nicht. */
+    resumeCountdown: 3,
+    resumeCountdownNull: 0.35,
   },
 
   /* ================================================================== *
@@ -2438,19 +2517,12 @@ export const CONFIG = {
      * sonst wird es stillschweigend ignoriert. */
     passwortZielUrl: '',
 
-    /* Übertragung auf ein anderes Gerät per VIERSTELLIGEM CODE.
+    /* HIER STANDEN codeBelegenFn, codeAufloesenFn und codeVorschlagFn.
      *
-     * Die Kennung bleibt intern der Schlüssel; der Code ist nur ein Zeiger
-     * darauf. Vier Ziffern sind bewusst gewählt, obwohl es davon nur
-     * zehntausend gibt — die Abwägung samt Folgen steht ausführlich in
-     * scripts/bestenliste.sql, Abschnitt ÜBERTRAGUNGSCODE.
-     *
-     * Diese drei Funktionen müssen in der Datenbank angelegt sein. Solange
-     * sie fehlen, antwortet der Server mit 404, und das Spiel sagt genau das
-     * — statt den Fehler zu verschlucken. */
-    codeBelegenFn: 'code_belegen',
-    codeAufloesenFn: 'code_aufloesen',
-    codeVorschlagFn: 'code_vorschlag',
+     * Die Vier-Ziffern-Übertragung ist aus dem Spiel entfernt; der
+     * Spielstand folgt dem E-Mail-Konto. Die gleichnamigen SQL-Funktionen
+     * stehen serverseitig noch, werden von hier aus aber nicht mehr
+     * gerufen. */
 
     // Nach dieser Zeit wird abgebrochen. Eine hängende Bestenliste darf den
     // Game-Over-Screen nicht blockieren.

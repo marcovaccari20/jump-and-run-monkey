@@ -110,26 +110,6 @@ export default {
   'Fur colour': 'Warna bulu',
   'Go!': 'Ayo!',
   Back: 'Kembali',
-  'Move your progress to another device': 'Pindahkan kemajuanmu ke perangkat lain',
-  Pick: 'Pilih',
-  'four digits': 'empat digit',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'yang masih kosong. Dengan itu kamu membawa koin dan monyetmu ke perangkat lain mana pun.',
-  Save: 'Simpan',
-  'Get a free one': 'Cari yang kosong',
-  'Your code:': 'Kodemu:',
-  Copy: 'Salin',
-  'Choose a four-digit code': 'Pilih kode empat digit',
-  'Enter a four-digit code': 'Masukkan kode empat digit',
-  'Enter a code from another device:': 'Masukkan kode dari perangkat lain:',
-  Load: 'Muat',
-  'Code copied.': 'Kode disalin.',
-  'Copying is blocked — select the code by hand.':
-    'Penyalinan diblokir — pilih kodenya secara manual.',
-  'Please enter exactly four digits.': 'Masukkan tepat empat digit.',
-  'Nothing is stored for that code.': 'Tidak ada yang tersimpan pada kode itu.',
-  'Nothing to transfer without a server.': 'Tanpa server tidak ada yang bisa dipindahkan.',
-  'No profile yet — play one round first.': 'Belum ada profil — mainkan satu ronde dulu.',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'Nyawa tambahan',

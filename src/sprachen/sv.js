@@ -110,26 +110,6 @@ export default {
   'Fur colour': 'Pälsfärg',
   'Go!': 'Kör!',
   Back: 'Tillbaka',
-  'Move your progress to another device': 'Flytta dina framsteg till en annan enhet',
-  Pick: 'Välj',
-  'four digits': 'fyra siffror',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'som fortfarande är lediga. Med dem tar du med mynt och apor till vilken annan enhet som helst.',
-  Save: 'Spara',
-  'Get a free one': 'Hämta en ledig',
-  'Your code:': 'Din kod:',
-  Copy: 'Kopiera',
-  'Choose a four-digit code': 'Välj en fyrsiffrig kod',
-  'Enter a four-digit code': 'Ange en fyrsiffrig kod',
-  'Enter a code from another device:': 'Ange en kod från en annan enhet:',
-  Load: 'Ladda',
-  'Code copied.': 'Koden är kopierad.',
-  'Copying is blocked — select the code by hand.':
-    'Kopiering är blockerad — markera koden för hand.',
-  'Please enter exactly four digits.': 'Ange exakt fyra siffror.',
-  'Nothing is stored for that code.': 'Inget är sparat under den koden.',
-  'Nothing to transfer without a server.': 'Utan server finns inget att flytta.',
-  'No profile yet — play one round first.': 'Ingen profil än — spela en runda först.',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'Extraliv',

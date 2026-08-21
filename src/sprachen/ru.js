@@ -109,26 +109,6 @@ export default {
   'Fur colour': 'Цвет шерсти',
   'Go!': 'Вперёд!',
   Back: 'Назад',
-  'Move your progress to another device': 'Перенести прогресс на другое устройство',
-  Pick: 'Выбери',
-  'four digits': 'четыре цифры',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'которые ещё свободны. С ними ты перенесёшь монеты и обезьян на любое другое устройство.',
-  Save: 'Сохранить',
-  'Get a free one': 'Найти свободный',
-  'Your code:': 'Твой код:',
-  Copy: 'Копировать',
-  'Choose a four-digit code': 'Выбери четырёхзначный код',
-  'Enter a four-digit code': 'Введи четырёхзначный код',
-  'Enter a code from another device:': 'Введи код с другого устройства:',
-  Load: 'Загрузить',
-  'Code copied.': 'Код скопирован.',
-  'Copying is blocked — select the code by hand.':
-    'Копирование заблокировано — выдели код вручную.',
-  'Please enter exactly four digits.': 'Введи ровно четыре цифры.',
-  'Nothing is stored for that code.': 'По этому коду ничего не сохранено.',
-  'Nothing to transfer without a server.': 'Без сервера переносить нечего.',
-  'No profile yet — play one round first.': 'Профиля ещё нет — сыграй сначала один раунд.',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'Дополнительная жизнь',

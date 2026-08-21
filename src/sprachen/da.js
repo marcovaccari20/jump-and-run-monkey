@@ -111,26 +111,6 @@ export default {
   'Fur colour': 'Pelsfarve',
   'Go!': 'Af sted!',
   Back: 'Tilbage',
-  'Move your progress to another device': 'Flyt dine fremskridt til en anden enhed',
-  Pick: 'Vælg',
-  'four digits': 'fire cifre',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'som stadig er ledige. Med dem tager du dine mønter og aber med til enhver anden enhed.',
-  Save: 'Gem',
-  'Get a free one': 'Hent en ledig',
-  'Your code:': 'Din kode:',
-  Copy: 'Kopiér',
-  'Choose a four-digit code': 'Vælg en firecifret kode',
-  'Enter a four-digit code': 'Indtast en firecifret kode',
-  'Enter a code from another device:': 'Indtast en kode fra en anden enhed:',
-  Load: 'Indlæs',
-  'Code copied.': 'Koden er kopieret.',
-  'Copying is blocked — select the code by hand.':
-    'Kopiering er blokeret — markér koden i hånden.',
-  'Please enter exactly four digits.': 'Indtast præcis fire cifre.',
-  'Nothing is stored for that code.': 'Der er ikke gemt noget under den kode.',
-  'Nothing to transfer without a server.': 'Uden server er der ikke noget at flytte.',
-  'No profile yet — play one round first.': 'Ingen profil endnu — spil en runde først.',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'Ekstraliv',

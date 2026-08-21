@@ -20,6 +20,9 @@ const SCREEN_SETS = {
   language: ['screen-language'],
   playing: ['screen-hud'],
   paused: ['screen-hud', 'screen-paused'],
+  // Nach dem Fortsetzen: Spielfeld sichtbar, Steuerung noch gesperrt.
+  // Der Zustand bleibt dabei PAUSED — nur die Anzeige wechselt.
+  countdown: ['screen-hud', 'screen-countdown'],
   // Zwischenschritt vor dem Game Over, solange ein zweites Leben übrig ist.
   continue: ['screen-hud', 'screen-continue'],
   ad: ['screen-hud', 'screen-ad'],
@@ -94,6 +97,7 @@ export class UI {
       btnWatchAd: $('btn-watch-ad'),
       btnDeclineAd: $('btn-decline-ad'),
       adCountdown: $('ad-countdown'),
+      countdownZahl: $('countdown-zahl'),
       btnCancelAd: $('btn-cancel-ad'),
 
       hudCoins: $('hud-coin-value'),
@@ -111,16 +115,6 @@ export class UI {
       btnTon: $('btn-ton'),
       tonSymbol: $('ton-symbol'),
 
-      uebertrag: $('uebertrag'),
-      uebertragCode: $('uebertrag-code'),
-      uebertragCodeZeile: $('uebertrag-code-zeile'),
-      uebertragForm: $('uebertrag-form'),
-      uebertragEingabe: $('uebertrag-eingabe'),
-      uebertragBelegenForm: $('uebertrag-belegen-form'),
-      uebertragBelegen: $('uebertrag-belegen'),
-      btnCodeVorschlag: $('btn-code-vorschlag'),
-      uebertragStatus: $('uebertrag-status'),
-      btnCodeKopieren: $('btn-code-kopieren'),
 
       touchLayer: $('touch-layer'),
     };
@@ -163,12 +157,6 @@ export class UI {
       onTonUmschalten: () => {},
       /** Pause-Knopf im HUD - am Handy der einzige Weg (kein Escape) */
       onPause: () => {},
-      /** (code: string) => void — Fortschritt von einem anderen Gerät holen */
-      onCodeLaden: () => {},
-      /** (code: string) => void — vier Ziffern für dieses Gerät belegen */
-      onCodeBelegen: () => {},
-      /** () => void — freien Code vom Server vorschlagen lassen */
-      onCodeVorschlag: () => {},
       // Wird beim ERSTEN echten Klick gerufen. Browser erlauben Ton nur aus
       // einer Nutzereingabe heraus — deshalb hier und nicht beim Laden.
       onErsteEingabe: () => {},
@@ -301,47 +289,6 @@ export class UI {
       this.callbacks.onPickCharacter(kachel.dataset.character);
     });
 
-    /* Nur Ziffern durchlassen, und zwar WÄHREND des Tippens.
-     *
-     * `inputmode="numeric"` bittet das Handy nur um die Zifferntastatur — auf
-     * dem Rechner tippt man trotzdem Buchstaben, und `pattern` meldet sich
-     * erst beim Absenden. Hier fällt alles andere sofort weg, dann steht im
-     * Feld immer genau das, was der Server auch annimmt. */
-    for (const feld of [this.el.uebertragEingabe, this.el.uebertragBelegen]) {
-      feld.addEventListener('input', () => {
-        const nur = feld.value.replace(/\D/g, '').slice(0, 4);
-        if (feld.value !== nur) feld.value = nur;
-      });
-    }
-
-    this.el.uebertragForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const code = this.el.uebertragEingabe.value;
-      if (code.trim()) this.callbacks.onCodeLaden(code);
-    });
-
-    this.el.uebertragBelegenForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const code = this.el.uebertragBelegen.value;
-      if (code.trim()) this.callbacks.onCodeBelegen(code);
-    });
-
-    this.el.btnCodeVorschlag.addEventListener('click', () =>
-      this.callbacks.onCodeVorschlag(),
-    );
-
-    this.el.btnCodeKopieren.addEventListener('click', async () => {
-      const code = this.el.uebertragCode.textContent;
-      try {
-        await navigator.clipboard.writeText(code);
-        this.setUebertragStatus('Code copied.');
-      } catch {
-        /* Zwischenablage gesperrt (Fremd-Rahmen, kein HTTPS) — dann muss man
-         * ihn eben markieren. Der Code steht ja sichtbar da. */
-        this.setUebertragStatus('Copying is blocked — select the code by hand.');
-      }
-    });
-
     this.el.nameForm.addEventListener('submit', (e) => {
       e.preventDefault();
       // .name-input zeigt den Namen per text-transform in Grossbuchstaben an —
@@ -398,15 +345,31 @@ export class UI {
      * Nicht in die Pause selbst (dort steht "Weiter"), nicht ins Game Over
      * und nicht während eines Werbespots — dort wäre er entweder sinnlos
      * oder schädlich. */
-    this.el.btnPause.hidden = name !== 'playing';
+    /* IM COUNTDOWN BLEIBT ER SICHTBAR — er ist dort der einzige Abbruch.
+     *
+     * Während des Countdowns ist der Pausenbildschirm mit seinen Knöpfen
+     * weg. Wäre der Pausenknopf hier ebenfalls aus, gäbe es am Handy KEINEN
+     * Weg zurück: Escape gibt es dort nicht, und wer versehentlich auf
+     * "Weiter" getippt hat, müsste die drei Sekunden absitzen. `_pause()`
+     * bricht einen laufenden Countdown korrekt ab. */
+    this.el.btnPause.hidden = name !== 'playing' && name !== 'countdown';
 
-    /* Das Zahnrad verschwindet im laufenden Spiel und waehrend eines
-     * Werbespots. Wer im Fallen danebentippt, haette sonst ein Menue offen
-     * und waere tot. Der Ton-Schalter bleibt dagegen ueberall — ihn braucht
-     * man gerade dann, wenn es laut wird. Im Ladebildschirm ist er ebenfalls
-     * aus: dort gibt es noch nichts einzustellen. */
+    /* Das Zahnrad verschwindet im laufenden Spiel, waehrend eines Werbespots
+     * und IM COUNTDOWN. Wer im Fallen danebentippt, haette sonst ein Menue
+     * offen und waere tot.
+     *
+     * Der Countdown gehoert aus demselben Grund dazu, und das war ein echter
+     * Fehler: das Zahnrad liegt AUSSERHALB der Screen-Abschnitte, also auch
+     * ausserhalb von deren `pointer-events: none`. Es blieb im Countdown
+     * klickbar, waehrend die Uhr weiterlief — man konnte die Einstellungen
+     * oder den Kontobildschirm oeffnen, seine E-Mail eintippen, und nach
+     * 3.35 s riss einem das startende Spiel das Menue weg.
+     *
+     * Der Ton-Schalter bleibt dagegen ueberall — ihn braucht man gerade
+     * dann, wenn es laut wird. Im Ladebildschirm ist er ebenfalls aus: dort
+     * gibt es noch nichts einzustellen. */
     this.el.btnEinstellungen.hidden =
-      name === 'playing' || name === 'ad' || name === 'loading';
+      name === 'playing' || name === 'ad' || name === 'loading' || name === 'countdown';
 
     this._current = name;
   }
@@ -925,6 +888,45 @@ export class UI {
     this.el.adCountdown.textContent = String(restSekunden);
   }
 
+  /* ------------------------------------------- Countdown nach der Pause */
+
+  /**
+   * Zeigt den Countdown über dem laufenden Bild.
+   *
+   * Getrennt von `setAdCountdown`: der Werbezähler sitzt IM Werberahmen und
+   * verschwindet mit ihm. Dieser hier liegt frei über dem Spielfeld und darf
+   * es nicht verdecken.
+   *
+   * @param {number} zahl 3, 2, 1 oder 0
+   */
+  showCountdown(zahl) {
+    // `true` erzwingt die Animation: beim ERSTEN Countdown steht im HTML
+    // schon dieselbe Ziffer, und ohne den Zwang bliebe genau der erste
+    // Start ohne Aufploppen — als einziger von allen.
+    this.setCountdown(zahl, true);
+    this.showScreen('countdown');
+  }
+
+  /**
+   * Nur die Ziffer wechseln — ohne den Bildschirm neu zu setzen.
+   * @param {number} zahl
+   * @param {boolean} [erzwingen] Animation auch bei gleicher Ziffer starten
+   */
+  setCountdown(zahl, erzwingen = false) {
+    const el = this.el.countdownZahl;
+    if (!el) return;
+    const text = String(zahl);
+    // Sonst nur bei echter Änderung anfassen: die CSS-Animation startete
+    // jeden Frame neu, und die Ziffer zappelte, statt einmal aufzuploppen.
+    if (!erzwingen && el.textContent === text) return;
+    el.textContent = text;
+    el.classList.remove('is-puls');
+    // Reflow erzwingen, sonst fasst der Browser Entfernen und Setzen
+    // zusammen und die Animation läuft gar nicht.
+    void el.offsetWidth;
+    el.classList.add('is-puls');
+  }
+
   /* -------------------------------------------------- Weltweite Liste */
 
   /**
@@ -985,59 +987,6 @@ export class UI {
      * driftet er auseinander: oben rechts stumm, in den Einstellungen "An". */
     this.el.btnTonAn.setAttribute('aria-pressed', stumm ? 'false' : 'true');
     this.el.btnTonAus.setAttribute('aria-pressed', stumm ? 'true' : 'false');
-  }
-
-  /* ------------------------------------------------ Fortschritt mitnehmen */
-
-  /**
-   * Zeigt den Wiederherstellungscode. Ohne Code bleibt der ganze Abschnitt
-   * verborgen — auf CrazyGames hängt der Stand am Konto, und ohne Server gibt
-   * es nichts mitzunehmen. Ein Feld, das nichts tut, verwirrt nur.
-   *
-   * @param {string|null} code
-   */
-  setUebertragCode(code) {
-    if (!code) {
-      this.el.uebertragCodeZeile.hidden = true;
-      return;
-    }
-    this.el.uebertrag.hidden = false;
-    this.el.uebertragCodeZeile.hidden = false;
-    this.el.uebertragCode.textContent = code;
-    // Im Eingabefeld stehen lassen: so sieht man beim nächsten Öffnen sofort,
-    // welche vier Ziffern die eigenen sind.
-    this.el.uebertragBelegen.value = code;
-  }
-
-  /**
-   * Blendet den ganzen Abschnitt ein oder aus.
-   *
-   * Getrennt von setUebertragCode(), weil beides verschiedene Fragen sind:
-   * OB es etwas zu übertragen gibt (Server vorhanden) und OB schon ein Code
-   * vergeben wurde. Vorher hing beides an derselben Methode — der Abschnitt
-   * verschwand dadurch, sobald kein Code gesetzt war, und man kam gar nicht
-   * erst an das Feld, um sich einen auszusuchen.
-   */
-  setUebertragVerfuegbar(ja) {
-    this.el.uebertrag.hidden = !ja;
-  }
-
-  /** Sperrt die Eingaben, solange der Server antwortet. */
-  setUebertragBesetzt(besetzt) {
-    for (const el of [
-      this.el.uebertragEingabe,
-      this.el.uebertragBelegen,
-      this.el.btnCodeVorschlag,
-    ]) {
-      el.disabled = besetzt;
-    }
-    for (const form of [this.el.uebertragForm, this.el.uebertragBelegenForm]) {
-      for (const knopf of form.querySelectorAll('button')) knopf.disabled = besetzt;
-    }
-  }
-
-  setUebertragStatus(text) {
-    this.el.uebertragStatus.textContent = text;
   }
 
   /** Kurzer Hinweis über der Weltliste (lädt, nicht erreichbar …). */

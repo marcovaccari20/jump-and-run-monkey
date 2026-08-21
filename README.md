@@ -440,88 +440,34 @@ Zum Live-Testen: `F1` blendet Hitboxen und die aktuellen Kurvenwerte ein.
 
 ---
 
-## Fortschritt mitnehmen: vier Ziffern
+## Fortschritt mitnehmen: E-Mail-Konto
 
-Im **Dschungel-Camp** (Menü → „Charaktere") unten unter **„Fortschritt auf ein
-anderes Gerät mitnehmen"** sucht man sich **vier Ziffern** aus, die noch frei
-sind. Dieselben vier Ziffern auf einem anderen Gerät eingeben — Münzen, Affen
-und Fellfarben sind da.
+Muenzen und Affen folgen dem **Konto**, nicht dem Geraet. Anmelden unter
+Menue -> Zahnrad -> Konto, mit E-Mail und Passwort. Auf einem zweiten Geraet
+dieselbe Adresse anmelden, und der Stand ist da.
 
-Intern bleibt alles beim Alten: Schlüssel ist weiterhin die zufällige UUID aus
-`spielerKennung()`. Der Code ist nur ein Zeiger darauf, `stand_laden` und
-`stand_sichern` sind unverändert.
+Beim Anmelden wird der bisherige Stand dieses Geraets **zusammengefuehrt**,
+nicht ersetzt: mehr Muenzen gewinnt, Freigeschaltetes bleibt frei. Anmelden
+kann also nur gewinnen, nie verlieren.
 
-### Was vier Ziffern kosten — die Abwägung, offen
+Ohne Konto laeuft alles weiter wie bisher — der Stand haengt dann an einer
+Zufallskennung im Browser und geht mit geloeschten Browserdaten verloren.
 
-Vorher war der Code die UUID selbst: 36 Zeichen, unmöglich zu raten, aber auch
-unmöglich abzutippen. Vier Ziffern sind **zehntausend Möglichkeiten**. Daraus
-folgen zwei Dinge, die keine Implementierung wegzaubert:
+### Hier stand einmal ein Vier-Ziffern-Code
 
-| | Folge | Abfederung |
-|---|---|---|
-| Vorrat | nie mehr als 10 000 vergebene Codes | Ein Code wird **erst beim Übertragen** vergeben, nicht bei jedem Spielstart. Codes zu Ständen, die ein Jahr lang nicht angefasst wurden, werden wieder frei. |
-| Geheimnis | keins — Durchprobieren führt in fremde Stände | Die Bremse zählt **Fehlversuche**, nicht Anfragen: 10 pro Minute global. Alle 10 000 durchzuprobieren dauert damit über 16 Stunden und ist im Log nicht zu übersehen. |
+Ein Code, mit dem man den Stand **ohne Konto** mitnehmen konnte. Er ist
+entfernt: zwei Wege zum selben Ziel sind einer zu viel, und er war der
+schwaechere — vier Ziffern sind 1 aus 10 000, ein Passwort ist es nicht.
 
-Der Schaden bleibt begrenzt: Münzen kaufen ausschliesslich **Aussehen**, Höhe
-kauft man damit nie, und die Bestenliste kennt keine Münzen. Wer einen Code
-errät, bekommt fremde Fellfarben — keinen Ranglistenplatz.
+Serverseitig stehen Tabelle `uebertrag_code` und die drei SQL-Funktionen
+(`code_belegen`, `code_vorschlag`, `code_aufloesen`) noch in
+`scripts/bestenliste.sql`. Bewusst: zum Zeitpunkt der Entfernung waren
+bereits fuenf Codes vergeben, und die sollen nicht ins Leere zeigen.
 
-Warum die Bremse auf Fehlversuche zählt statt auf Anfragen: Wer durchprobiert,
-erzeugt fast nur Fehlschläge; wer seinen eigenen Code eintippt, trifft beim
-ersten Mal. Eine Begrenzung je Aufrufer wäre schöner, ist aber nicht zu haben —
-hinter PostgREST sieht die Datenbank den Verbindungspool, nicht den Spieler.
-
-### Einrichten
-
-Die drei Funktionen müssen **einmal** in der Datenbank angelegt werden. In
-Supabase → SQL Editor den Abschnitt **ÜBERTRAGUNGSCODE** aus
-[`scripts/bestenliste.sql`](scripts/bestenliste.sql) ausführen (oder gleich die
-ganze Datei, sie ist durchgehend `if not exists` / `create or replace`).
-
-Solange das nicht passiert ist, antwortet der Server mit **404**, und das Spiel
-sagt genau das: *„Der Server kennt die Übertragung noch nicht."* Es schluckt den
-Fehler ausdrücklich **nicht** — sonst sucht man ihn im Spiel statt in der
-Datenbank.
-
-| Funktion | Zweck |
-|---|---|
-| `code_belegen(uuid, text)` | Vier selbst gewählte Ziffern belegen |
-| `code_vorschlag(uuid)` | Einen freien Code holen **und sofort belegen** |
-| `code_aufloesen(text)` | Code → Kennung (hier sitzt die Bremse) |
-
-### „Freien holen" belegt sofort — Vorschlagen allein reicht nicht
-
-Der Knopf hiess erst „Freien vorschlagen" und tat auch nur das: einen freien
-Code zurückgeben, belegt wurde er erst beim anschliessenden „Merken".
-Dazwischen liegen Sekunden, in denen ihn jemand anders nehmen kann — der
-Spieler bekäme unmittelbar nach *„ist frei"* ein *„schon vergeben"* und würde
-zu Recht denken, der Knopf sei kaputt. Bei zehntausend Plätzen ist das kein
-theoretischer Randfall.
-
-Jetzt passiert beides in einem Zug, und **das Einfügen selbst entscheidet**, ob
-der Code frei war: der Primärschlüssel lässt keinen zweiten zu. Die
-Ausnahmebehandlung sitzt in einem eigenen `begin … exception`-Block, damit ein
-Zusammenstoss nur diesen einen Versuch verwirft statt der ganzen Transaktion.
-Wer schon einen Code hat, bekommt denselben zurück.
-
-### Die Bremse darf nicht werfen — sonst gibt es sie nur auf dem Papier
-
-`code_aufloesen` meldet den erwarteten Fehlschlag über den **Rückgabewert**
-(`{ok: false, grund: …}`) statt über `raise exception`. Der Grund ist keine
-Stilfrage:
-
-Ein `raise` dreht in Postgres die **ganze Transaktion** zurück — mitsamt der
-Zeile, die gerade in `code_versuch` geschrieben wurde. Die erste Fassung zählte
-den Fehlversuch und warf danach; der Zähler wäre damit für immer auf null
-geblieben und die Bremse hätte nie gegriffen. Bei vier Ziffern ist sie die
-einzige Verteidigung, die es überhaupt gibt.
-
-Von aussen sieht eine wirkungslose Bremse genauso aus wie eine wirksame,
-solange niemand angreift — der Fehler wäre im Betrieb nicht aufgefallen.
-
-Bei `eintragen` weiter oben ist das Zurückdrehen übrigens **erwünscht**: dort
-soll die Lauf-Marke jeden Fehlversuch überleben. Dieselbe Eigenschaft, zwei
-gegensätzliche Anforderungen.
+> **Vor dem Launch pruefen:** der Ersatz muss funktionieren. Bei der
+> Entfernung standen **null** Konten in `auth.users` — die Registrierung war
+> durch `over_email_send_rate_limit` blockiert. Solange das so ist, gibt es
+> gar keinen Weg, einen Spielstand mitzunehmen. Siehe `KONTEN.md`.
 
 ### Die Datenbank darf nicht einschlafen
 
@@ -551,20 +497,6 @@ den er verhindern soll.
 
 Von Hand auslösen geht über den Reiter **Actions → Datenbank wachhalten → Run
 workflow**; dann wird nur gepingt, nicht committet.
-
-### Zwei Fallen, die beim Bauen zugeschlagen haben
-
-- **Erst auflösen, dann die eigene Kennung überschreiben.** Die alte Fassung
-  rief `kennungSetzen(code)` als Erstes. Wer einen gültig geformten, aber
-  unbekannten Code eintippte, hatte damit schon seine eigene Kennung
-  überschrieben — die Meldung kam zu spät, der Zugang zum eigenen Serverstand
-  war weg.
-- **Nach dem Einfügen nachsehen, wem der Code gehört.** `on conflict do
-  nothing` schluckt einen Zusammenstoss stillschweigend; ohne die zweite
-  Abfrage bekämen bei gleichzeitigem Zugriff beide Spieler „hat geklappt" zu
-  hören.
-
----
 
 ## Zweites Leben per Werbung
 

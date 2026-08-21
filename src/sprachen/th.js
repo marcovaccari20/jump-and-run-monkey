@@ -110,26 +110,6 @@ export default {
   'Fur colour': 'สีขน',
   'Go!': 'ไปเลย!',
   Back: 'กลับ',
-  'Move your progress to another device': 'ย้ายความคืบหน้าไปยังเครื่องอื่น',
-  Pick: 'เลือก',
-  'four digits': 'สี่หลัก',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'ที่ยังว่างอยู่ ใช้มันเพื่อนำเหรียญและลิงของคุณไปยังเครื่องอื่นได้ทุกเครื่อง',
-  Save: 'บันทึก',
-  'Get a free one': 'หาเลขที่ว่าง',
-  'Your code:': 'รหัสของคุณ:',
-  Copy: 'คัดลอก',
-  'Choose a four-digit code': 'เลือกรหัสสี่หลัก',
-  'Enter a four-digit code': 'ใส่รหัสสี่หลัก',
-  'Enter a code from another device:': 'ใส่รหัสจากเครื่องอื่น:',
-  Load: 'โหลด',
-  'Code copied.': 'คัดลอกรหัสแล้ว',
-  'Copying is blocked — select the code by hand.':
-    'การคัดลอกถูกบล็อก — กรุณาเลือกรหัสด้วยตนเอง',
-  'Please enter exactly four digits.': 'กรุณาใส่ตัวเลขสี่หลักพอดี',
-  'Nothing is stored for that code.': 'ไม่มีข้อมูลใดถูกบันทึกไว้กับรหัสนั้น',
-  'Nothing to transfer without a server.': 'ไม่มีเซิร์ฟเวอร์ก็ไม่มีอะไรให้ย้าย',
-  'No profile yet — play one round first.': 'ยังไม่มีโปรไฟล์ — เล่นสักรอบก่อน',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'ชีวิตพิเศษ',

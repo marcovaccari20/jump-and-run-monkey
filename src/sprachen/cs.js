@@ -109,26 +109,6 @@ export default {
   'Fur colour': 'Barva srsti',
   'Go!': 'Jedem!',
   Back: 'Zpět',
-  'Move your progress to another device': 'Přenést postup na jiné zařízení',
-  Pick: 'Zvol',
-  'four digits': 'čtyři číslice',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'které jsou ještě volné. S nimi přeneseš mince i opice na jakékoli jiné zařízení.',
-  Save: 'Uložit',
-  'Get a free one': 'Najít volný',
-  'Your code:': 'Tvůj kód:',
-  Copy: 'Kopírovat',
-  'Choose a four-digit code': 'Zvol čtyřmístný kód',
-  'Enter a four-digit code': 'Zadej čtyřmístný kód',
-  'Enter a code from another device:': 'Zadej kód z jiného zařízení:',
-  Load: 'Načíst',
-  'Code copied.': 'Kód zkopírován.',
-  'Copying is blocked — select the code by hand.':
-    'Kopírování je zablokované — označ kód ručně.',
-  'Please enter exactly four digits.': 'Zadej přesně čtyři číslice.',
-  'Nothing is stored for that code.': 'Pod tímto kódem není nic uloženo.',
-  'Nothing to transfer without a server.': 'Bez serveru není co přenášet.',
-  'No profile yet — play one round first.': 'Zatím žádný profil — zahraj si nejdřív kolo.',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'Život navíc',

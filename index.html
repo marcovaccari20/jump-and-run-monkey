@@ -390,64 +390,11 @@
             <button id="btn-characters-back" class="btn" type="button">Back</button>
           </div>
 
-          <!-- Fortschritt mitnehmen.
-               Ohne das brächte der Serverspeicher nichts: die Kennung liegt im
-               Browser, also verliert man mit gelöschten Browserdaten trotzdem
-               alles. Erst der ablesbare Code macht ihn zu echtem Gewinn.
-               Bleibt versteckt, solange kein Server konfiguriert ist, und auf
-               CrazyGames auch — dort hängt der Stand am Konto. -->
-          <details id="uebertrag" class="uebertrag" hidden>
-            <summary>Move your progress to another device</summary>
-            <!-- HÄLFTE 1: hier vergibt man seine vier Ziffern. -->
-            <p class="uebertrag__hinweis">
-              Pick <b>four digits</b> that are still free. Use them to bring
-              your coins and monkeys to any other device.
-            </p>
-            <form id="uebertrag-belegen-form" class="uebertrag__form">
-              <input
-                id="uebertrag-belegen"
-                class="uebertrag__eingabe uebertrag__eingabe--code"
-                type="text"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                maxlength="4"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="0000"
-                aria-label="Choose a four-digit code"
-              />
-              <button class="btn btn--klein" type="submit">Save</button>
-              <!-- Holt UND belegt in einem Zug. Ein blosser Vorschlag wäre
-                   nicht verbindlich — siehe code_vorschlag in der SQL. -->
-              <button id="btn-code-vorschlag" class="btn btn--klein" type="button">
-                Get a free one
-              </button>
-            </form>
-
-            <p class="uebertrag__hinweis uebertrag__hinweis--code" id="uebertrag-code-zeile" hidden>
-              Your code: <code id="uebertrag-code" class="uebertrag__code">—</code>
-              <button id="btn-code-kopieren" class="btn btn--klein" type="button">Copy</button>
-            </p>
-
-            <!-- HÄLFTE 2: hier gibt man ihn auf dem anderen Gerät ein. -->
-            <p class="uebertrag__hinweis">Enter a code from another device:</p>
-            <form id="uebertrag-form" class="uebertrag__form">
-              <input
-                id="uebertrag-eingabe"
-                class="uebertrag__eingabe uebertrag__eingabe--code"
-                type="text"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                maxlength="4"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="0000"
-                aria-label="Enter a four-digit code"
-              />
-              <button class="btn btn--klein" type="submit">Load</button>
-            </form>
-            <p id="uebertrag-status" class="uebertrag__status" role="status" aria-live="polite"></p>
-          </details>
+          <!-- Hier stand die Vier-Ziffern-Übertragung. Entfernt; der
+               Spielstand folgt dem Konto (screen-account).
+               Begründung und Serverseite: siehe src/systems/Fortschritt.js.
+               (Vite lässt HTML-Kommentare stehen — hier deshalb bewusst
+               ohne Tabellen- oder Funktionsnamen.) -->
         </section>
 
         <!-- ---------------------------------------------------------- HUD -->
@@ -494,6 +441,21 @@
             Resume
           </button>
           <button id="btn-pause-menu" class="btn" type="button">Main menu</button>
+        </section>
+
+        <!-- ---------------------------------------------------- Countdown -
+             BEWUSST OHNE `screen--dim`: nach dem Fortsetzen soll man das
+             Spielfeld sehen und sich orientieren können, wo die Objekte
+             gerade stehen. Ein abgedunkelter Zwischenbildschirm nähme genau
+             das weg — dann zählte man drei Sekunden ins Schwarze und stünde
+             danach genauso unvorbereitet da wie vorher.
+             `pointer-events: none` (style.css), damit ein Fingertipp während
+             des Zählens nicht am Overlay hängen bleibt. -->
+        <section id="screen-countdown" class="screen screen--center screen--countdown">
+          <!-- `polite` statt `assertive`: vier Ansagen in 3,4 Sekunden, die
+               sich gegenseitig unterbrechen, sind für einen Screenreader
+               unbrauchbar. -->
+          <p class="countdown__zahl" id="countdown-zahl" aria-live="polite">3</p>
         </section>
 
         <!-- ------------------------------------------- Weiterspielen? -----

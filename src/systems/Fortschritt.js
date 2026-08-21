@@ -409,131 +409,18 @@ function _uuidNotnagel() {
   )}-${hex.slice(20)}`;
 }
 
-/**
- * Übernimmt einen eingegebenen Wiederherstellungscode.
- * @returns {boolean} false, wenn er kein gültiger Code ist
+/* HIER STAND DIE VIER-ZIFFERN-ÜBERTRAGUNG.
+ *
+ * CODE_FORM, codeFehler, codeBelegen, codeVorschlag, codeAufloesen und
+ * kennungSetzen sind entfernt. Der Spielstand folgt jetzt ausschliesslich
+ * dem E-Mail-Konto (systems/Konto.js) — zwei Wege zum selben Ziel waren
+ * einer zu viel, und vier Ziffern sind 1 aus 10 000.
+ *
+ * `spielerKennung()` und `SupabaseSpeicher` weiter oben BLEIBEN: die trägt
+ * der normale Serverspeicher, unabhängig von jedem Code.
+ *
+ * Serverseitig stehen die Tabelle `uebertrag_code` und die drei
+ * SQL-Funktionen noch (scripts/bestenliste.sql). Bewusst: bereits vergebene
+ * Codes sollen nicht ins Leere zeigen, und das Aufräumen dort ist ein
+ * eigener Schritt.
  */
-/* ==========================================================================
- *  ÜBERTRAGUNGSCODE — vier Ziffern
- *
- *  Die Kennung oben bleibt intern der Schlüssel. Sie ist aber 36 Zeichen
- *  lang, und niemand tippt das auf einem Handy ab. Deshalb sucht sich der
- *  Spieler VIER ZIFFERN aus, die noch frei sind; der Server merkt sich, zu
- *  welcher Kennung sie gehören.
- *
- *  Das ist eine bewusste Abwägung, keine Nachlässigkeit: vier Ziffern sind
- *  zehntausend Möglichkeiten, der Code ist also kein Geheimnis. Was das
- *  bedeutet und warum es hier vertretbar ist, steht ausführlich in
- *  scripts/bestenliste.sql im Abschnitt ÜBERTRAGUNGSCODE.
- * ======================================================================== */
-
-/** Genau vier Ziffern. Führende Null erlaubt — '0042' ist ein gültiger Code. */
-export const CODE_FORM = /^[0-9]{4}$/;
-
-/** Vereinheitlicht Servermeldungen zu etwas, das im Spiel lesbar ist. */
-function codeFehler(err) {
-  // 404: die Funktionen sind noch nicht in der Datenbank. Das ist KEIN
-  // Spielerfehler, und ohne diesen Hinweis sucht man den Fehler im Spiel.
-  if (err?.status === 404) {
-    return 'Der Server kennt die Übertragung noch nicht (SQL noch nicht eingespielt).';
-  }
-  if (err?.name === 'AbortError') return 'Der Server antwortet nicht.';
-  return err?.message || 'Das hat nicht geklappt.';
-}
-
-/**
- * Belegt einen selbst gewählten Code für diese Kennung.
- * @returns {Promise<{ok: true, code: string} | {ok: false, meldung: string}>}
- */
-export async function codeBelegen(cfg, spielerId, code) {
-  const sauber = String(code ?? '').trim();
-  if (!CODE_FORM.test(sauber)) {
-    return { ok: false, meldung: 'Please enter exactly four digits.' };
-  }
-  try {
-    const zurueck = await rpc(cfg, cfg.codeBelegenFn, {
-      p_spieler: spielerId,
-      p_code: sauber,
-    });
-    return { ok: true, code: String(zurueck ?? sauber) };
-  } catch (err) {
-    return { ok: false, meldung: codeFehler(err) };
-  }
-}
-
-/**
- * Holt einen freien Code und belegt ihn sofort.
- *
- * Bewusst in einem Schritt: ein blosser Vorschlag wäre nicht verbindlich,
- * zwischen Vorschlag und Bestätigung könnte ihn jemand anders nehmen. Wer
- * schon einen Code hat, bekommt denselben zurück.
- *
- * @returns {Promise<{ok: true, code: string} | {ok: false, meldung: string}>}
- */
-export async function codeVorschlag(cfg, spielerId) {
-  try {
-    const zurueck = await rpc(cfg, cfg.codeVorschlagFn, { p_spieler: spielerId });
-    const code = String(zurueck ?? '');
-    if (!CODE_FORM.test(code)) {
-      return { ok: false, meldung: 'Der Server hat keinen Code herausgegeben.' };
-    }
-    return { ok: true, code };
-  } catch (err) {
-    return { ok: false, meldung: codeFehler(err) };
-  }
-}
-
-/**
- * Löst einen Code in die dahinterliegende Kennung auf.
- * @returns {Promise<{ok: true, kennung: string} | {ok: false, meldung: string}>}
- */
-/**
- * Löst einen Code in die dahinterliegende Kennung auf.
- *
- * Der Server meldet den erwarteten Fehlschlag über den RÜCKGABEWERT, nicht
- * über eine Ausnahme — sonst würde sein eigener Fehlversuchszähler mit
- * zurückgedreht und die Bremse wäre wirkungslos. Deshalb kommt hier ein
- * Objekt an und keine nackte Kennung. Ausführlich steht das in
- * scripts/bestenliste.sql bei code_aufloesen.
- *
- * @returns {Promise<{ok: true, kennung: string} | {ok: false, meldung: string}>}
- */
-export async function codeAufloesen(cfg, code) {
-  const sauber = String(code ?? '').trim();
-  if (!CODE_FORM.test(sauber)) {
-    return { ok: false, meldung: 'Please enter exactly four digits.' };
-  }
-  try {
-    const d = await rpc(cfg, cfg.codeAufloesenFn, { p_code: sauber });
-
-    if (d?.ok === true && typeof d.kennung === 'string' && UUID_FORM.test(d.kennung)) {
-      return { ok: true, kennung: d.kennung };
-    }
-
-    const meldungen = {
-      form: 'Please enter exactly four digits.',
-      gebremst: 'Too many attempts. Please wait a minute.',
-      unbekannt: 'Nothing is stored for that code.',
-    };
-    return { ok: false, meldung: meldungen[d?.grund] ?? 'Nothing is stored for that code.' };
-  } catch (err) {
-    return { ok: false, meldung: codeFehler(err) };
-  }
-}
-
-export function kennungSetzen(schluessel, code) {
-  const sauber = String(code ?? '').trim().toLowerCase();
-  /* Gegen die UUID-Form prüfen, nicht nur gegen die Länge.
-   *
-   * Vorher galt "8 bis 64 Zeichen ohne Leerzeichen" — ein vertippter Code kam
-   * damit durch, der Server wies ihn wegen des Typs ab, und der Fehler wurde
-   * verschluckt. Der Spieler sah nichts und stand plötzlich ohne seine
-   * Münzen da. Lieber hier sagen, dass der Code nicht stimmt. */
-  if (!UUID_FORM.test(sauber)) return false;
-  try {
-    localStorage.setItem(schluessel, sauber);
-    return true;
-  } catch {
-    return false;
-  }
-}

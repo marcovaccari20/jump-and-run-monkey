@@ -109,26 +109,6 @@ export default {
   'Fur colour': 'Kolor futra',
   'Go!': 'Start!',
   Back: 'Wstecz',
-  'Move your progress to another device': 'Przenieś postęp na inne urządzenie',
-  Pick: 'Wybierz',
-  'four digits': 'cztery cyfry',
-  'that are still free. Use them to bring your coins and monkeys to any other device.':
-    'które są jeszcze wolne. Dzięki nim przeniesiesz monety i małpy na dowolne inne urządzenie.',
-  Save: 'Zapisz',
-  'Get a free one': 'Znajdź wolny',
-  'Your code:': 'Twój kod:',
-  Copy: 'Kopiuj',
-  'Choose a four-digit code': 'Wybierz czterocyfrowy kod',
-  'Enter a four-digit code': 'Wpisz czterocyfrowy kod',
-  'Enter a code from another device:': 'Wpisz kod z innego urządzenia:',
-  Load: 'Wczytaj',
-  'Code copied.': 'Kod skopiowany.',
-  'Copying is blocked — select the code by hand.':
-    'Kopiowanie jest zablokowane — zaznacz kod ręcznie.',
-  'Please enter exactly four digits.': 'Wpisz dokładnie cztery cyfry.',
-  'Nothing is stored for that code.': 'Pod tym kodem nic nie jest zapisane.',
-  'Nothing to transfer without a server.': 'Bez serwera nie ma czego przenosić.',
-  'No profile yet — play one round first.': 'Jeszcze brak profilu — zagraj najpierw rundę.',
 
   // ---------------------------------------------------------- Im Spiel
   'Extra life': 'Dodatkowe życie',
