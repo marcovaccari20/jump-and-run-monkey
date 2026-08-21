@@ -679,6 +679,9 @@ export class AdMobPortal {
       await this.admob.initialize({
         // Testgeräte und Testanzeigen steuert CONFIG.ad.admob.test.
         initializeForTesting: ids.test === true,
+        // Nur familienfreundliche Anzeigeninhalte — siehe Kommentar bei
+        // CONFIG.ad.admob.inhaltsrating.
+        maxAdContentRating: ids.inhaltsrating ?? 'General',
       });
 
       this.bereit = true;

@@ -1983,6 +1983,18 @@ export const CONFIG = {
       /* Zwischenspot zwischen zwei Runden — NICHT im laufenden Spiel.
        * AdMob-Anzeigenblock „Zwischen Gebieten". */
       zwischen: 'ca-app-pub-5384053224404265/8169488809',
+      /* Begrenzt die INHALTE der Anzeigen auf „General" (Freigabe ab 0) —
+       * passend zur eigenen Alterseinstufung des Spiels (PEGI 3). Reine
+       * Inhaltsfilterung, keine rechtliche Erklärung.
+       *
+       * NICHT verwechseln mit `tagForChildDirectedTreatment` (COPPA) oder
+       * `tagForUnderAgeOfConsent` (TFUA) — die erklären gegenüber Google
+       * rechtlich verbindlich, die App richte sich an Kinder unter 13. Das
+       * schaltet personalisierte Anzeigen komplett ab, zieht Googles
+       * „Designed for Families"-Regeln nach sich und widerspräche der
+       * eigenen Datenschutzerklärung („not directed at children under 13").
+       * Absichtlich NICHT gesetzt. */
+      inhaltsrating: 'General',
       /* false = echte Anzeigen, echte Abrechnung.
        *
        * AB HIER NIE MEHR SELBST AUF EINE ANZEIGE TIPPEN. Google wertet
