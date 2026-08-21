@@ -131,11 +131,23 @@ cd android && ./gradlew bundleRelease
 
 ### Was die Play Console ausserdem will
 
-- Datenschutzerklärung als **öffentliche URL** (der Text steht im Spiel unter
-  „Privacy & data", muss aber zusätzlich im Netz erreichbar sein)
+- Datenschutzerklärung als **öffentliche URL**:
+  `https://marcovaccari20.github.io/jump-and-run-monkey/`
+  Quelle ist `docs/index.html`. Ausgeliefert über GitHub Pages —
+  *Settings → Pages → Branch `main`, Ordner `/docs`*. Gratis, weil das Repo
+  öffentlich ist. Der Text steht zusätzlich im Spiel unter „Privacy & data",
+  das genügt Google aber nicht: die Adresse muss ohne Installation aufrufbar
+  sein.
 - Alterseinstufung (Fragebogen)
-- Data-Safety-Formular — was gesammelt wird, steht in derselben
-  Datenschutzseite: Name und Höhe für die Bestenliste, sonst nichts
+- Data-Safety-Formular — die fertigen Antworten stehen in `STORE-TEXTE.md`.
+
+  > **Hier stand einmal „Name und Höhe für die Bestenliste, sonst nichts".**
+  > Das war zur Zeit der Testanzeigen richtig und ist es seitdem nicht mehr:
+  > mit der Konto-Anmeldung kam die **E-Mail-Adresse** dazu, und mit den
+  > echten AdMob-Kennungen die **Werbe-ID** — letztere fügt das Plugin beim
+  > Bauen selbst hinzu (`AD_ID`), man sieht sie nirgends im Quelltext. Wer
+  > sie im Formular verschweigt, wird abgelehnt oder später gesperrt.
+
 - Symbol 512×512, Funktionsgrafik 1024×500, mindestens 2 Screenshots
 - **Werbung: ja** (die App zeigt AdMob-Anzeigen)
 

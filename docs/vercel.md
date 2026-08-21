@@ -4,9 +4,22 @@ Damit man das Spiel am Handy aufrufen kann, ohne etwas zu installieren.
 
 ## Warum Vercel und nicht GitHub Pages
 
-GitHub Pages verlangt für **private** Repos einen Bezahlplan (GitHub Pro).
-Vercel ist für private Repos gratis, und die GitHub-App war ohnehin schon
-installiert.
+Vercel liefert **das Spiel** aus, GitHub Pages **nur die Datenschutzseite**.
+Beide laufen nebeneinander, sie stören sich nicht.
+
+Als das hier entstand, war das Repo privat — und GitHub Pages verlangt für
+private Repos einen Bezahlplan (GitHub Pro). Vercel war für private Repos
+gratis, und die GitHub-App war ohnehin schon installiert.
+
+> **Das gilt nicht mehr:** das Repo ist inzwischen öffentlich, damit ist Pages
+> kostenlos. Genau darauf liegt jetzt die Datenschutzseite aus `docs/`, die
+> Google Play als öffentliche Adresse verlangt:
+> `https://marcovaccari20.github.io/jump-and-run-monkey/`
+>
+> Einzuschalten unter *Settings → Pages → Source: Branch `main`, Ordner
+> `/docs`*. Das lässt sich nur dort klicken, nicht aus dem Projekt heraus.
+> Für das Spiel selbst bleibt Vercel zuständig — Pages liefert `docs/`, und
+> der Ordner enthält kein Spiel.
 
 Ein Unterschied, der hier zufällig zum Nachteil wird: Vercel liefert im
 Wurzelverzeichnis aus, die Spieleportale im Unterordner. Der Unterordner-Fall
