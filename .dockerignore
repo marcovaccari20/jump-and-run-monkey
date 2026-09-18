@@ -1,0 +1,32 @@
+# Was NICHT in den Container-Bau wandert.
+#
+# Jede Datei hier spart Zeit bei jeder Veröffentlichung: Docker schickt den
+# gesamten Projektordner an den Bau-Dienst, bevor die erste Zeile läuft.
+# Ohne diese Datei wären das über 300 MB node_modules — bei jedem Mal.
+
+node_modules/
+dist/
+
+# Rohmaterial und Werkzeuge. Der Container baut aus `src/` und `public/`;
+# die Quellen der Grafiken und Videos braucht er nie.
+assets-src/
+pakete/
+scripts/
+docs/
+
+# Android-Hülle — eine völlig andere Auslieferung, hat im Web nichts zu suchen.
+android/
+
+# Alles Lokale und Geheime. `keystore.properties` und `*.jks` stehen ohnehin
+# schon in .gitignore, aber ein Container-Bau kann auch aus einem
+# Arbeitsordner laufen, in dem sie liegen — doppelt hält.
+.git/
+.github/
+.claude/
+*.jks
+keystore.properties
+.env
+.env.*
+
+*.log
+.DS_Store
